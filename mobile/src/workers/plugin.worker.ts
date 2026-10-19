@@ -405,7 +405,11 @@ const context: any = {
       throw new Error('移动端不支持桌面快捷键')
     }
   },
-  sharing: unsupportedService('sharing'),
+  sharing: {
+    create: (request: any, call?: any) => rpc('sharing.create', { request, call }),
+    revoke: (id: string, call?: any) => rpc('sharing.revoke', { id, call }),
+    resolve: (url: string) => rpc('sharing.resolve', { url })
+  },
   rooms: unsupportedService('rooms'),
   devices: unsupportedService('devices'),
   ai: {

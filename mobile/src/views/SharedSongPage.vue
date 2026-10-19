@@ -110,6 +110,7 @@ import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
 import shareApi, { type ShareDetail } from '@/services/shareApi'
+import { readShareDescriptor } from '@/services/pluginSharing'
 import type { Track } from '@/types/music'
 import type { ResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
 
@@ -204,6 +205,27 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
+    if (id.value.startsWith('v2_')) {
+      const descriptor = readShareDescriptor(id.value)
+      detail.value = {
+        id: id.value,
+        username: '音乐同好',
+        source: descriptor.track.providerId,
+        song: {
+          songmid: descriptor.track.id,
+          name: descriptor.title,
+          singer: descriptor.artists.join('、'),
+          source: descriptor.track.providerId,
+          pluginResource: descriptor.track
+        },
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 86400000,
+        audioUrl: '',
+        coverProxyUrl: null
+      }
+      directTrack.value = buildPluginTrack()
+      return
+    }
     detail.value = await shareApi.getById(id.value)
     directTrack.value = buildDirectTrack()
   } catch (cause) {

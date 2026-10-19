@@ -7,6 +7,11 @@ import { kvDelete, kvGet, kvSet, toPlain } from '@/services/db'
 import { useSettingsStore } from '@/stores/settings'
 import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
 import { generatePluginAI } from '@/services/pluginAI'
+import {
+  createShareDescriptor,
+  readShareDescriptor,
+  shareDescriptorFromUrl
+} from '@/services/pluginSharing'
 
 export interface PluginRuntimeOptions {
   record: PluginRecord
@@ -841,6 +846,15 @@ export class PluginRuntime {
         this.scheduledTasks.delete(id)
         return null
       }
+      case 'sharing.create': {
+        await this.requirePermission(params?.call?.permissionKey, '分享')
+        return createShareDescriptor(params?.request ?? {})
+      }
+      case 'sharing.resolve':
+        return shareDescriptorFromUrl(String(params?.url ?? ''))
+      case 'sharing.revoke':
+        await this.requirePermission(params?.call?.permissionKey, '撤销分享')
+        return null
       case 'ai.generate': {
         await this.requirePermission(params?.call?.permissionKey, 'AI 服务')
         const settings = useSettingsStore()
@@ -890,7 +904,8 @@ export class PluginRuntime {
       call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
       call('window', ['control'], ['window']),
       call('tasks', ['schedule', 'cancel'], ['background']),
-      call('ai', ['generate'], ['ai'])
+      call('ai', ['generate'], ['ai']),
+      call('sharing', ['create', 'revoke', 'resolve'], ['sharing'])
     ]
   }
 
