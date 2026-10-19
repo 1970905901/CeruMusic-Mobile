@@ -631,48 +631,39 @@ export const useLibraryStore = defineStore('library', () => {
     importerId: string,
     value: string
   ) {
+    void pluginId
     const runtime = (await import('@/services/plugin/runtime')).pluginRuntimeManager.get(pluginKey)
     if (!runtime) throw new Error('插件未启用')
+
     let cursor: string | undefined
-    let name = '导入歌单'
-    const playlist = createPlaylist(name)
+    let playlist: Playlist | null = null
+
     do {
       const page = await runtime.invokeImporter(importerId, {
         value,
         cursor,
         limit: 100
       })
-      if (page?.name) {
-        playlist.name = page.name
-        name = page.name
-      }
+      if (!page) throw new Error('导入器没有返回歌单')
+      if (!playlist) playlist = createPlaylist(page.name || '导入歌单')
+      if (page?.name && page.name !== playlist.name) playlist.name = page.name
+
       for (const entity of page?.items ?? []) {
         if (entity?.ref?.kind !== 'track') continue
-        const track: Track = {
-          key: `${pluginKey}:${entity.ref.providerId}:${entity.ref.id}`,
-          pluginKey,
-          ref: entity.ref,
-          title: entity.title,
-          subtitle: entity.subtitle,
-          artists: entity.metadata?.artists ?? [],
-          album: entity.metadata?.album?.title,
-          durationMs: entity.durationMs ?? entity.metadata?.durationMs,
-          artworkUrl: entity.metadata?.artworkUrl,
-          qualities: entity.metadata?.qualities ?? [],
-          playable: entity.playable !== false,
-          raw: entity,
-          source: 'plugin'
-        }
+        const track = pluginStore.normalizeEntity(pluginKey, entity)
         upsertTrack(track)
         if (!playlist.trackKeys.includes(track.key)) playlist.trackKeys.push(track.key)
       }
       cursor = page?.nextCursor
     } while (cursor)
+
+    if (!playlist) throw new Error('导入器没有返回歌单')
     playlist.updatedAt = Date.now()
     const db = await getDb()
     await db.put('playlists', toPlain(playlist))
     return playlist
   }
+
 
   return {
     favorites,

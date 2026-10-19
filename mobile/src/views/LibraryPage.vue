@@ -28,6 +28,10 @@
             <ion-icon :icon="folderOpenOutline" />
             <span>导入本地音乐</span>
           </button>
+          <button v-if="showPlaylistImport" class="quick-card ceru-card ceru-press" type="button" @click="importOpen = true">
+            <ion-icon :icon="cloudDownloadOutline" />
+            <span>导入歌单链接</span>
+          </button>
           <button class="quick-card ceru-card ceru-press" type="button" @click="$router.push('/downloads')">
             <ion-icon :icon="cloudDownloadOutline" />
             <span>下载管理</span>
@@ -158,11 +162,13 @@
 
       <div class="bottom-space" />
     </ion-content>
+
+    <PlaylistImportSheet :open="importOpen" @close="importOpen = false" />
   </ion-page>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   IonButton,
   IonButtons,
@@ -198,6 +204,8 @@ import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
+import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
+import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { openTrackActions } from '@/services/trackActions'
 
 const library = useLibraryStore()
@@ -205,6 +213,12 @@ const player = usePlayerStore()
 const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 const localInput = ref<HTMLInputElement | null>(null)
+const importOpen = ref(false)
+const showPlaylistImport = computed(() =>
+  collectPlaylistImporters(pluginStore.enabledPlugins, {
+    runtimeInfo: pluginStore.runtimeInfo
+  }).length > 0
+)
 
 function playlistCover(id: string): string | undefined {
   const tracks = library.playlistTracks(id)
