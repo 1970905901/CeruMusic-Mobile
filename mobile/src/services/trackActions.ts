@@ -1,10 +1,10 @@
 import { Clipboard } from '@capacitor/clipboard'
-import { Share } from '@capacitor/share'
 import { actionSheetController, alertController, toastController } from '@ionic/vue'
 import type { Track } from '@/types/music'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { useDownloadStore } from '@/stores/downloads'
+import { useShareStore } from '@/stores/share'
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2000, color })
@@ -15,6 +15,7 @@ export async function openTrackActions(track: Track): Promise<void> {
   const player = usePlayerStore()
   const library = useLibraryStore()
   const downloads = useDownloadStore()
+  const share = useShareStore()
 
   const favorite = library.isFavorite(track)
   const sheet = await actionSheetController.create({
@@ -52,13 +53,8 @@ export async function openTrackActions(track: Track): Promise<void> {
         }
       },
       {
-        text: '分享',
-        handler: () => {
-          void Share.share({
-            title: track.title,
-            text: `${track.title} - ${track.artists.join(' / ')}`
-          }).catch(() => undefined)
-        }
+        text: '分享链接',
+        handler: () => share.show(track)
       },
       {
         text: '复制歌曲信息',

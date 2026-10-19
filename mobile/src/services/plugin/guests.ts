@@ -515,6 +515,38 @@ export class PluginGuestStore {
     }))
   }
 
+  async exportSelected(adapterId: string): Promise<{
+    script: string
+    info: {
+      adapterId: string
+      name: string
+      version: string
+      author?: string
+      providers: GuestProviderInfo[]
+    }
+  }> {
+    await this.init()
+    const record = this.records.find((item) => item.selected)
+    if (!record || record.adapterId !== adapterId) {
+      throw new Error('请先在插件详情中选择此兼容环境中的子音源')
+    }
+    const script = await this.getScript(record)
+    return {
+      script,
+      info: {
+        adapterId: record.adapterId,
+        name: record.name,
+        version: record.version,
+        author: record.author,
+        providers: record.providers.map((provider) => ({
+          ...provider,
+          qualities: [...provider.qualities],
+          protocols: [...provider.protocols]
+        }))
+      }
+    }
+  }
+
   private async persist() {
     await kvSet(this.indexKey, toPlain(this.records))
   }

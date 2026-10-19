@@ -29,6 +29,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
+import { useShareStore } from '@/stores/share'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { restartSettingsSync, startSettingsSync, stopSettingsSync } from '@/services/settingsSync'
@@ -142,7 +143,9 @@ void (async () => {
       pluginStore: usePluginStore(pinia),
       library: useLibraryStore(pinia),
       downloads: useDownloadStore(pinia),
-      player: usePlayerStore(pinia)
+      player: usePlayerStore(pinia),
+      auth: useAuthStore(pinia),
+      share: useShareStore(pinia)
     }
   }
 
@@ -171,6 +174,10 @@ if (Capacitor.isNativePlatform()) {
       ) {
         const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
         if (code) void router.push({ path: '/listen-together', query: { code } })
+      }
+      if (parsed.protocol === 'cerumusic:' && parsed.hostname === 'share') {
+        const id = parsed.pathname.replace(/^\/+/, '').split('/')[0]
+        if (id) void router.push({ path: '/shared/song/' + encodeURIComponent(id) })
       }
     } catch {
       // Invalid deep links are ignored; OAuth callbacks are handled by Logto.

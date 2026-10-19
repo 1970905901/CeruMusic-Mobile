@@ -195,13 +195,13 @@ import {
   textOutline
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
-import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { useDownloadStore } from '@/stores/downloads'
+import { useShareStore } from '@/stores/share'
 import { useSettingsStore } from '@/stores/settings'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import type { LyricDocument } from '@/types/music'
@@ -212,6 +212,7 @@ const ionRouter = useIonRouter()
 const library = useLibraryStore()
 const pluginStore = usePluginStore()
 const downloadStore = useDownloadStore()
+const shareStore = useShareStore()
 const settings = useSettingsStore()
 
 const track = computed(() => player.currentTrack)
@@ -395,13 +396,9 @@ async function openMore() {
         handler: () => openComments()
       },
       {
-        text: '分享',
+        text: '分享链接',
         handler: () => {
-          if (!track.value) return
-          void Share.share({
-            title: track.value.title,
-            text: track.value.title + ' - ' + track.value.artists.join(' / ')
-          }).catch(() => undefined)
+          if (track.value) shareStore.show(track.value)
         }
       },
       {

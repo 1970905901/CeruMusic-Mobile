@@ -111,6 +111,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/CommunityPostPage.vue')
   },
   {
+    path: '/shared/song/:id',
+    name: 'shared-song',
+    component: () => import('@/views/SharedSongPage.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/tabs/discover'
   }
