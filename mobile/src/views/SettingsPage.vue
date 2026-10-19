@@ -325,12 +325,26 @@
 
       <ion-list class="group">
         <div class="group-title">本地音乐</div>
-        <ion-item button @click="scanLocal">
+        <ion-item button :disabled="library.importingLocal" @click="scanLocal">
           <ion-icon slot="start" :icon="folderOpenOutline" color="primary" />
           <ion-label>
             <h2>扫描 Documents 目录</h2>
             <p>识别放入应用文档目录的音频文件，自动去重</p>
           </ion-label>
+          <ion-spinner v-if="library.importingLocal" name="crescent" />
+        </ion-item>
+        <ion-item
+          v-if="safAvailable"
+          button
+          :disabled="safImporting || library.importingLocal"
+          @click="importSaf"
+        >
+          <ion-icon slot="start" :icon="albumsOutline" color="primary" />
+          <ion-label>
+            <h2>从 Android 文件夹导入</h2>
+            <p>{{ safImporting || safProgress ? safProgress || '正在导入…' : '通过系统目录选择器导入任意文件夹' }}</p>
+          </ion-label>
+          <ion-spinner v-if="safImporting" name="crescent" />
         </ion-item>
       </ion-list>
 
@@ -504,6 +518,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
 import { findPluginUpdates, installPluginUpdate } from '@/services/pluginUpdates'
+import { importSafFolder, safImportSupported } from '@/services/safImport'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -512,6 +527,10 @@ const downloadStore = useDownloadStore()
 const library = useLibraryStore()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
+
+const safAvailable = safImportSupported()
+const safImporting = ref(false)
+const safProgress = ref('')
 
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
@@ -668,6 +687,31 @@ async function scanLocal() {
     await toast(records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件')
   } catch (error) {
     await toast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+async function importSaf() {
+  if (safImporting.value || library.importingLocal) return
+  safImporting.value = true
+  safProgress.value = ''
+  try {
+    const result = await importSafFolder((message) => {
+      safProgress.value = message
+    })
+    if (result.imported || result.failed) {
+      const parts = [`已导入 ${result.imported} 首`]
+      if (result.skipped) parts.push(`跳过 ${result.skipped} 首`)
+      if (result.failed) parts.push(`失败 ${result.failed} 首`)
+      await toast(parts.join('，'), result.failed ? 'danger' : 'medium')
+    } else {
+      await toast('所选文件夹没有新的音频文件')
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await toast(message, message.includes('取消') ? 'medium' : 'danger')
+  } finally {
+    safImporting.value = false
+    safProgress.value = ''
   }
 }
 

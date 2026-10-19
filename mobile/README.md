@@ -104,6 +104,7 @@ mobile/
 
 - 播放速度：0.5×、0.75×、1×、1.25×、1.5×、2×；播放页和设置页均可切换，并随播放器状态持久化。
 - 本地目录扫描：扫描应用 `Documents` 目录（Android 额外扫描应用外部目录），递归识别常见音频格式并按文件路径/大小去重。
+- Android SAF 导入：通过系统目录选择器授权任意文件夹，流式复制音频到应用私有目录后复用现有标签解析、去重与曲库入库；临时文件导入后清理。
 - 本地歌曲标签编辑：应用内标题、艺术家、专辑可编辑；MP3 写回 ID3v2.3，FLAC 写回 Vorbis Comments，M4A/MP4 写回 `ilst`，封面与歌词在存在时一并写入。
 - 下载文件名模板：支持 `{title}`、`{artist}`、`{album}`、`{quality}`、`{ext}`，自动处理非法字符和重名文件。
 - 下载标签写入：可选在 MP3、FLAC、M4A/MP4 下载完成后写入标题、艺术家和专辑；M4A 写入会同步修正 `stco/co64` 偏移。
@@ -138,7 +139,7 @@ mobile/
 - 后端歌单分享链接（依赖云歌单）与分享链接批量导入
 - `uiExtensions` 的 `playlist.item.actions` 内嵌与 slot 级样式；应用级样式与菜单贡献已接入
 - 自动缓存容量管理、HTTP/SOCKS5 代理与自定义 CA
-- Android SAF 任意目录授权；iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放）
+- Android SAF 下载目录写入；iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放，SAF 目录导入已接入）
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件（当前为 Ionic iOS 模式、安全区与 `ios-14` … `ios-26` 版本化样式）
 
 DLNA、桌面歌词、全局快捷键、托盘、系统音频采集仍属于桌面专属能力，不以移动端占位界面伪装实现。

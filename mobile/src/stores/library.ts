@@ -701,6 +701,7 @@ export const useLibraryStore = defineStore('library', () => {
     playlistTracks,
     recordHistory,
     pickLocalFiles,
+    importLocalFile,
     importLocalFiles,
     scanLocalMusic,
     deleteLocalTrack,
