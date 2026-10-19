@@ -37,6 +37,8 @@
           </button>
         </div>
 
+        <PluginSlot slot="search.source-selector.after" />
+
         <ion-segment v-model="kind" class="kind-segment" @ionChange="runSearch(true)">
           <ion-segment-button value="tracks">
             <ion-label>单曲</ion-label>
@@ -160,6 +162,7 @@ import { chevronDown, chevronForward, extensionPuzzleOutline, micOutline, search
 import { useRoute, useRouter } from 'vue-router'
 import TrackRow from '@/components/TrackRow.vue'
 import CoverImage from '@/components/CoverImage.vue'
+import PluginSlot from '@/components/PluginSlot.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'

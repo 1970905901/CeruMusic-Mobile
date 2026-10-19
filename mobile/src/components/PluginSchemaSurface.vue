@@ -1,5 +1,5 @@
 <template>
-  <div class="schema-surface">
+  <div class="schema-surface" :class="{ embedded }">
     <div v-if="error" class="schema-error">
       <span>{{ error }}</span>
       <button type="button" @click="loadSchema">重试</button>
@@ -139,6 +139,7 @@ interface DrawerSchema {
 const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
+  embedded?: boolean
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -292,6 +293,23 @@ onBeforeUnmount(() => {
 .schema-surface {
   min-height: 100%;
   padding-bottom: 40px;
+}
+.schema-surface.embedded {
+  min-height: 0;
+  padding-bottom: 0;
+  border: 1px solid var(--ceru-border);
+  border-radius: var(--ceru-card-radius);
+  overflow: hidden;
+  background: var(--ceru-bg-elevated);
+}
+.schema-surface.embedded .schema-head {
+  padding-top: 16px;
+}
+.schema-surface.embedded .schema-head h2 {
+  font-size: 19px;
+}
+.schema-surface.embedded .bottom-space {
+  height: 0;
 }
 .schema-head {
   padding-top: 22px;

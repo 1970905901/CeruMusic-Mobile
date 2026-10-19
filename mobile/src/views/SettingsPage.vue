@@ -429,6 +429,7 @@
         桌面端专属功能（桌面歌词、全局快捷键、托盘、DLNA、系统音频采集）已替换为移动端能力：
         后台播放、锁屏控制、文件导入与系统分享。
       </p>
+      <div class="ceru-pad"><PluginSlot slot="settings.sections" /></div>
       <div class="bottom-space" />
     </ion-content>
   </ion-page>
@@ -495,6 +496,7 @@ import {
 import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
 import { usePluginStore } from '@/stores/plugins'
+import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { useLibraryStore } from '@/stores/library'

@@ -19,6 +19,8 @@
         <ion-refresher-content />
       </ion-refresher>
 
+      <div class="ceru-pad plugin-home-header"><PluginSlot slot="home.header" /></div>
+
       <div class="hero ceru-pad">
         <p class="eyebrow">{{ greeting }}</p>
         <h1 class="ceru-title">今天听点什么？</h1>
@@ -63,6 +65,8 @@
           下载
         </button>
       </div>
+
+      <div class="ceru-pad"><PluginSlot slot="home.content.before" /></div>
 
       <template v-if="!pluginStore.enabledPlugins.length">
         <div class="install-card ceru-card ceru-pad">
@@ -195,6 +199,7 @@
           </div>
         </template>
       </template>
+      <div class="ceru-pad"><PluginSlot slot="home.content.after" /></div>
       <div class="bottom-space" />
     </ion-content>
   </ion-page>
@@ -231,6 +236,7 @@ import { useRouter } from 'vue-router'
 import SectionHeader from '@/components/SectionHeader.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import CoverImage from '@/components/CoverImage.vue'
+import PluginSlot from '@/components/PluginSlot.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'

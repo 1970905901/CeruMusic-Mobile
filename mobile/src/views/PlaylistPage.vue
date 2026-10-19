@@ -35,6 +35,8 @@
         </div>
       </div>
 
+      <PluginSlot slot="playlist.header.actions" />
+
       <div v-if="loading && !tracks.length" class="loading-row">
         <ion-spinner name="crescent" />
         <span>正在加载歌曲…</span>
@@ -106,6 +108,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import PluginSlot from '@/components/PluginSlot.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'

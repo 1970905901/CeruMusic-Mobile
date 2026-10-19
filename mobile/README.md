@@ -135,7 +135,7 @@ mobile/
 以下能力仍待后续里程碑完成，界面上不会伪装成可用：
 
 - 后端歌单分享链接（依赖云歌单）与分享链接批量导入
-- `uiExtensions` 在全部宿主插槽中的内嵌渲染、应用级样式与菜单贡献
+- `uiExtensions` 的 `playlist.item.actions` 内嵌、应用级样式与菜单贡献（Home、搜索、播放页、歌单头部、设置页插槽已内嵌）
 - M4A/MP4 `ilst` 标签重写、自动缓存容量管理、HTTP/SOCKS5 代理与自定义 CA
 - Android SAF 任意目录授权；iPad Stage Manager、原生多窗口与原生分屏
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件（当前为 Ionic iOS 模式、安全区与 `ios-14` … `ios-26` 版本化样式）

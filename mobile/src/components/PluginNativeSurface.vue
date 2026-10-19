@@ -1,5 +1,5 @@
 <template>
-  <div class="native-surface">
+  <div class="native-surface" :class="{ embedded }">
     <div v-if="view" class="native-heading">
       <h2 v-if="view.title">{{ view.title }}</h2>
       <p v-if="view.description">{{ view.description }}</p>
@@ -97,6 +97,7 @@ import { usePluginStore } from '@/stores/plugins'
 const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
+  embedded?: boolean
 }>()
 
 const pluginStore = usePluginStore()
@@ -231,6 +232,15 @@ onBeforeUnmount(() => {
 <style scoped>
 .native-surface {
   padding: 16px max(16px, env(safe-area-inset-left)) 120px max(16px, env(safe-area-inset-right));
+}
+.native-surface.embedded {
+  padding: 0;
+}
+.native-surface.embedded .native-heading h2 {
+  font-size: 20px;
+}
+.native-surface.embedded .native-section {
+  margin-top: 18px;
 }
 .native-heading h2 {
   margin: 0;

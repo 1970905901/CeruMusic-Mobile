@@ -108,6 +108,8 @@
             </button>
           </div>
 
+          <PluginSlot slot="player.actions" class="player-plugin-slot" />
+
           <div v-if="showLyrics" class="lyrics-panel">
             <div v-if="lyricsLoading" class="lyrics-loading">
               <ion-spinner name="crescent" />
@@ -197,6 +199,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
+import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'

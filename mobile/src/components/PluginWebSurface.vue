@@ -1,5 +1,5 @@
 <template>
-  <div class="plugin-web-surface">
+  <div class="plugin-web-surface" :class="{ embedded }" :style="embedded && contentHeight ? { height: contentHeight + 'px' } : undefined">
     <iframe
       v-if="document"
       ref="frame"
@@ -26,6 +26,7 @@ import { usePluginStore } from '@/stores/plugins'
 const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
+  embedded?: boolean
 }>()
 const emit = defineEmits<{ close: []; error: [message: string] }>()
 
@@ -33,6 +34,7 @@ const pluginStore = usePluginStore()
 const frame = ref<HTMLIFrameElement>()
 const document = ref<Awaited<ReturnType<typeof createPluginWebSurface>> | null>(null)
 const error = ref('')
+const contentHeight = ref(0)
 const sessionId =
   typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -65,6 +67,13 @@ async function receive(event: MessageEvent) {
     return
   }
   if (generation !== sessionId) return
+  if (type === 'surface-height') {
+    const height = Number(data?.height)
+    if (Number.isFinite(height) && height > 0) {
+      contentHeight.value = Math.min(2000, Math.max(80, Math.ceil(height)))
+    }
+    return
+  }
   if (type === 'active') {
     if (active) return
     active = true
@@ -159,6 +168,15 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background: var(--ceru-bg);
+}
+.plugin-web-surface.embedded {
+  position: relative;
+  inset: auto;
+  min-height: 80px;
+  overflow: hidden;
+  border: 1px solid var(--ceru-border);
+  border-radius: var(--ceru-card-radius);
+  background: var(--ceru-bg-elevated);
 }
 iframe {
   display: block;

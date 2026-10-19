@@ -75,6 +75,30 @@ export async function createPluginWebSurface(
     artifact.manifest.contributes?.commands?.find((item) => item.view === surfaceId)?.title ||
     artifact.manifest.name
 
+  const heightReporter =
+    '(() => {' +
+    '  let scheduled = false;' +
+    '  const report = () => {' +
+    '    if (scheduled) return;' +
+    '    scheduled = true;' +
+    '    const run = () => {' +
+    '      scheduled = false;' +
+    '      try {' +
+    '        const root = document.documentElement;' +
+    '        const body = document.body;' +
+    '        const height = Math.ceil(Math.max(root ? root.scrollHeight : 0, body ? body.scrollHeight : 0, 80));' +
+    '        parent.postMessage({ type: "surface-height", generation: ' + JSON.stringify(sessionId) + ', data: { height } }, "*");' +
+    '      } catch {}' +
+    '    };' +
+    '    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);' +
+    '    else setTimeout(run, 16);' +
+    '  };' +
+    '  window.addEventListener("load", report);' +
+    '  window.addEventListener("resize", report);' +
+    '  if (typeof ResizeObserver === "function") new ResizeObserver(report).observe(document.documentElement);' +
+    '  setTimeout(report, 80);' +
+    '  setTimeout(report, 500);' +
+    '})();'
   const html =
     '<!doctype html><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -82,7 +106,8 @@ export async function createPluginWebSurface(
     '<style>html,body{margin:0;min-height:100%;background:transparent;color-scheme:light dark}#plugin-root{min-height:100%}</style>' +
     '<div id="plugin-root"></div>' +
     dataScript(runtime) +
-    dataScript('globalThis.__ceruStart(' + code + ');')
+    dataScript('globalThis.__ceruStart(' + code + ');') +
+    dataScript(heightReporter)
 
   return {
     title,
