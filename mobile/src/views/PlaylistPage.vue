@@ -51,7 +51,7 @@
             @play="play"
             @more="openMore"
           />
-          <PlaylistItemActions :track="track" />
+          <PlaylistItemActions :track="track" @open="openPlaylistAction" />
         </div>
       </div>
 
@@ -82,6 +82,12 @@
       </ion-infinite-scroll>
       <div class="bottom-space" />
     </ion-content>
+
+    <PlaylistItemActionSheet
+      :open="playlistActionOpen"
+      :track="playlistActionTrack"
+      @close="closePlaylistAction"
+    />
   </ion-page>
 </template>
 
@@ -111,6 +117,7 @@ import TrackRow from '@/components/TrackRow.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
+import PlaylistItemActionSheet from '@/components/PlaylistItemActionSheet.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
@@ -131,6 +138,8 @@ const source = String(route.query.source || '')
 const providerId = String(route.query.providerId || source)
 const remoteKind = String(route.query.kind || 'playlist')
 const tracks = ref<Track[]>([])
+const playlistActionTrack = ref<Track | null>(null)
+const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -166,6 +175,14 @@ const playlistSections = computed(() =>
     }))
   )
 )
+
+function openPlaylistAction(track: Track) {
+  playlistActionTrack.value = track
+}
+
+function closePlaylistAction() {
+  playlistActionTrack.value = null
+}
 
 function openPlaylistSection(section: { pluginKey: string; view: string }) {
   void router.push(

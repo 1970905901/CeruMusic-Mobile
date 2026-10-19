@@ -1,52 +1,23 @@
 <template>
-  <div v-if="extensions.length" class="playlist-item-actions">
-    <button class="action-trigger" type="button" @click.stop="open = true">
-      <ion-icon :icon="sparklesOutline" />
-      <span>插件操作 · {{ extensions.length }}</span>
-      <ion-icon :icon="chevronForwardOutline" class="tail" />
-    </button>
-
-    <ion-modal
-      :is-open="open"
-      :initial-breakpoint="0.75"
-      :breakpoints="[0, 0.25, 0.5, 0.75, 1]"
-      @didDismiss="open = false"
-    >
-      <div v-if="open" class="modal-shell">
-        <ion-header :translucent="true">
-          <ion-toolbar>
-            <ion-title class="modal-title">{{ track.title }}</ion-title>
-            <ion-buttons slot="end">
-              <ion-button @click="open = false">关闭</ion-button>
-            </ion-buttons>
-          </ion-toolbar>
-        </ion-header>
-        <ion-content :fullscreen="true">
-          <div class="modal-body">
-            <PluginSlot slot="playlist.item.actions" :context="context" />
-          </div>
-        </ion-content>
-      </div>
-    </ion-modal>
-  </div>
+  <button
+    v-if="actionCount > 0"
+    class="action-trigger"
+    type="button"
+    @click.stop="$emit('open', track)"
+  >
+    <ion-icon :icon="sparklesOutline" />
+    <span>插件操作 · {{ actionCount }}</span>
+    <ion-icon :icon="chevronForwardOutline" class="tail" />
+  </button>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import {
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonIcon,
-  IonModal,
-  IonTitle,
-  IonToolbar
-} from '@ionic/vue'
+import { IonIcon } from '@ionic/vue'
 import { chevronForwardOutline, sparklesOutline } from 'ionicons/icons'
 import type { Track } from '@/types/music'
-import PluginSlot from '@/components/PluginSlot.vue'
+import { collectPlaylistItemCommands } from '@/services/playlistItemActions'
 import { collectPluginSlotExtensions } from '@/services/pluginSlot'
 import { useAuthStore } from '@/stores/auth'
 import { usePluginStore } from '@/stores/plugins'
@@ -55,27 +26,32 @@ const props = defineProps<{
   track: Track
 }>()
 
+defineEmits<{
+  open: [track: Track]
+}>()
+
 const route = useRoute()
 const auth = useAuthStore()
 const pluginStore = usePluginStore()
-const open = ref(false)
 
-const extensions = computed(() =>
-  collectPluginSlotExtensions(pluginStore.enabledPlugins, 'playlist.item.actions', {
-    routePath: route.path,
-    authenticated: auth.authenticated
-  })
+const actionOptions = computed(() => ({
+  routePath: route.path,
+  authenticated: auth.authenticated
+}))
+
+const actionCount = computed(
+  () =>
+    collectPlaylistItemCommands(pluginStore.enabledPlugins, actionOptions.value).length +
+    collectPluginSlotExtensions(
+      pluginStore.enabledPlugins,
+      'playlist.item.actions',
+      actionOptions.value
+    ).length
 )
 
-const context = computed(() => ({
-  track: JSON.parse(JSON.stringify(props.track.raw)) as Record<string, any>
-}))
 </script>
 
 <style scoped>
-.playlist-item-actions {
-  margin: 0 8px 10px;
-}
 .action-trigger {
   display: flex;
   width: 100%;
@@ -102,20 +78,5 @@ const context = computed(() => ({
 .tail {
   color: var(--ceru-text-secondary);
   font-size: 15px;
-}
-.modal-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.modal-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 17px;
-  font-weight: 750;
-}
-.modal-body {
-  padding: 0 12px calc(20px + env(safe-area-inset-bottom));
 }
 </style>
