@@ -1,6 +1,6 @@
 # 澜音 Ceru Music · Mobile
 
-这是 Ceru Music 的 iOS / Android 移植工程，独立于仓库根目录的 Electron 桌面端。
+这是 Ceru Music 的 iOS / Android 移植工程，独立于仓库根目录的 Electron 桌面端。\n\n> 移植进度、已完成能力、待办与继续开发入口见 [PORTING_STATUS.md](./PORTING_STATUS.md)。
 
 - iOS：iPhone + iPad，部署目标 **iOS 14.0**，使用 Ionic iOS 视觉模式、安全区、系统字体、系统分享、后台音频与锁屏媒体控制。
 - Android：Material 视觉模式，**arm64-v8a** release APK，Android 7.0（API 23）及以上。
