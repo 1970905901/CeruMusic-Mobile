@@ -201,7 +201,7 @@ public class SafPlugin extends Plugin {
             return;
         }
         try {
-            File root = new File(getContext().getFilesDir()).getCanonicalFile();
+            File root = getContext().getFilesDir().getCanonicalFile();
             File source = new File(root, sourcePath).getCanonicalFile();
             if (!source.getPath().startsWith(root.getPath() + File.separator)) {
                 call.reject("下载源文件路径无效");
