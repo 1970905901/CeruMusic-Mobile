@@ -61,6 +61,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/DownloadsPage.vue')
   },
   {
+    path: '/recognize',
+    name: 'recognize',
+    component: () => import('@/views/RecognizePage.vue')
+  },
+  {
+    path: '/playlist-converter',
+    name: 'playlist-converter',
+    component: () => import('@/views/PlaylistConverterPage.vue')
+  },
+  {
     path: '/plugin/:key',
     name: 'plugin-detail',
     component: () => import('@/views/PluginDetailPage.vue')

@@ -34,8 +34,8 @@ mobile/android/app/build/outputs/apk/release/app-release.apk
 仓库自带 GitHub Actions 工作流：.github/workflows/mobile-build.yml。手动触发 **Build Ceru Music Mobile** 即可得到：
 
 ~~~text
-CeruMusic-2.3.2-android-arm64.apk
-CeruMusic-2.3.2-ios-unsigned.ipa
+CeruMusic-2.3.3-android-arm64.apk
+CeruMusic-2.3.3-ios-unsigned.ipa
 ~~~
 
 未提供签名 secret 时，release APK 使用 Android debug key 签名，可直接侧载安装。生产发布请配置：
@@ -113,6 +113,12 @@ mobile/
 
 > 说明：iOS 版本差异化目前是 Ionic 外壳上的版本类名与样式分支，不是 SwiftUI/UIKit 原生控件级的逐版本实现。插件 Web/Native Surface、Guest、插件账号、云账号、社区、AI、一起听、通知中心等仍未移植。
 
+## 工具与插件 UI 更新
+
+- 听歌识曲：支持麦克风录制最多 12 秒，或上传音频；使用 AFP 指纹模块生成指纹，并调用插件的 `recognize` 命令。识别结果可直接搜索并播放。
+- 歌单转换器：支持桌面端 `.json` / `.lxmc` 歌单，生成并分享 Ceru Music `.cpl` 文件。
+- 插件进度 UI：`ui.progress.create / update / close` 现在会显示可更新的进度卡片，不再是无操作占位。
+- 权限：iOS 已增加麦克风用途说明，Android 已增加 `RECORD_AUDIO` 权限。
 ## 权限与安全边界
 
 - iOS NSAllowsArbitraryLoads 与 Android usesCleartextTraffic=true 是为了支持用户自建、局域网或插件指定的 HTTP 音乐服务；发布到 App Store 时请按审核要求收紧。

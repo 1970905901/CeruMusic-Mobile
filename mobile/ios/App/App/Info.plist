@@ -50,7 +50,9 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
+	<key>NSMicrophoneUsageDescription</key>
+<string>用于录制周围声音并识别正在播放的歌曲。</string>
+<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>

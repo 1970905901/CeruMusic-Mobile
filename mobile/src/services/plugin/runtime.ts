@@ -453,11 +453,20 @@ export class PluginRuntime {
         }
         return null
       }
-      case 'ui.progress.create':
-        return `progress-${Date.now()}`
-      case 'ui.progress.update':
-      case 'ui.progress.close':
+      case 'ui.progress.create': {
+        const { createPluginProgress } = await import('@/services/pluginProgress')
+        return createPluginProgress(params)
+      }
+      case 'ui.progress.update': {
+        const { updatePluginProgress } = await import('@/services/pluginProgress')
+        if (params?.id) updatePluginProgress(String(params.id), params.value ?? params)
         return null
+      }
+      case 'ui.progress.close': {
+        const { closePluginProgress } = await import('@/services/pluginProgress')
+        if (params?.id) closePluginProgress(String(params.id))
+        return null
+      }
       case 'ui.openView':
         await showToast('该插件页面已声明，当前版本请在插件详情中查看配置', 'warning')
         return null

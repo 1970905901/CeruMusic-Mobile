@@ -210,6 +210,24 @@
       </ion-list>
 
       <ion-list class="group">
+        <div class="group-title">工具</div>
+        <ion-item button detail @click="$router.push('/recognize')">
+          <ion-icon slot="start" :icon="micOutline" color="primary" />
+          <ion-label>
+            <h2>听歌识曲</h2>
+            <p>录制或上传音频，由插件识别歌曲</p>
+          </ion-label>
+        </ion-item>
+        <ion-item button detail @click="$router.push('/playlist-converter')">
+          <ion-icon slot="start" :icon="swapHorizontalOutline" color="primary" />
+          <ion-label>
+            <h2>歌单转换器</h2>
+            <p>把 JSON / LXMC 歌单转换为 .cpl</p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+
+      <ion-list class="group">
         <div class="group-title">关于</div>
         <ion-item>
           <ion-icon slot="start" :icon="informationCircleOutline" color="primary" />
@@ -285,11 +303,13 @@ import {
   informationCircleOutline,
   layersOutline,
   logoGithub,
+  micOutline,
   moonOutline,
   pricetagOutline,
   shieldCheckmarkOutline,
   speedometerOutline,
   sparklesOutline,
+  swapHorizontalOutline,
   trashOutline,
   volumeHighOutline
 } from 'ionicons/icons'

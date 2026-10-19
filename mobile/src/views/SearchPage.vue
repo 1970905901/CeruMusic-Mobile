@@ -3,6 +3,11 @@
     <ion-header :translucent="true">
       <ion-toolbar>
         <ion-title>搜索</ion-title>
+        <ion-buttons slot="end">
+          <ion-button fill="clear" aria-label="听歌识曲" @click="$router.push('/recognize')">
+            <ion-icon slot="icon-only" :icon="micOutline" />
+          </ion-button>
+        </ion-buttons>
       </ion-toolbar>
     </ion-header>
     <ion-content :fullscreen="true">
@@ -134,6 +139,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   IonButton,
+  IonButtons,
   IonContent,
   IonHeader,
   IonIcon,
@@ -150,7 +156,7 @@ import {
   actionSheetController,
   toastController
 } from '@ionic/vue'
-import { chevronDown, chevronForward, extensionPuzzleOutline, searchOutline } from 'ionicons/icons'
+import { chevronDown, chevronForward, extensionPuzzleOutline, micOutline, searchOutline } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import TrackRow from '@/components/TrackRow.vue'
 import CoverImage from '@/components/CoverImage.vue'
