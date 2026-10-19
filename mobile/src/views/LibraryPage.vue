@@ -196,10 +196,13 @@ import type { Track } from '@/types/music'
 import type { Playlist } from '@/types/music'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
+import { usePluginStore } from '@/stores/plugins'
+import { lyricValueToLrc } from '@/services/lyrics'
 import { openTrackActions } from '@/services/trackActions'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
+const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 const localInput = ref<HTMLInputElement | null>(null)
 
@@ -353,10 +356,90 @@ async function editLocalTags(track: Track) {
     if (result.fileTagWarning) {
       await showToast('应用内信息已保存；音频文件标签写入失败', 'warning')
     } else {
-      await showToast(result.fileTagWritten ? '已保存并写入 MP3 标签' : '应用内信息已保存')
+      await showToast(result.fileTagWritten ? '已保存并写入音频标签' : '应用内信息已保存')
     }
   } catch (error) {
     await showToast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+async function chooseMatchSource(): Promise<string | null> {
+  const sources = pluginStore.sources
+  if (!sources.length) {
+    await showToast('请先安装并启用音源插件', 'warning')
+    return null
+  }
+  if (sources.length === 1) return sources[0].id
+  return new Promise<string | null>((resolve) => {
+    let picked: string | null = null
+    void actionSheetController
+      .create({
+        header: '选择音源',
+        buttons: [
+          ...sources.map((source) => ({
+            text: source.name,
+            handler: () => {
+              picked = source.id
+            }
+          })),
+          { text: '取消', role: 'cancel' }
+        ]
+      })
+      .then(async (sheet) => {
+        await sheet.present()
+        await sheet.onDidDismiss()
+        resolve(picked)
+      })
+  })
+}
+
+async function matchLocalTrack(track: Track) {
+  const source = await chooseMatchSource()
+  if (!source) return
+  const query = (track.title + ' ' + track.artists.join(' ')).trim()
+  try {
+    const page = await pluginStore.searchTracks(source, query, undefined, 10)
+    const items = (page.items || []).slice(0, 8)
+    if (!items.length) {
+      await showToast('没有找到可匹配的歌曲', 'warning')
+      return
+    }
+    const picked = await new Promise<Track | null>((resolve) => {
+      let selected: Track | null = null
+      void actionSheetController
+        .create({
+          header: '选择匹配结果',
+          buttons: [
+            ...items.map((item) => ({
+              text: (item.title + ' - ' + item.artists.join(' / ')).slice(0, 80),
+              handler: () => {
+                selected = item
+              }
+            })),
+            { text: '取消', role: 'cancel' }
+          ]
+        })
+        .then(async (sheet) => {
+          await sheet.present()
+          await sheet.onDidDismiss()
+          resolve(selected)
+        })
+    })
+    if (!picked) return
+    let lyricsValue: any = null
+    try {
+      lyricsValue = await pluginStore.lyrics(picked)
+    } catch {
+      // Cover matching still succeeds when the source has no lyrics.
+    }
+    const lyrics = lyricValueToLrc(lyricsValue)
+    await library.applyLocalMetadata(track.key, {
+      cover: picked.artworkUrl || '',
+      lyrics
+    })
+    await showToast(lyrics ? '已匹配封面与歌词' : '已匹配封面', 'success')
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '匹配失败', 'danger')
   }
 }
 
@@ -366,6 +449,7 @@ async function openLocalActions(track: Track) {
     buttons: [
       { text: '播放', handler: () => void play(track) },
       { text: '编辑信息', handler: () => void editLocalTags(track) },
+      { text: '在线匹配封面与歌词', handler: () => void matchLocalTrack(track) },
       { text: '歌曲信息', handler: () => void openTrackActions(track) },
       {
         text: '删除本地文件',

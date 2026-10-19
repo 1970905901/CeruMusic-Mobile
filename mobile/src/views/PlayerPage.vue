@@ -268,7 +268,10 @@ async function loadLyrics() {
     return
   }
   if (item.localUri) {
-    lyricsDoc.value = { lines: [], plainText: '本地文件暂未读取内嵌歌词', format: 'plain' }
+    const localLyrics = typeof item.raw?.lrc === 'string' ? item.raw.lrc : ''
+    lyricsDoc.value = localLyrics
+      ? parseLyrics(localLyrics)
+      : { lines: [], plainText: '本地文件暂未匹配歌词', format: 'plain' }
     return
   }
   const cached = lyricCache.get(item.key)

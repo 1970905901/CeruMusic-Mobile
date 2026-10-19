@@ -138,3 +138,21 @@ export function currentLyricIndex(lines: LyricLine[], positionMs: number): numbe
   }
   return result
 }
+export function lyricValueToLrc(value: any): string {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (Array.isArray(value.lines)) {
+    return value.lines
+      .map((line: any) => {
+        const ms = Number(line.startTimeMs ?? line.startMs ?? 0)
+        const minutes = Math.floor(ms / 60000)
+        const seconds = ((ms % 60000) / 1000).toFixed(2).padStart(5, '0')
+        return '[' + String(minutes).padStart(2, '0') + ':' + seconds + ']' + String(line.text || '')
+      })
+      .join('\n')
+  }
+  if (typeof value.raw === 'string') return value.raw
+  if (typeof value.content === 'string') return value.content
+  if (typeof value.text === 'string') return value.text
+  return ''
+}

@@ -6,6 +6,7 @@ import type { Playlist, FavoriteEntry, HistoryEntry, Track } from '@/types/music
 import type { LocalTrackRecord } from '@/types/download'
 import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
+import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 
 function uid(prefix: string): string {
@@ -38,6 +39,7 @@ function extFromName(name: string): string {
   return index >= 0 ? name.slice(index + 1).toLowerCase() : 'bin'
 }
 
+
 function localTrackToTrack(record: LocalTrackRecord): Track {
   return {
     key: record.key,
@@ -50,13 +52,14 @@ function localTrackToTrack(record: LocalTrackRecord): Track {
     artworkUrl: record.cover,
     qualities: [],
     playable: true,
-    raw: { local: true },
+    raw: { local: true, lrc: record.lyrics || null },
     localUri: Capacitor.convertFileSrc(record.path),
     localPath: record.path,
     localRelativePath: record.relativePath,
     source: 'local'
   }
 }
+
 
 export const useLibraryStore = defineStore('library', () => {
   const pluginStore = usePluginStore()
@@ -527,6 +530,20 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
+  async function applyLocalMetadata(
+    trackKey: string,
+    metadata: { cover?: string; lyrics?: string }
+  ): Promise<boolean> {
+    const record = localRecords.value.find((item) => item.key === trackKey)
+    if (!record) return false
+    if (metadata.cover !== undefined) record.cover = metadata.cover || undefined
+    if (metadata.lyrics !== undefined) record.lyrics = metadata.lyrics || undefined
+    const db = await getDb()
+    await db.put('localTracks', toPlain(record))
+    tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
+    return true
+  }
+
   function localTags(track: any) {
     const record = localRecords.value.find((item) => item.key === track?.id || item.key === track?.ref?.id)
     return record ? { ...record } : null
@@ -684,6 +701,7 @@ export const useLibraryStore = defineStore('library', () => {
     clearHostPlaylist,
     localMusicPage,
     localTags,
+    applyLocalMetadata,
     writeLocalTags,
     historyPage,
     addHostFavorite,
