@@ -20,6 +20,10 @@ import {
   readShareDescriptor,
   shareDescriptorFromUrl
 } from '@/services/pluginSharing'
+import {
+  pluginSettingsGet,
+  pluginSettingsUpdate
+} from '@/services/pluginSettings'
 
 export interface PluginRuntimeOptions {
   record: PluginRecord
@@ -832,15 +836,11 @@ export class PluginRuntime {
       }
       case 'settings.get': {
         const settings = useSettingsStore()
-        const result: Record<string, any> = {}
-        for (const key of params?.keys ?? []) result[key] = (settings.settings as any)[key]
-        return result
+        return pluginSettingsGet(params?.keys ?? [], settings.settings as Record<string, unknown>)
       }
       case 'settings.update': {
         const settings = useSettingsStore()
-        for (const [key, value] of Object.entries(params?.values ?? {})) {
-          if (key in settings.settings) (settings.settings as any)[key] = value
-        }
+        pluginSettingsUpdate(params?.values, settings.settings as Record<string, any>)
         return null
       }
       case 'tasks.schedule': {

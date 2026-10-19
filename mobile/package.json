@@ -1,6 +1,6 @@
 {
   "name": "ceru-music-mobile",
-  "version": "2.5.12",
+  "version": "2.5.13",
   "private": true,
   "description": "Ceru Music mobile port for iOS 14+ and Android (arm64)",
   "type": "module",
