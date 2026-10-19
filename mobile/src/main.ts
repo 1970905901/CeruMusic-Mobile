@@ -186,9 +186,19 @@ if (Capacitor.isNativePlatform()) {
         const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
         if (code) void router.push({ path: '/listen-together', query: { code } })
       }
+      if (parsed.protocol === 'cerumusic:' && parsed.hostname === 'playlist') {
+        const parts = parsed.pathname.replace(/^\/+/, '').split('/')
+        if (parts[0] === 'share' && parts[1]) {
+          void router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
+        }
+      }
       if (parsed.protocol === 'cerumusic:' && parsed.hostname === 'share') {
-        const id = parsed.pathname.replace(/^\/+/, '').split('/')[0]
-        if (id) void router.push({ path: '/shared/song/' + encodeURIComponent(id) })
+        const parts = parsed.pathname.replace(/^\/+/, '').split('/')
+        if (parts[0] === 'playlist' && parts[1]) {
+          void router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
+        } else if (parts[0]) {
+          void router.push({ path: '/shared/song/' + encodeURIComponent(parts[0]) })
+        }
       }
     } catch {
       // Invalid deep links are ignored; OAuth callbacks are handled by Logto.
