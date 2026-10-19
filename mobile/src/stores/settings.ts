@@ -22,6 +22,11 @@ export interface AppSettings {
   onboardingDone: boolean
   lastSource?: string
   searchHistory: string[]
+  aiProvider: 'deepseek' | 'openai' | 'siliconflow' | 'custom'
+  aiApiKey: string
+  aiBaseURL: string
+  aiModel: string
+  cloudSyncEnabled: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -42,7 +47,12 @@ const defaults: AppSettings = {
   showLyricsInPlayer: true,
   sleepTimerMinutes: null,
   onboardingDone: false,
-  searchHistory: []
+  searchHistory: [],
+  aiProvider: 'deepseek',
+  aiApiKey: '',
+  aiBaseURL: 'https://api.deepseek.com',
+  aiModel: 'deepseek-chat',
+  cloudSyncEnabled: true
 }
 
 function load(): AppSettings {

@@ -31,6 +31,7 @@ import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { restartSettingsSync, startSettingsSync, stopSettingsSync } from '@/services/settingsSync'
 import { installLegacyPolyfills } from '@/utils/polyfills'
 
 installLegacyPolyfills()
@@ -102,8 +103,13 @@ void (async () => {
     watch(
       () => useAuthStore(pinia).authenticated,
       (authenticated) => {
-        if (authenticated) notifications.startRealtime()
-        else notifications.stopRealtime()
+        if (authenticated) {
+          notifications.startRealtime()
+          restartSettingsSync()
+        } else {
+          notifications.stopRealtime()
+          stopSettingsSync()
+        }
       }
     )
     await usePluginStore(pinia).init()
@@ -130,6 +136,7 @@ void (async () => {
   }
 
   app.mount('#app')
+  startSettingsSync()
 
   if (Capacitor.isNativePlatform()) {
     await StatusBar.setOverlaysWebView({ overlay: platform === 'ios' }).catch(() => undefined)

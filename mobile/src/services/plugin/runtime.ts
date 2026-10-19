@@ -27,6 +27,26 @@ interface PendingInvoke {
 const platform = Capacitor.getPlatform()
 const isNative = platform === 'ios' || platform === 'android'
 
+async function pluginIdentity(pluginId: string, userId: string): Promise<string> {
+  const text = pluginId + ':' + userId
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+    return Array.from(new Uint8Array(digest))
+      .map((value) => value.toString(16).padStart(2, '0'))
+      .join('')
+  } catch {
+    let a = 2166136261
+    let b = 5381
+    for (let i = 0; i < text.length; i++) {
+      a ^= text.charCodeAt(i)
+      a = Math.imul(a, 16777619)
+      b = Math.imul(b, 33) ^ text.charCodeAt(i)
+    }
+    return (a >>> 0).toString(16).padStart(8, '0').repeat(4) +
+      (b >>> 0).toString(16).padStart(8, '0').repeat(4)
+  }
+}
+
 function pluginStorageKey(pluginKey: string, key: string) {
   return `plugin:${pluginKey}:${key}`
 }
@@ -516,12 +536,34 @@ export class PluginRuntime {
         return null
       }
       case 'account.getSession':
-        return { loggedIn: false, profile: null }
-      case 'account.getProfile':
+      case 'account.getProfile': {
+        await this.requirePermission(params?.call?.permissionKey, 'account')
+        const { useAuthStore } = await import('@/stores/auth')
+        const auth = useAuthStore()
+        const identity = auth.authenticated
+          ? await pluginIdentity(this.record.manifestId, String((auth.user as any)?.sub || ''))
+          : null
+        const profile = identity
+          ? {
+              id: identity,
+              displayName: auth.displayName,
+              identityScope: 'plugin'
+            }
+          : null
+        return method === 'account.getProfile'
+          ? profile
+          : { loggedIn: auth.authenticated, profile }
+      }
+      case 'account.openLogin': {
+        await this.requirePermission(params?.operation?.permissionKey, 'account')
+        const { useAuthStore } = await import('@/stores/auth')
+        const auth = useAuthStore()
+        if (!auth.authenticated) await auth.login()
+        if (!auth.authenticated) throw new Error('登录未完成')
+        const { default: router } = await import('@/router')
+        if (params?.operation?.next === 'profile') await router.push('/account')
         return null
-      case 'account.openLogin':
-        await showToast('移动端暂未接入 Ceru 云账号')
-        return null
+      }
       case 'library.playlists.list': {
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().asHostPlaylists()
@@ -738,6 +780,14 @@ export class PluginRuntime {
         return null
       default:
         throw new Error(`未实现的 Host RPC：${method}`)
+    }
+  }
+
+  private async requirePermission(key: string | undefined, group: string): Promise<void> {
+    if (!key) return
+    const status = await requestPermission(this.record.key, key)
+    if (status !== 'granted') {
+      throw new Error('此功能尚未获得授权，请在插件权限中允许“' + group + '”后重试')
     }
   }
 

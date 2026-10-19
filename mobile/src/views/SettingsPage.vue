@@ -30,6 +30,24 @@
           </ion-label>
           <ion-badge v-if="notifications.counts.all" color="danger">{{ notifications.counts.all > 99 ? '99+' : notifications.counts.all }}</ion-badge>
         </ion-item>
+        <ion-item v-if="auth.authenticated">
+          <ion-icon slot="start" :icon="cloudDoneOutline" color="primary" />
+          <ion-label>
+            <h2>云端设置同步</h2>
+            <p>{{ syncStatusText }}</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.cloudSyncEnabled"
+            @ionChange="settings.settings.cloudSyncEnabled = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item v-if="auth.authenticated" button :disabled="settingsSyncState.status === 'checking' || settingsSyncState.status === 'uploading'" @click="syncNow">
+          <ion-icon slot="start" :icon="syncOutline" color="primary" />
+          <ion-label>
+            <h2>立即同步设置</h2>
+            <p>主题、音质、下载偏好与播放模式</p>
+          </ion-label>
+        </ion-item>
         <ion-item button detail @click="$router.push('/community')">
           <ion-icon slot="start" :icon="peopleOutline" color="primary" />
           <ion-label>
@@ -237,6 +255,13 @@
 
       <ion-list class="group">
         <div class="group-title">工具</div>
+        <ion-item button detail @click="$router.push('/ai')">
+          <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
+          <ion-label>
+            <h2>AI 音乐助手</h2>
+            <p>推荐音乐、分析歌曲与生成歌单建议</p>
+          </ion-label>
+        </ion-item>
         <ion-item button detail @click="$router.push('/recognize')">
           <ion-icon slot="start" :icon="micOutline" color="primary" />
           <ion-label>
@@ -323,6 +348,7 @@ import {
   documentTextOutline,
   folderOpenOutline,
   colorPaletteOutline,
+  cloudDoneOutline,
   colorWandOutline,
   downloadOutline,
   extensionPuzzleOutline,
@@ -340,6 +366,7 @@ import {
   speedometerOutline,
   sparklesOutline,
   swapHorizontalOutline,
+  syncOutline,
   trashOutline,
   volumeHighOutline
 } from 'ionicons/icons'
@@ -351,6 +378,7 @@ import { useDownloadStore } from '@/stores/downloads'
 import { useLibraryStore } from '@/stores/library'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -363,6 +391,22 @@ const notifications = useNotificationsStore()
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
+
+const syncStatusText = computed(() => {
+  const status = settingsSyncState.status
+  if (status === 'checking') return '正在检查云端设置…'
+  if (status === 'uploading') return '正在上传本机设置…'
+  if (status === 'downloading') return '正在应用云端设置…'
+  if (status === 'error') return settingsSyncState.message || '同步失败'
+  if (!settings.settings.cloudSyncEnabled) return '已关闭自动同步'
+  if (settingsSyncState.lastSync) return '上次同步：' + new Date(settingsSyncState.lastSync).toLocaleString()
+  return '登录后自动同步'
+})
+
+async function syncNow() {
+  const ok = await checkCloudSettings(true)
+  await toast(ok ? '设置已同步' : settingsSyncState.message || '同步失败', ok ? 'success' : 'danger')
+}
 
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
