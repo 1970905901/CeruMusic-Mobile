@@ -111,6 +111,13 @@
           <PluginSlot slot="player.actions" class="player-plugin-slot" />
 
           <div v-if="showLyrics" class="lyrics-panel">
+            <div v-if="lyricConverters.length && (lyricsDoc.lines.length || lyricsDoc.plainText)" class="lyrics-head">
+              <span>歌词</span>
+              <button class="lyric-export" type="button" @click="lyricConverterOpen = true">
+                <ion-icon :icon="downloadOutline" />
+                导出
+              </button>
+            </div>
             <div v-if="lyricsLoading" class="lyrics-loading">
               <ion-spinner name="crescent" />
               正在读取歌词…
@@ -157,6 +164,12 @@
     </ion-modal>
 
     <TrackCommentsSheet :open="commentsOpen" :track="track" @close="commentsOpen = false" />
+    <LyricConverterSheet
+      :open="lyricConverterOpen"
+      :track="track"
+      :document="lyricsDoc"
+      @close="lyricConverterOpen = false"
+    />
   </ion-page>
 </template>
 
@@ -186,6 +199,7 @@ import {
   headsetOutline,
   listOutline,
   musicalNotesOutline,
+  downloadOutline,
   optionsOutline,
   pause,
   play,
@@ -199,6 +213,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
+import LyricConverterSheet from '@/components/LyricConverterSheet.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
@@ -208,6 +223,7 @@ import { useShareStore } from '@/stores/share'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
+import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -241,6 +257,12 @@ const showLyrics = ref(false)
 const lyricsLoading = ref(false)
 const lyricsDoc = ref<LyricDocument>({ lines: [], format: 'plain' })
 const lyricsContainer = ref<HTMLElement | null>(null)
+const lyricConverterOpen = ref(false)
+const lyricConverters = computed(() =>
+  collectLyricConverters(pluginStore.enabledPlugins, {
+    runtimeInfo: pluginStore.runtimeInfo
+  })
+)
 const queueOpen = ref(false)
 const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
@@ -742,6 +764,33 @@ onBeforeUnmount(() => {
 .lyrics-panel {
   margin-top: 26px;
   padding: 6px 4px 20px;
+}
+.lyrics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px 8px;
+}
+.lyrics-head span {
+  color: rgba(245, 248, 251, 0.55);
+  font-size: 11px;
+  font-weight: 650;
+}
+.lyric-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(245, 248, 251, 0.14);
+  border-radius: 999px;
+  background: rgba(245, 248, 251, 0.06);
+  color: rgba(245, 248, 251, 0.78);
+  font-size: 11px;
+  font-weight: 650;
+  padding: 5px 10px;
+}
+.lyric-export ion-icon {
+  font-size: 13px;
 }
 .lyrics-loading {
   display: flex;
