@@ -35,6 +35,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { restartSettingsSync, startSettingsSync, stopSettingsSync } from '@/services/settingsSync'
 import { installLegacyPolyfills } from '@/utils/polyfills'
+import { pluginRuntimeManager } from '@/services/plugin/runtime'
+import { settingsChangedKeys } from '@/services/pluginEvents'
 
 installLegacyPolyfills()
 
