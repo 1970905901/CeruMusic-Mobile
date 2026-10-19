@@ -6,6 +6,7 @@ import type { PluginLogEntry, PluginRecord, PluginRuntimeInfo } from '@/types/pl
 import { kvDelete, kvGet, kvSet, toPlain } from '@/services/db'
 import { useSettingsStore } from '@/stores/settings'
 import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
+import { generatePluginAI } from '@/services/pluginAI'
 
 export interface PluginRuntimeOptions {
   record: PluginRecord
@@ -840,6 +841,16 @@ export class PluginRuntime {
         this.scheduledTasks.delete(id)
         return null
       }
+      case 'ai.generate': {
+        await this.requirePermission(params?.call?.permissionKey, 'AI 服务')
+        const settings = useSettingsStore()
+        return generatePluginAI(params?.request ?? {}, {
+          provider: settings.settings.aiProvider,
+          apiKey: settings.settings.aiApiKey,
+          baseURL: settings.settings.aiBaseURL,
+          model: settings.settings.aiModel
+        })
+      }
       case 'window.control':
         return null
       default:
@@ -878,7 +889,8 @@ export class PluginRuntime {
       call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
       call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
       call('window', ['control'], ['window']),
-      call('tasks', ['schedule', 'cancel'], ['background'])
+      call('tasks', ['schedule', 'cancel'], ['background']),
+      call('ai', ['generate'], ['ai'])
     ]
   }
 

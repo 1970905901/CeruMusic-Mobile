@@ -408,7 +408,9 @@ const context: any = {
   sharing: unsupportedService('sharing'),
   rooms: unsupportedService('rooms'),
   devices: unsupportedService('devices'),
-  ai: unsupportedService('ai'),
+  ai: {
+    generate: (request: any, call?: any) => rpc('ai.generate', { request, call })
+  },
   tasks: {
     schedule: (request: any, call?: any) => rpc('tasks.schedule', { request, call }),
     cancel: (id: string, call?: any) => rpc('tasks.cancel', { id, call })
