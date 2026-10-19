@@ -55,10 +55,18 @@
             <p>分享音乐、图片与此刻的心情</p>
           </ion-label>
         </ion-item>
+        <ion-item button detail @click="$router.push('/listen-together')">
+          <ion-icon slot="start" :icon="headsetOutline" color="primary" />
+          <ion-label>
+            <h2>一起听</h2>
+            <p>创建或加入房间，同步播放、聊天与点歌</p>
+          </ion-label>
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
         <div class="group-title">音源与插件</div>
+
         <ion-item button detail @click="$router.push('/tabs/plugins')">
           <ion-icon slot="start" :icon="extensionPuzzleOutline" color="primary" />
           <ion-label>
@@ -353,6 +361,7 @@ import {
   downloadOutline,
   extensionPuzzleOutline,
   gitNetworkOutline,
+  headsetOutline,
   informationCircleOutline,
   layersOutline,
   notificationsOutline,

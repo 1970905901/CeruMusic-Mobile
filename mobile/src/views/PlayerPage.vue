@@ -173,6 +173,7 @@ import {
   ellipsisHorizontal,
   heart,
   heartOutline,
+  headsetOutline,
   listOutline,
   musicalNotesOutline,
   optionsOutline,
@@ -393,6 +394,10 @@ async function openMore() {
               (track.value.album ? ' (' + track.value.album + ')' : '')
           }).then(() => toast('已复制'))
         }
+      },
+      {
+        text: '一起听',
+        handler: () => ionRouter.push('/listen-together')
       },
       {
         text: '查看插件',

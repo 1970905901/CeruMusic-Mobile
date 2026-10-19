@@ -76,6 +76,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PluginDetailPage.vue')
   },
   {
+    path: '/listen-together',
+    name: 'listen-together',
+    component: () => import('@/views/ListenTogetherPage.vue')
+  },
+  {
     path: '/ai',
     name: 'ai-assistant',
     component: () => import('@/views/AIAssistantPage.vue')

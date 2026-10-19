@@ -151,6 +151,21 @@ if (Capacitor.isNativePlatform()) {
     else useNotificationsStore(pinia).wakeRealtime()
   })
 
+  void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+    try {
+      const parsed = new URL(url)
+      if (
+        parsed.protocol === 'cerumusic:' &&
+        (parsed.hostname === 'lt' || parsed.hostname === 'listen-together')
+      ) {
+        const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
+        if (code) void router.push({ path: '/listen-together', query: { code } })
+      }
+    } catch {
+      // Invalid deep links are ignored; OAuth callbacks are handled by Logto.
+    }
+  })
+
   void CapacitorApp.addListener('backButton', ({ canGoBack }) => {
     const route = router.currentRoute.value
     if (route.path === '/player') {
