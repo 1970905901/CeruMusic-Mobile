@@ -275,11 +275,17 @@
           <ion-icon slot="start" :icon="folderOpenOutline" color="primary" />
           <ion-label>
             <h2>下载位置</h2>
-            <p>{{ settings.settings.downloadDirectoryMode === 'documents' ? '文件 App / Documents / ' + settings.settings.downloadSubfolder : '应用私有目录' }}</p>
+            <p>{{ downloadLocationLabel }}</p>
           </ion-label>
-          <ion-select v-model="settings.settings.downloadDirectoryMode" interface="action-sheet" cancel-text="取消">
+          <ion-select
+            :value="settings.settings.downloadDirectoryMode"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="changeDownloadDirectory($event.detail.value)"
+          >
             <ion-select-option value="data">应用私有目录</ion-select-option>
             <ion-select-option value="documents">Documents（文件 App）</ion-select-option>
+            <ion-select-option v-if="safAvailable" value="saf">Android 授权文件夹</ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item v-if="settings.settings.downloadDirectoryMode === 'documents'" button @click="editDownloadSubfolder">
@@ -288,6 +294,14 @@
             <h2>下载子目录</h2>
             <p>{{ settings.settings.downloadSubfolder }}</p>
           </ion-label>
+        </ion-item>
+        <ion-item v-if="settings.settings.downloadDirectoryMode === 'saf'" button :disabled="choosingSafDownload" @click="chooseSafDownloadFolder">
+          <ion-icon slot="start" :icon="albumsOutline" color="primary" />
+          <ion-label>
+            <h2>选择 Android 文件夹</h2>
+            <p>{{ settings.settings.safDownloadName || '未选择' }}</p>
+          </ion-label>
+          <ion-spinner v-if="choosingSafDownload" name="crescent" />
         </ion-item>
         <ion-item button detail @click="$router.push('/downloads')">
           <ion-icon slot="start" :icon="downloadOutline" color="primary" />
@@ -518,7 +532,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
 import { findPluginUpdates, installPluginUpdate } from '@/services/pluginUpdates'
-import { importSafFolder, safImportSupported } from '@/services/safImport'
+import { importSafFolder, pickSafDirectory, safImportSupported } from '@/services/safImport'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -531,6 +545,7 @@ const notifications = useNotificationsStore()
 const safAvailable = safImportSupported()
 const safImporting = ref(false)
 const safProgress = ref('')
+const choosingSafDownload = ref(false)
 
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
@@ -598,6 +613,13 @@ async function syncNow() {
   await toast(ok ? '设置已同步' : settingsSyncState.message || '同步失败', ok ? 'success' : 'danger')
 }
 
+const downloadLocationLabel = computed(() => {
+  const mode = settings.settings.downloadDirectoryMode
+  if (mode === 'documents') return '文件 App / Documents / ' + settings.settings.downloadSubfolder
+  if (mode === 'saf') return 'Android 授权文件夹 / ' + (settings.settings.safDownloadName || '未选择')
+  return '应用私有目录'
+})
+
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
   const minutes = Math.ceil(player.sleepRemainingMs / 60000)
@@ -621,6 +643,38 @@ function formatLyricOffset(value: number): string {
 
 function setPlaybackRate(value: any) {
   player.setPlaybackRate(Number(value) || 1)
+}
+
+async function changeDownloadDirectory(value: any) {
+  const mode = String(value)
+  if (mode !== 'saf') {
+    settings.settings.downloadDirectoryMode = mode === 'documents' || mode === 'data' ? mode : 'data'
+    return
+  }
+  if (!safAvailable) {
+    await toast('SAF 下载目录仅在 Android 原生环境可用', 'danger')
+    return
+  }
+  const picked = await chooseSafDownloadFolder()
+  if (picked) settings.settings.downloadDirectoryMode = 'saf'
+}
+
+async function chooseSafDownloadFolder(): Promise<boolean> {
+  if (choosingSafDownload.value) return false
+  choosingSafDownload.value = true
+  try {
+    const folder = await pickSafDirectory()
+    settings.settings.safDownloadUri = folder.uri
+    settings.settings.safDownloadName = folder.name
+    settings.settings.downloadDirectoryMode = 'saf'
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('取消')) await toast(message, 'danger')
+    return false
+  } finally {
+    choosingSafDownload.value = false
+  }
 }
 
 async function editDownloadSubfolder() {

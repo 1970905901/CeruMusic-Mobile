@@ -77,13 +77,13 @@ jobs:
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/app-release.apk \
-            artifacts/CeruMusic-2.4.8-android-arm64.apk
+            artifacts/CeruMusic-2.4.9-android-arm64.apk
           ls -lh artifacts
 
       - uses: actions/upload-artifact@v4
         with:
           name: ceru-music-android
-          path: mobile/artifacts/CeruMusic-2.4.8-android-arm64.apk
+          path: mobile/artifacts/CeruMusic-2.4.9-android-arm64.apk
           if-no-files-found: error
 
   ios:
@@ -137,13 +137,13 @@ jobs:
           mkdir -p artifacts/Payload
           cp -R ios/App/build/Build/Products/Release-iphoneos/App.app artifacts/Payload/
           cd artifacts
-          zip -qry CeruMusic-2.4.8-ios-unsigned.ipa Payload
+          zip -qry CeruMusic-2.4.9-ios-unsigned.ipa Payload
           ls -lh
 
       - uses: actions/upload-artifact@v4
         with:
           name: ceru-music-ios
-          path: mobile/artifacts/CeruMusic-2.4.8-ios-unsigned.ipa
+          path: mobile/artifacts/CeruMusic-2.4.9-ios-unsigned.ipa
           if-no-files-found: error
 
   release:

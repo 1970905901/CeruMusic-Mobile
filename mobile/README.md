@@ -139,7 +139,7 @@ mobile/
 - 后端歌单分享链接（依赖云歌单）与分享链接批量导入
 - `uiExtensions` 的 `playlist.item.actions` 内嵌与 slot 级样式；应用级样式与菜单贡献已接入
 - 自动缓存容量管理、HTTP/SOCKS5 代理与自定义 CA
-- Android SAF 下载目录写入；iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放，SAF 目录导入已接入）
+- iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放，SAF 导入/下载已接入）
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件（当前为 Ionic iOS 模式、安全区与 `ios-14` … `ios-26` 版本化样式）
 
 DLNA、桌面歌词、全局快捷键、托盘、系统音频采集仍属于桌面专属能力，不以移动端占位界面伪装实现。

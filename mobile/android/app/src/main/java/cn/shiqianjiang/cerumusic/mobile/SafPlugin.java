@@ -179,6 +179,149 @@ public class SafPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    @PluginMethod
+    public void writeFromApp(PluginCall call) {
+        String sourcePath = call.getString("sourcePath");
+        String treeValue = call.getString("treeUri");
+        String relativePath = call.getString("relativePath");
+        String mime = call.getString("mime", "application/octet-stream");
+        if (sourcePath == null || sourcePath.isEmpty() || treeValue == null || treeValue.isEmpty() || relativePath == null || relativePath.isEmpty()) {
+            call.reject("缺少下载写入参数");
+            return;
+        }
+        String[] segments = relativePath.split("/");
+        for (String segment : segments) {
+            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
+                call.reject("下载路径无效");
+                return;
+            }
+        }
+        if (segments.length < 2) {
+            call.reject("下载路径必须包含文件名");
+            return;
+        }
+        try {
+            File root = new File(getContext().getFilesDir()).getCanonicalFile();
+            File source = new File(root, sourcePath).getCanonicalFile();
+            if (!source.getPath().startsWith(root.getPath() + File.separator)) {
+                call.reject("下载源文件路径无效");
+                return;
+            }
+            if (!source.isFile()) {
+                call.reject("下载源文件不存在");
+                return;
+            }
+            Uri treeUri = Uri.parse(treeValue);
+            ContentResolver resolver = getContext().getContentResolver();
+            Uri parent = DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                DocumentsContract.getTreeDocumentId(treeUri)
+            );
+            for (int index = 0; index < segments.length - 1; index++) {
+                parent = ensureDirectory(resolver, treeUri, parent, segments[index]);
+            }
+            String fileName = segments[segments.length - 1];
+            deleteExistingChild(resolver, treeUri, parent, fileName, false);
+            Uri document = DocumentsContract.createDocument(resolver, parent, mime, fileName);
+            if (document == null) {
+                call.reject("系统没有创建下载文件");
+                return;
+            }
+            long total = 0;
+            try (
+                InputStream input = new java.io.FileInputStream(source);
+                OutputStream output = resolver.openOutputStream(document, "w")
+            ) {
+                if (output == null) {
+                    DocumentsContract.deleteDocument(resolver, document);
+                    call.reject("系统没有提供下载文件输出流");
+                    return;
+                }
+                byte[] buffer = new byte[65536];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    total += read;
+                }
+            } catch (Exception error) {
+                try {
+                    DocumentsContract.deleteDocument(resolver, document);
+                } catch (Exception ignored) {
+                }
+                call.reject("写入下载文件失败：" + error.getMessage());
+                return;
+            }
+            JSObject ret = new JSObject();
+            ret.put("uri", document.toString());
+            ret.put("name", fileName);
+            ret.put("relativePath", relativePath);
+            ret.put("size", total);
+            call.resolve(ret);
+        } catch (Exception error) {
+            call.reject("SAF 下载写入失败：" + error.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void deleteDocument(PluginCall call) {
+        String value = call.getString("uri");
+        if (value == null || value.isEmpty()) {
+            call.reject("缺少文件地址");
+            return;
+        }
+        try {
+            boolean deleted = DocumentsContract.deleteDocument(getContext().getContentResolver(), Uri.parse(value));
+            JSObject ret = new JSObject();
+            ret.put("deleted", deleted);
+            call.resolve(ret);
+        } catch (Exception error) {
+            call.reject("删除 SAF 文件失败：" + error.getMessage());
+        }
+    }
+
+    private Uri ensureDirectory(ContentResolver resolver, Uri treeUri, Uri parent, String name) throws Exception {
+        Uri existing = findChild(resolver, treeUri, parent, name, true);
+        if (existing != null) return existing;
+        Uri created = DocumentsContract.createDocument(resolver, parent, DocumentsContract.Document.MIME_TYPE_DIR, name);
+        if (created == null) throw new Exception("系统没有创建下载子目录：" + name);
+        return created;
+    }
+
+    private Uri findChild(ContentResolver resolver, Uri treeUri, Uri parent, String name, boolean directory) throws Exception {
+        String parentId = DocumentsContract.getDocumentId(parent);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
+        try (Cursor cursor = resolver.query(
+            childrenUri,
+            new String[] {
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+            },
+            null,
+            null,
+            null
+        )) {
+            if (cursor == null) return null;
+            int idIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeIndex = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            while (cursor.moveToNext()) {
+                String childName = cursor.isNull(nameIndex) ? "" : cursor.getString(nameIndex);
+                String mime = cursor.isNull(mimeIndex) ? "" : cursor.getString(mimeIndex);
+                boolean isDirectory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime);
+                if (name.equals(childName) && isDirectory == directory) {
+                    return DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idIndex));
+                }
+            }
+        }
+        return null;
+    }
+
+    private void deleteExistingChild(ContentResolver resolver, Uri treeUri, Uri parent, String name, boolean directory) throws Exception {
+        Uri existing = findChild(resolver, treeUri, parent, name, directory);
+        if (existing != null) DocumentsContract.deleteDocument(resolver, existing);
+    }
+
     private String documentName(Uri uri) {
         try (Cursor cursor = getContext().getContentResolver().query(
             uri,

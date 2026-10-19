@@ -21,6 +21,13 @@ interface SafPlugin {
     size: number
     uri: string
   }>
+  writeFromApp(options: {
+    sourcePath: string
+    treeUri: string
+    relativePath: string
+    mime: string
+  }): Promise<{ uri: string; name: string; relativePath: string; size: number }>
+  deleteDocument(options: { uri: string }): Promise<{ deleted: boolean }>
 }
 
 const Saf = registerPlugin<SafPlugin>('Saf')
@@ -139,4 +146,24 @@ export async function importSafFolder(
     }
   }
   return { folder: folder.name, imported, skipped, failed, truncated }
+}
+
+export async function pickSafDirectory(): Promise<{ uri: string; name: string }> {
+  if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 目录')
+  return Saf.pickDirectory()
+}
+
+export async function writeSafFromApp(options: {
+  sourcePath: string
+  treeUri: string
+  relativePath: string
+  mime: string
+}): Promise<{ uri: string; name: string; relativePath: string; size: number }> {
+  if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 下载')
+  return Saf.writeFromApp(options)
+}
+
+export async function deleteSafDocument(uri: string): Promise<void> {
+  if (!safImportSupported()) return
+  await Saf.deleteDocument({ uri })
 }

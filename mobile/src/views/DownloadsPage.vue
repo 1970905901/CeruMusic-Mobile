@@ -18,7 +18,7 @@
       <div class="head ceru-pad">
         <p class="eyebrow">OFFLINE</p>
         <h1 class="ceru-title">下载</h1>
-        <p class="head-sub">下载文件保存在应用私有目录，可从系统分享导出。</p>
+        <p class="head-sub">下载文件保存在所选目录；授权文件夹可通过系统分享导出。</p>
       </div>
 
       <div v-if="downloads.tasks.length" class="task-list">
@@ -114,7 +114,10 @@ function formatSize(bytes?: number): string {
 
 async function playTask(task: DownloadTask) {
   const track = downloads.play(task.id)
-  if (!track) return
+  if (!track) {
+    if (task.directory === 'saf') await toast('已导出到授权文件夹，请用系统文件或分享打开')
+    return
+  }
   try {
     await player.playTrack(track)
   } catch (error) {

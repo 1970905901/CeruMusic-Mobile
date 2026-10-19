@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { buildDownloadFilename } from '@/utils/filename'
 import { isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
+import { deleteSafDocument, writeSafFromApp } from '@/services/safImport'
 
 function normalizeSubfolder(value: string): string {
   const parts = String(value || '')
@@ -114,6 +115,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       quality: task.quality,
       ext
     })
+    if (task.directory === 'saf') return `${downloadPrefix(task)}/${filename}`
     const dot = filename.lastIndexOf('.')
     const base = dot > 0 ? filename.slice(0, dot) : filename
     const extension = dot > 0 ? filename.slice(dot + 1) : ext
@@ -158,6 +160,68 @@ export const useDownloadStore = defineStore('downloads', () => {
     } catch (error) {
       console.warn('写入下载文件标签失败', error)
       return base64
+    }
+  }
+
+  async function completeDownload(
+    task: DownloadTask,
+    path: string,
+    base64: string,
+    ext: string,
+    mime: string
+  ): Promise<void> {
+    if (task.directory === 'saf') {
+      if (!task.safUri) throw new Error('缺少 Android SAF 下载目录授权')
+      const stagingPath = `saf-staging/${task.id}.${ext}`
+      await Filesystem.writeFile({
+        path: stagingPath,
+        data: base64,
+        directory: Directory.Data,
+        recursive: true
+      })
+      try {
+        const result = await writeSafFromApp({
+          sourcePath: stagingPath,
+          treeUri: task.safUri,
+          relativePath: path,
+          mime
+        })
+        updateTask(task.id, {
+          status: 'completed',
+          receivedBytes: result.size,
+          totalBytes: result.size,
+          filePath: result.uri,
+          relativePath: result.relativePath,
+          mime
+        })
+      } finally {
+        await Filesystem.deleteFile({ path: stagingPath, directory: Directory.Data }).catch(() => undefined)
+      }
+      return
+    }
+    await Filesystem.writeFile({
+      path,
+      data: base64,
+      directory: storageDirectory(task),
+      recursive: true
+    })
+    const uri = await Filesystem.getUri({ path, directory: storageDirectory(task) })
+    const size = Math.floor((base64.length * 3) / 4)
+    updateTask(task.id, {
+      status: 'completed',
+      receivedBytes: size,
+      totalBytes: size,
+      filePath: uri.uri,
+      relativePath: path,
+      mime
+    })
+    const track = library.getTrack(task.trackKey)
+    if (track) {
+      library.upsertTrack({
+        ...track,
+        downloadedPath: uri.uri,
+        downloadedRelativePath: path
+      })
     }
   }
 
@@ -212,30 +276,7 @@ export const useDownloadStore = defineStore('downloads', () => {
           const path = await resolveDownloadPath(task, ext)
           const rawBase64 = await blobToBase64(blob)
           const base64 = await prepareDownloadData(task, rawBase64, ext, mime)
-          await Filesystem.writeFile({
-            path,
-            data: base64,
-            directory: storageDirectory(task),
-            recursive: true
-          })
-          const uri = await Filesystem.getUri({ path, directory: storageDirectory(task) })
-          const size = Math.floor((base64.length * 3) / 4)
-          updateTask(task.id, {
-            status: 'completed',
-            receivedBytes: size,
-            totalBytes: size,
-            filePath: uri.uri,
-            relativePath: path,
-            mime
-          })
-          const track = library.getTrack(task.trackKey)
-          if (track) {
-            library.upsertTrack({
-              ...track,
-              downloadedPath: uri.uri,
-              downloadedRelativePath: path
-            })
-          }
+          await completeDownload(task, path, base64, ext, mime)
           resolve()
         } catch (error) {
           reject(error)
@@ -291,33 +332,17 @@ export const useDownloadStore = defineStore('downloads', () => {
     const path = await resolveDownloadPath(task, ext)
     const rawBase64 = await responseToBase64(response.data)
     const base64 = await prepareDownloadData(task, rawBase64, ext, String(mime))
-    await Filesystem.writeFile({
-      path,
-      data: base64,
-      directory: storageDirectory(task),
-      recursive: true
-    })
-    const uri = await Filesystem.getUri({ path, directory: storageDirectory(task) })
-    const size = Math.floor((base64.length * 3) / 4)
-    updateTask(task.id, {
-      status: 'completed',
-      receivedBytes: size,
-      totalBytes: size,
-      filePath: uri.uri,
-      relativePath: path,
-      mime: String(mime)
-    })
-    const track = library.getTrack(task.trackKey)
-    if (track) {
-      library.upsertTrack({
-        ...track,
-        downloadedPath: uri.uri,
-        downloadedRelativePath: path
-      })
-    }
+    await completeDownload(task, path, base64, ext, String(mime))
   }
 
   async function createDownload(track: Track, quality?: string): Promise<DownloadTask> {
+    const directoryMode = settings.settings.downloadDirectoryMode
+    if (directoryMode === 'saf') {
+      if (Capacitor.getPlatform() !== 'android' || !Capacitor.isNativePlatform()) {
+        throw new Error('SAF 下载目录仅在 Android 原生环境可用')
+      }
+      if (!settings.settings.safDownloadUri) throw new Error('请先选择 Android SAF 下载文件夹')
+    }
     library.upsertTrack(track)
     const task: DownloadTask = {
       id: `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -327,7 +352,8 @@ export const useDownloadStore = defineStore('downloads', () => {
       cover: track.artworkUrl,
       quality: quality || settings.settings.downloadQuality || settings.settings.preferredQuality || undefined,
       status: 'queued',
-      directory: settings.settings.downloadDirectoryMode,
+      directory: directoryMode,
+      ...(directoryMode === 'saf' ? { safUri: settings.settings.safDownloadUri } : {}),
       receivedBytes: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -413,9 +439,13 @@ export const useDownloadStore = defineStore('downloads', () => {
     activeRequests.get(id)?.abort()
     if (deleteFile && task.filePath) {
       try {
-        if (task.relativePath) await Filesystem.deleteFile({ path: task.relativePath, directory: storageDirectory(task) })
+        if (task.directory === 'saf') {
+          if (task.safUri) await deleteSafDocument(task.filePath)
+        } else if (task.relativePath) {
+          await Filesystem.deleteFile({ path: task.relativePath, directory: storageDirectory(task) })
+        }
       } catch {
-        // File may already be gone.
+        // The file may already be gone or provider permission may have been revoked.
       }
     }
     const db = await getDb()
@@ -429,13 +459,13 @@ export const useDownloadStore = defineStore('downloads', () => {
     await Share.share({
       title: task.title,
       text: `${task.title} - ${task.artist}`,
-      url: Capacitor.convertFileSrc(task.filePath)
+      url: task.directory === 'saf' ? task.filePath : Capacitor.convertFileSrc(task.filePath)
     })
   }
 
   function play(id: string): Track | null {
     const task = tasks.value.find((item) => item.id === id)
-    if (!task?.filePath) return null
+    if (!task?.filePath || task.directory === 'saf') return null
     const track = library.getTrack(task.trackKey)
     if (!track) return null
     return { ...track, downloadedPath: task.filePath }

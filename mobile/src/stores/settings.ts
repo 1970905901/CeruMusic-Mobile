@@ -28,8 +28,10 @@ export interface AppSettings {
   aiModel: string
   cloudSyncEnabled: boolean
   autoUpdatePlugins: boolean
-  downloadDirectoryMode: 'data' | 'documents'
+  downloadDirectoryMode: 'data' | 'documents' | 'saf'
   downloadSubfolder: string
+  safDownloadUri?: string
+  safDownloadName?: string
   lyricFontSize: number
   lyricShowTranslation: boolean
   lyricShowRomanization: boolean

@@ -14,7 +14,9 @@ export interface DownloadTask {
   relativePath?: string
   mime?: string
   /** Storage root selected when the download was created. */
-  directory?: 'data' | 'documents'
+  directory?: 'data' | 'documents' | 'saf'
+  /** Persisted SAF tree URI when the task was written to an authorized folder. */
+  safUri?: string
   error?: string
   createdAt: number
   updatedAt: number
