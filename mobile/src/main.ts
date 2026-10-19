@@ -113,6 +113,17 @@ void (async () => {
       }
     )
     await usePluginStore(pinia).init()
+    if (settings.settings.autoUpdatePlugins) {
+      setTimeout(async () => {
+        try {
+          const { findPluginUpdates, installPluginUpdate } = await import('@/services/pluginUpdates')
+          const updates = await findPluginUpdates()
+          for (const update of updates) await installPluginUpdate(update)
+        } catch {
+          // Automatic plugin updates stay silent; manual check reports errors.
+        }
+      }, 8000)
+    }
     await useLibraryStore(pinia).init()
     await useDownloadStore(pinia).init()
     const player = usePlayerStore(pinia)

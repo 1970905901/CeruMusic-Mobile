@@ -226,6 +226,7 @@ export const usePluginStore = defineStore('plugins', () => {
           manifestId,
           manifest: parsed.manifest,
           code: parsed.body,
+          artifactSource: text,
           fileName,
           sourceUrl,
           enabled: false,
@@ -238,6 +239,7 @@ export const usePluginStore = defineStore('plugins', () => {
       } else {
         record.manifest = parsed.manifest
         record.code = parsed.body
+        record.artifactSource = text
         record.fileName = fileName
         record.sourceUrl = sourceUrl ?? record.sourceUrl
         record.updatedAt = now

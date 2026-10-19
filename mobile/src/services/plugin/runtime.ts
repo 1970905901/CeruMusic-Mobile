@@ -487,11 +487,26 @@ export class PluginRuntime {
         if (params?.id) closePluginProgress(String(params.id))
         return null
       }
-      case 'ui.openView':
-        await showToast('该插件页面已声明，当前版本请在插件详情中查看配置', 'warning')
+      case 'ui.openView': {
+        const surfaceId = String(params?.surfaceId || '')
+        const surface = this.record.manifest.modules?.surfaces?.find(
+          (item) => item.id === surfaceId
+        )
+        if (!surface) throw new Error('插件未声明此页面')
+        const { default: router } = await import('@/router')
+        await router.push(
+          '/plugin-surface/' +
+            encodeURIComponent(this.record.key) +
+            '/' +
+            encodeURIComponent(surfaceId)
+        )
         return null
-      case 'ui.closeView':
+      }
+      case 'ui.closeView': {
+        const { default: router } = await import('@/router')
+        router.back()
         return null
+      }
       case 'ui.playlistImport.open': {
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
@@ -866,6 +881,10 @@ export class PluginRuntime {
 export class PluginRuntimeManager {
   private runtimes = new Map<string, PluginRuntime>()
   private logSink: ((entry: PluginLogEntry) => void) | null = null
+  private surfaceStates = new Map<string, any>()
+  private surfaceListeners = new Set<
+    (event: { pluginKey: string; surfaceId: string; state: any }) => void
+  >()
 
   setLogSink(sink: (entry: PluginLogEntry) => void) {
     this.logSink = sink
@@ -887,6 +906,12 @@ export class PluginRuntimeManager {
       onNotice: (notice) => {
         if (notice?.data?.message || notice?.data?.body) {
           void showToast(notice.data.message || notice.data.body)
+        }
+      },
+      onState: ({ surfaceId, state }) => {
+        this.surfaceStates.set(record.key + '\n' + surfaceId, state)
+        for (const listener of this.surfaceListeners) {
+          listener({ pluginKey: record.key, surfaceId, state })
         }
       },
       onClosed: () => this.runtimes.delete(record.key),
@@ -914,6 +939,27 @@ export class PluginRuntimeManager {
     if (!runtime) return
     runtime.dispose()
     this.runtimes.delete(pluginKey)
+    for (const key of [...this.surfaceStates.keys()]) {
+      if (key.startsWith(pluginKey + '\n')) this.surfaceStates.delete(key)
+    }
+  }
+
+  getSurfaceState(pluginKey: string, surfaceId: string): any {
+    return this.surfaceStates.get(pluginKey + '\n' + surfaceId) ?? {}
+  }
+
+  setSurfaceState(pluginKey: string, surfaceId: string, state: any): void {
+    this.surfaceStates.set(pluginKey + '\n' + surfaceId, state)
+    for (const listener of this.surfaceListeners) {
+      listener({ pluginKey, surfaceId, state })
+    }
+  }
+
+  onSurfaceState(
+    listener: (event: { pluginKey: string; surfaceId: string; state: any }) => void
+  ): () => void {
+    this.surfaceListeners.add(listener)
+    return () => this.surfaceListeners.delete(listener)
   }
 
   get(pluginKey: string): PluginRuntime | undefined {

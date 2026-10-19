@@ -27,6 +27,7 @@ export interface AppSettings {
   aiBaseURL: string
   aiModel: string
   cloudSyncEnabled: boolean
+  autoUpdatePlugins: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -52,7 +53,8 @@ const defaults: AppSettings = {
   aiApiKey: '',
   aiBaseURL: 'https://api.deepseek.com',
   aiModel: 'deepseek-chat',
-  cloudSyncEnabled: true
+  cloudSyncEnabled: true,
+  autoUpdatePlugins: false
 }
 
 function load(): AppSettings {

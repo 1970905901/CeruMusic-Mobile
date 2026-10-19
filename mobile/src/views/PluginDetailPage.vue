@@ -133,12 +133,31 @@
           </ion-item>
         </ion-list>
 
-        <ion-list v-if="settingsPages.length" class="group">
+        <ion-list v-if="surfaces.length" class="group">
           <div class="group-title">插件页面</div>
-          <ion-item v-for="page in settingsPages" :key="page.id">
+          <ion-item v-for="surface in surfaces" :key="surface.id" button detail @click="openSurface(surface.id)">
+            <ion-icon slot="start" :icon="albumsOutline" color="primary" />
+            <ion-label>
+              <h2>{{ surfaceTitle(surface) }}</h2>
+              <p>{{ surfaceKindLabel(surface.kind) }} · {{ surface.id }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
+        <ion-list v-if="settingsPages.length || accountItems.length" class="group">
+          <div class="group-title">插件功能</div>
+          <ion-item v-for="page in settingsPages" :key="'setting-' + page.id" button detail @click="openSurface(page.view)">
+            <ion-icon slot="start" :icon="settingsOutline" color="primary" />
             <ion-label>
               <h2>{{ page.title }}</h2>
-              <p>该 v2 插件页面已声明，移动端配置表单可覆盖常用设置</p>
+              <p>插件设置页面</p>
+            </ion-label>
+          </ion-item>
+          <ion-item v-for="item in accountItems" :key="'account-' + item.id" button detail @click="openSurface(item.view)">
+            <ion-icon slot="start" :icon="personCircleOutline" color="primary" />
+            <ion-label>
+              <h2>{{ item.title }}</h2>
+              <p>插件账号</p>
             </ion-label>
           </ion-item>
         </ion-list>
@@ -196,8 +215,11 @@ import {
 } from '@ionic/vue'
 import {
   ellipsisHorizontal,
+  albumsOutline,
   extensionPuzzleOutline,
-  playCircleOutline
+  personCircleOutline,
+  playCircleOutline,
+  settingsOutline
 } from 'ionicons/icons'
 import { Browser } from '@capacitor/browser'
 import { useRoute, useRouter } from 'vue-router'
@@ -220,6 +242,8 @@ const runtimeLabel = computed(() => {
 })
 const commands = computed(() => plugin.value?.manifest.contributes?.commands || [])
 const settingsPages = computed(() => plugin.value?.manifest.contributes?.settingsPages || [])
+const accountItems = computed(() => plugin.value?.manifest.contributes?.accountItems || [])
+const surfaces = computed(() => plugin.value?.manifest.modules?.surfaces || [])
 const logs = computed(() => pluginStore.logs.filter((item) => item.pluginKey === key))
 
 const configFields = computed(() => {
@@ -304,8 +328,33 @@ function resetPermissions() {
   void toast('已清除授权，下次使用时重新询问')
 }
 
+function openSurface(surfaceId: string) {
+  if (!plugin.value) return
+  router.push(
+    '/plugin-surface/' + encodeURIComponent(plugin.value.key) + '/' + encodeURIComponent(surfaceId)
+  )
+}
+
+function surfaceTitle(surface: any): string {
+  return (
+    surface.title ||
+    plugin.value?.manifest.contributes?.commands?.find((item) => item.view === surface.id)?.title ||
+    surface.id
+  )
+}
+
+function surfaceKindLabel(kind: string): string {
+  if (kind === 'web') return 'Web 页面'
+  if (kind === 'native') return '原生页面'
+  return '表单页面'
+}
+
 async function runCommand(command: any) {
   if (!plugin.value) return
+  if (command.view) {
+    openSurface(command.view)
+    return
+  }
   try {
     const result = await pluginStore.invokeAction(plugin.value.key, command.action, {})
     if (result === null || result === undefined) {

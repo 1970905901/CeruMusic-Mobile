@@ -5,6 +5,8 @@ export interface ParsedPluginArtifact {
   manifest: PluginManifest
   body: string
   metadata: Record<string, unknown>
+  modules: Record<string, string>
+  resources: Record<string, any>
   signatureStatus: 'unsigned' | 'signature-present'
 }
 
@@ -185,10 +187,20 @@ export function parsePluginArtifact(source: string): ParsedPluginArtifact {
   const body = source.slice(bodyStart).trim()
   if (!body) throw new Error('插件没有可执行的逻辑代码')
 
+  const modules =
+    metadata.modules && typeof metadata.modules === 'object' && !Array.isArray(metadata.modules)
+      ? (metadata.modules as Record<string, string>)
+      : {}
+  const resources =
+    metadata.resources && typeof metadata.resources === 'object' && !Array.isArray(metadata.resources)
+      ? (metadata.resources as Record<string, any>)
+      : {}
   return {
     manifest: manifest as unknown as PluginManifest,
     body,
     metadata,
+    modules,
+    resources,
     signatureStatus: metadata.signature ? 'signature-present' : 'unsigned'
   }
 }

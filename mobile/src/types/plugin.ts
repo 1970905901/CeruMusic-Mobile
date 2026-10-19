@@ -7,6 +7,8 @@ export interface PluginRecord {
   manifestId: string
   manifest: PluginManifest
   code: string
+  /** Complete signed/unsigned artifact, retained for Web/Native/Schema surfaces. */
+  artifactSource?: string
   fileName: string
   sourceUrl?: string
   enabled: boolean

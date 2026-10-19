@@ -71,6 +71,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PlaylistConverterPage.vue')
   },
   {
+    path: '/plugin-surface/:key/:surfaceId',
+    name: 'plugin-surface',
+    component: () => import('@/views/PluginSurfacePage.vue')
+  },
+  {
     path: '/plugin/:key',
     name: 'plugin-detail',
     component: () => import('@/views/PluginDetailPage.vue')

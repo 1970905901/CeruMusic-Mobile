@@ -56,6 +56,39 @@
           </ion-item>
         </ion-list>
 
+        <ion-list v-if="pluginAccounts.length" class="group">
+          <div class="group-title">插件账号</div>
+          <ion-item
+            v-for="entry in pluginAccounts"
+            :key="entry.key"
+            button
+            detail
+            @click="openPluginAccount(entry)"
+          >
+            <CoverImage
+              slot="start"
+              :src="entry.summary?.avatarUrl || ''"
+              :size="38"
+              :radius="19"
+              :alt="entry.summary?.displayName || entry.item.title"
+            />
+            <ion-label>
+              <h2>{{ entry.summary?.displayName || entry.item.title }}</h2>
+              <p>{{ entry.item.title }}<span v-if="entry.summary?.badge"> · {{ entry.summary.badge }}</span><span v-else> · {{ entry.summary?.signedIn ? '已登录' : '未登录' }}</span></p>
+            </ion-label>
+            <ion-button
+              v-if="entry.summary?.signedIn && entry.item.logoutAction"
+              slot="end"
+              fill="clear"
+              size="small"
+              color="danger"
+              @click.stop="logoutPluginAccount(entry)"
+            >
+              退出
+            </ion-button>
+          </ion-item>
+        </ion-list>
+
         <div class="logout-wrap">
           <ion-button expand="block" color="danger" fill="outline" :disabled="auth.loading" @click="logout">
             退出登录
@@ -93,7 +126,7 @@
   </ion-page>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   IonBackButton,
   IonBadge,
@@ -113,6 +146,7 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
+  onIonViewWillEnter,
   toastController,
   useIonRouter
 } from '@ionic/vue'
@@ -126,15 +160,72 @@ import {
 import CoverImage from '@/components/CoverImage.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { usePluginStore } from '@/stores/plugins'
+import type { AccountSummary } from '@shiqianjiang/ceru-plugin-sdk'
 
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
+const pluginStore = usePluginStore()
+const pluginSummaries = ref<Record<string, AccountSummary>>({})
 const router = useIonRouter()
 const editing = ref(false)
 const saving = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
 const form = reactive({ name: '', intro: '', gender: 'secret', birthday: '', region: '' })
 const intro = computed(() => String(auth.customData.intro || ''))
+const pluginAccounts = computed(() =>
+  pluginStore.plugins
+    .filter((plugin) => plugin.enabled)
+    .flatMap((plugin) =>
+      (plugin.manifest.contributes?.accountItems || []).map((item) => {
+        const key = plugin.key + ':' + item.id
+        return { key, plugin, item, summary: pluginSummaries.value[key] }
+      })
+    )
+)
+
+async function refreshPluginAccounts() {
+  if (!auth.authenticated) {
+    pluginSummaries.value = {}
+    return
+  }
+  const entries = pluginAccounts.value
+  await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const summary = await pluginStore.invokeAction(entry.plugin.key, entry.item.action, {})
+        if (summary && typeof summary === 'object') {
+          pluginSummaries.value = { ...pluginSummaries.value, [entry.key]: summary }
+        }
+      } catch {
+        // A plugin that cannot summarize its account is shown as signed out.
+      }
+    })
+  )
+}
+
+function openPluginAccount(entry: { plugin: { key: string }; item: { view: string } }) {
+  router.push(
+    '/plugin-surface/' +
+      encodeURIComponent(entry.plugin.key) +
+      '/' +
+      encodeURIComponent(entry.item.view)
+  )
+}
+
+async function logoutPluginAccount(entry: {
+  plugin: { key: string }
+  item: { logoutAction?: string }
+}) {
+  if (!entry.item.logoutAction) return
+  try {
+    await pluginStore.invokeAction(entry.plugin.key, entry.item.logoutAction, {})
+    await refreshPluginAccounts()
+    await toast('已退出插件账号')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '退出失败', 'danger')
+  }
+}
 
 function syncForm() {
   form.name = auth.displayName
@@ -208,6 +299,22 @@ async function onAvatarPicked(event: Event) {
     await toast(error instanceof Error ? error.message : '头像上传失败', 'danger')
   }
 }
+
+onMounted(() => {
+  if (auth.authenticated) void refreshPluginAccounts()
+})
+
+watch(
+  () => auth.authenticated,
+  (value) => {
+    if (value) void refreshPluginAccounts()
+    else pluginSummaries.value = {}
+  }
+)
+
+onIonViewWillEnter(() => {
+  if (auth.authenticated) void refreshPluginAccounts()
+})
 
 async function toast(message: string, color = 'medium'): Promise<void> {
   const element = await toastController.create({ message, duration: 2200, color })

@@ -74,6 +74,24 @@
             <p>{{ pluginStore.enabledPlugins.length }} 个已启用 · {{ pluginStore.plugins.length }} 个已安装</p>
           </ion-label>
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="syncOutline" color="primary" />
+          <ion-label>
+            <h2>自动更新插件</h2>
+            <p>启动时检查有来源 URL 的插件并安装新版本</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.autoUpdatePlugins"
+            @ionChange="settings.settings.autoUpdatePlugins = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item button :disabled="checkingUpdates || !pluginStore.plugins.some((plugin) => plugin.sourceUrl)" @click="checkPluginUpdates">
+          <ion-icon slot="start" :icon="cloudDownloadOutline" color="primary" />
+          <ion-label>
+            <h2>{{ checkingUpdates ? '正在检查…' : '立即检查插件更新' }}</h2>
+            <p>{{ pluginStore.plugins.filter((plugin) => plugin.sourceUrl).length }} 个插件可检查</p>
+          </ion-label>
+        </ion-item>
         <ion-item v-if="pluginStore.sources.length" button detail @click="openSourceRouting">
           <ion-icon slot="start" :icon="gitNetworkOutline" color="primary" />
           <ion-label>
@@ -328,7 +346,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   IonBadge,
   IonContent,
@@ -388,6 +406,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
+import { findPluginUpdates, installPluginUpdate } from '@/services/pluginUpdates'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -400,6 +419,8 @@ const notifications = useNotificationsStore()
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
+
+const checkingUpdates = ref(false)
 
 const syncStatusText = computed(() => {
   const status = settingsSyncState.status
@@ -471,6 +492,37 @@ async function scanLocal() {
     await toast(records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件')
   } catch (error) {
     await toast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+async function checkPluginUpdates() {
+  if (checkingUpdates.value) return
+  checkingUpdates.value = true
+  try {
+    const updates = await findPluginUpdates()
+    if (!updates.length) {
+      await toast('所有插件都是最新版本')
+      return
+    }
+    const alert = await alertController.create({
+      header: '发现插件更新',
+      message: updates
+        .map((item) => item.name + '：' + item.currentVersion + ' → ' + item.version)
+        .join('\n'),
+      buttons: [
+        { text: '稍后', role: 'cancel' },
+        { text: '全部更新', role: 'confirm' }
+      ]
+    })
+    await alert.present()
+    const { role } = await alert.onDidDismiss()
+    if (role !== 'confirm') return
+    for (const update of updates) await installPluginUpdate(update)
+    await toast('插件已更新')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '检查更新失败', 'danger')
+  } finally {
+    checkingUpdates.value = false
   }
 }
 
