@@ -59,6 +59,37 @@
               <span>{{ busy ? '正在转换…' : '导出歌词' }}</span>
             </ion-button>
 
+            <div class="parse-head">
+              <span>从文本解析</span>
+            </div>
+            <div class="field">
+              <ion-label position="stacked">输入格式</ion-label>
+              <ion-select
+                v-model="parseFormat"
+                interface="action-sheet"
+                cancel-text="取消"
+                :disabled="busy"
+              >
+                <ion-select-option v-for="item in parseFormats" :key="item" :value="item">
+                  {{ item.toUpperCase() }}
+                </ion-select-option>
+              </ion-select>
+            </div>
+            <div class="field">
+              <ion-label position="stacked">歌词文本</ion-label>
+              <ion-textarea
+                v-model="parseText"
+                placeholder="粘贴 LRC / QRC / KRC / TTML 等歌词"
+                :auto-grow="true"
+                :rows="4"
+                :disabled="busy"
+              />
+            </div>
+            <ion-button expand="block" fill="outline" :disabled="busy" @click="parseAndExport">
+              <ion-spinner v-if="busy" name="crescent" />
+              <span>{{ busy ? '正在转换…' : '解析并导出' }}</span>
+            </ion-button>
+
             <template v-if="result">
               <div class="result-head">
                 <span>导出结果</span>
@@ -110,9 +141,11 @@ import {
   collectLyricConverters,
   toCrLyricDocument,
   LYRIC_EXPORT_FORMATS,
+  LYRIC_PARSE_FORMATS,
   type LyricConverterEntry
 } from '@/services/lyricConverters'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
+import type { LyricInputFormat } from '@shiqianjiang/ceru-plugin-sdk'
 import type { LyricDocument, Track } from '@/types/music'
 import { useSettingsStore } from '@/stores/settings'
 import { usePluginStore } from '@/stores/plugins'
@@ -131,6 +164,8 @@ const pluginStore = usePluginStore()
 const settings = useSettingsStore()
 const selectedKey = ref('')
 const format = ref<'lrc' | 'enhanced-lrc' | 'yrc' | 'ttml'>('lrc')
+const parseText = ref('')
+const parseFormat = ref<LyricInputFormat>('auto')
 const result = ref('')
 const error = ref('')
 const busy = ref(false)
@@ -154,6 +189,10 @@ const exportFormats = LYRIC_EXPORT_FORMATS.map((value) => ({
 }))
 
 const selectedConverter = computed(() => converters.value.find((item) => item.key === selectedKey.value))
+const parseFormats = computed(() => {
+  const declared = selectedConverter.value?.inputFormats ?? []
+  return declared.length ? declared : LYRIC_PARSE_FORMATS
+})
 const hasLyrics = computed(() =>
   !!props.document && (props.document.lines.length > 0 || !!props.document.plainText)
 )
@@ -190,6 +229,41 @@ async function exportLyrics() {
     })
     if (!response?.text) throw new Error('转换器没有返回歌词')
     result.value = String(response.text)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function parseAndExport() {
+  if (!props.track || !selectedConverter.value || busy.value) return
+  const converter = selectedConverter.value
+  const text = parseText.value.trim()
+  if (!text) {
+    error.value = '请输入歌词文本'
+    return
+  }
+  busy.value = true
+  error.value = ''
+  try {
+    const runtime = pluginRuntimeManager.get(converter.pluginKey)
+    if (!runtime) throw new Error('插件未启用')
+    const ref = JSON.parse(JSON.stringify(props.track.ref))
+    const document = await runtime.invokeConverter(converter.converterId, 'parse', {
+      track: ref,
+      format: parseFormat.value,
+      text
+    })
+    if (!document || (!Array.isArray(document.lines) && !document.plainText)) {
+      throw new Error('转换器没有返回有效歌词')
+    }
+    const exported = await runtime.invokeConverter(converter.converterId, 'export', {
+      document,
+      format: format.value
+    })
+    if (!exported?.text) throw new Error('转换器没有返回导出结果')
+    result.value = String(exported.text)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
@@ -239,6 +313,14 @@ ion-button ion-spinner {
   width: 16px;
   height: 16px;
   margin-right: 8px;
+}
+.parse-head {
+  display: flex;
+  align-items: center;
+  margin: 18px 0 10px;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
 }
 .result-head {
   display: flex;

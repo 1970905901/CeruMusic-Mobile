@@ -1,9 +1,10 @@
 import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
-import type { CrLyric, LyricExportFormat, ResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
+import type { CrLyric, LyricExportFormat, LyricInputFormat, ResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
 import type { PluginRecord, PluginRuntimeInfo } from '@/types/plugin'
 import type { LyricDocument, Track } from '@/types/music'
 
 export const LYRIC_EXPORT_FORMATS: LyricExportFormat[] = ['lrc', 'enhanced-lrc', 'yrc', 'ttml']
+export const LYRIC_PARSE_FORMATS: LyricInputFormat[] = ['auto', 'lrc', 'enhanced-lrc', 'yrc', 'qrc', 'krc', 'ttml', 'plain']
 
 export interface LyricConverterEntry {
   key: string
