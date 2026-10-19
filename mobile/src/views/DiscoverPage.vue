@@ -86,6 +86,26 @@
         </div>
 
         <template v-else>
+          <template v-if="pluginSections.length">
+            <SectionHeader title="插件推荐" subtitle="来自已启用插件的自定义首页" />
+            <div class="plugin-section-row">
+              <button
+                v-for="section in pluginSections"
+                :key="section.pluginKey + ':' + section.id"
+                type="button"
+                class="plugin-section-card ceru-card ceru-press"
+                @click="openPluginSection(section)"
+              >
+                <span class="plugin-section-icon"><ion-icon :icon="extensionPuzzleOutline" /></span>
+                <span class="plugin-section-copy">
+                  <strong class="ceru-truncate">{{ section.title }}</strong>
+                  <small class="ceru-truncate">{{ section.pluginName }}</small>
+                </span>
+                <ion-icon :icon="chevronForward" />
+              </button>
+            </div>
+          </template>
+
           <SectionHeader
             v-if="charts.length"
             title="排行榜"
@@ -242,6 +262,31 @@ const selectedSource = computed(() => {
   return pluginStore.sources.find((item) => item.id === source) ?? pluginStore.sources[0]
 })
 const selectedSourceName = computed(() => selectedSource.value?.name ?? '选择音源')
+const pluginSections = computed(() =>
+  pluginStore.plugins
+    .filter((plugin) => plugin.enabled)
+    .flatMap((plugin) =>
+      (plugin.manifest.contributes?.homeSections || [])
+        .filter((section) => !!section.view)
+        .map((section) => ({
+          pluginKey: plugin.key,
+          pluginName: plugin.manifest.name,
+          id: section.id,
+          title: section.title,
+          view: section.view!
+        }))
+    )
+)
+
+function openPluginSection(section: { pluginKey: string; view: string }) {
+  router.push(
+    '/plugin-surface/' +
+      encodeURIComponent(section.pluginKey) +
+      '/' +
+      encodeURIComponent(section.view)
+  )
+}
+
 const favoriteTracks = computed(() => library.favorites.map((item) => item.track))
 const recent = computed(() => library.recentTracks)
 
@@ -520,6 +565,53 @@ onMounted(() => {
   color: var(--ceru-text-secondary);
   font-size: 13px;
 }
+.plugin-section-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 16px 6px;
+  scrollbar-width: none;
+}
+.plugin-section-row::-webkit-scrollbar {
+  display: none;
+}
+.plugin-section-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 260px;
+  padding: 12px;
+  border-radius: 16px;
+  color: var(--ceru-text);
+  text-align: left;
+}
+.plugin-section-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--ceru-brand);
+  background: rgba(0, 218, 192, 0.1);
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+.plugin-section-copy {
+  flex: 1;
+  min-width: 0;
+}
+.plugin-section-copy strong,
+.plugin-section-copy small {
+  display: block;
+}
+.plugin-section-copy strong {
+  font-size: 13px;
+}
+.plugin-section-copy small {
+  margin-top: 3px;
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+}
 .horizontal-list {
   display: flex;
   gap: 12px;
@@ -605,7 +697,54 @@ onMounted(() => {
   .category-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .horizontal-list {
+  .plugin-section-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 16px 6px;
+  scrollbar-width: none;
+}
+.plugin-section-row::-webkit-scrollbar {
+  display: none;
+}
+.plugin-section-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 260px;
+  padding: 12px;
+  border-radius: 16px;
+  color: var(--ceru-text);
+  text-align: left;
+}
+.plugin-section-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--ceru-brand);
+  background: rgba(0, 218, 192, 0.1);
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+.plugin-section-copy {
+  flex: 1;
+  min-width: 0;
+}
+.plugin-section-copy strong,
+.plugin-section-copy small {
+  display: block;
+}
+.plugin-section-copy strong {
+  font-size: 13px;
+}
+.plugin-section-copy small {
+  margin-top: 3px;
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+}
+.horizontal-list {
     padding-left: 24px;
     padding-right: 24px;
   }

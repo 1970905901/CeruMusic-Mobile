@@ -52,6 +52,21 @@
         />
       </div>
 
+      <div v-if="playlistSections.length" class="playlist-plugin-sections ceru-pad">
+        <h2>插件歌单工具</h2>
+        <button
+          v-for="section in playlistSections"
+          :key="section.key"
+          type="button"
+          class="playlist-plugin-row ceru-card"
+          @click="openPlaylistSection(section)"
+        >
+          <ion-icon :icon="albumsOutline" />
+          <span class="ceru-truncate">{{ section.title }}</span>
+          <small class="ceru-truncate">{{ section.pluginName }}</small>
+        </button>
+      </div>
+
       <EmptyState
         v-if="!loading && !tracks.length && !error"
         title="歌单还是空的"
@@ -124,6 +139,27 @@ const cover = computed(() => {
   if (isLocal) return library.playlistTracks(remoteId).find((item) => item.artworkUrl)?.artworkUrl
   return String(route.query.cover || '')
 })
+const playlistSections = computed(() =>
+  pluginStore.enabledPlugins.flatMap((plugin) =>
+    (plugin.manifest.contributes?.playlistSections || []).map((section) => ({
+      key: plugin.key + ':' + section.id,
+      pluginKey: plugin.key,
+      pluginName: plugin.manifest.name,
+      title: section.title,
+      view: section.view
+    }))
+  )
+)
+
+function openPlaylistSection(section: { pluginKey: string; view: string }) {
+  void router.push(
+    '/plugin-surface/' +
+      encodeURIComponent(section.pluginKey) +
+      '/' +
+      encodeURIComponent(section.view)
+  )
+}
+
 const headerTitle = computed(() => title.value)
 const sourceName = computed(() => {
   if (isLocal) return '本地歌单'
@@ -326,6 +362,38 @@ onMounted(() => {
 }
 .list-block {
   margin: 18px 8px 0;
+}
+.playlist-plugin-sections {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+.playlist-plugin-sections h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 750;
+}
+.playlist-plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  color: var(--ceru-text);
+  text-align: left;
+}
+.playlist-plugin-row > ion-icon {
+  color: var(--ceru-brand);
+  font-size: 20px;
+}
+.playlist-plugin-row span {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.playlist-plugin-row small {
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
 }
 .bottom-space {
   height: 140px;

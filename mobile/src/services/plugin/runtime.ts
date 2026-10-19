@@ -909,6 +909,11 @@ export class PluginRuntimeManager {
         }
       },
       onState: ({ surfaceId, state }) => {
+        try {
+          if (JSON.stringify(state).length > 256 * 1024) return
+        } catch {
+          return
+        }
         this.surfaceStates.set(record.key + '\n' + surfaceId, state)
         for (const listener of this.surfaceListeners) {
           listener({ pluginKey: record.key, surfaceId, state })

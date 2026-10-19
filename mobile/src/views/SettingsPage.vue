@@ -101,6 +101,17 @@
         </ion-item>
       </ion-list>
 
+      <ion-list v-if="pluginPages.length" class="group">
+        <div class="group-title">插件页面</div>
+        <ion-item v-for="page in pluginPages" :key="page.key" button detail @click="openPluginPage(page)">
+          <ion-icon slot="start" :icon="albumsOutline" color="primary" />
+          <ion-label>
+            <h2>{{ page.title }}</h2>
+            <p>{{ page.pluginName }}<span v-if="page.group"> · {{ page.group }}</span></p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+
       <ion-list class="group">
         <div class="group-title">播放</div>
         <ion-item>
@@ -447,6 +458,7 @@ import {
   toastController
 } from '@ionic/vue'
 import {
+  albumsOutline,
   bookOutline,
   createOutline,
   cloudDownloadOutline,
@@ -502,6 +514,50 @@ const notifications = useNotificationsStore()
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
+
+const pluginPages = computed(() => {
+  const pages: Array<{ key: string; title: string; view: string; pluginKey: string; pluginName: string; group?: string }> = []
+  const seen = new Set<string>()
+  for (const plugin of pluginStore.enabledPlugins) {
+    for (const page of plugin.manifest.contributes?.settingsPages || []) {
+      const key = plugin.key + ':' + page.view
+      if (seen.has(key)) continue
+      seen.add(key)
+      pages.push({
+        key,
+        title: page.title,
+        view: page.view,
+        pluginKey: plugin.key,
+        pluginName: plugin.manifest.name
+      })
+    }
+    for (const page of plugin.manifest.contributes?.sidebarItems || []) {
+      const key = plugin.key + ':' + page.view
+      if (seen.has(key)) continue
+      seen.add(key)
+      pages.push({
+        key,
+        title: page.title,
+        view: page.view,
+        pluginKey: plugin.key,
+        pluginName: plugin.manifest.name,
+        group: page.group
+      })
+    }
+  }
+  return pages
+})
+
+function openPluginPage(page: { pluginKey: string; view: string }) {
+  void import('@/router').then(({ default: router }) => {
+    void router.push(
+      '/plugin-surface/' +
+        encodeURIComponent(page.pluginKey) +
+        '/' +
+        encodeURIComponent(page.view)
+    )
+  })
+}
 
 const checkingUpdates = ref(false)
 

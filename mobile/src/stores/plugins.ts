@@ -267,10 +267,14 @@ export const usePluginStore = defineStore('plugins', () => {
   }
 
   async function importFromUrl(url: string): Promise<PluginRecord> {
-    const response = await fetch(url)
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new Error('插件只能从不含账号信息的 HTTPS 地址安装')
+    }
+    const response = await fetch(parsed.href)
     if (!response.ok) throw new Error(`下载插件失败：HTTP ${response.status}`)
     const text = await response.text()
-    return importFromText(text, url.split('/').pop() || 'plugin.js', url)
+    return importFromText(text, parsed.pathname.split('/').pop() || 'plugin.js', parsed.href)
   }
 
   async function updateFromUrl(pluginKey: string): Promise<PluginRecord> {
