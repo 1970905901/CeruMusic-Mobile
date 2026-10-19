@@ -1,4 +1,5 @@
 import { installLegacyPolyfills } from '@/utils/polyfills'
+import { socketEventName } from '@/services/pluginSockets'
 
 installLegacyPolyfills()
 
@@ -424,7 +425,27 @@ const context: any = {
     schedule: (request: any, call?: any) => rpc('tasks.schedule', { request, call }),
     cancel: (id: string, call?: any) => rpc('tasks.cancel', { id, call })
   },
-  sockets: unsupportedService('sockets'),
+  sockets: {
+    connect: async (options: any) => {
+      const result = await rpc<{ id: string }>('sockets.connect', { options })
+      const id = result.id
+      return {
+        on: (event: string, handler: (data: any) => void) => {
+          const key = socketEventName(id, event)
+          let listeners = eventListeners.get(key)
+          if (!listeners) {
+            listeners = new Set()
+            eventListeners.set(key, listeners)
+          }
+          listeners.add(handler)
+          return () => listeners?.delete(handler)
+        },
+        emit: (event: string, data: any) => rpc('sockets.emit', { id, event, data }),
+        send: (data: any) => rpc('sockets.send', { id, data }),
+        disconnect: () => rpc('sockets.disconnect', { id })
+      }
+    }
+  },
   guests: {
     list: () => rpc('guests.list'),
     import: (adapterId: string) => rpc('guests.import', { adapterId }),

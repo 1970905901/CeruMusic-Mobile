@@ -9,6 +9,12 @@ import { validateScheduledTask, type PluginScheduledTask } from '@/services/plug
 import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import {
+  parseSocketPayload,
+  socketEventName,
+  validateSocketOptions,
+  type PluginSocketRuntime
+} from '@/services/pluginSockets'
+import {
   createShareDescriptor,
   readShareDescriptor,
   shareDescriptorFromUrl
@@ -203,6 +209,7 @@ export class PluginRuntime {
   private disposed = false
   private info: PluginRuntimeInfo = { providers: [], actions: [], importers: [], converters: [] }
   private scheduledTasks = new Map<string, PluginScheduledTask & { timer: ReturnType<typeof setTimeout> }>()
+  private sockets = new Map<string, PluginSocketRuntime>()
   private activationError: string | null = null
 
   constructor(options: PluginRuntimeOptions) {
@@ -296,6 +303,7 @@ export class PluginRuntime {
     }
     this.pending.clear()
     this.clearScheduledTasks()
+    this.clearSockets()
   }
 
   private invoke(payload: { kind: string; target: string; method?: string; args: any[] }): Promise<any> {
@@ -904,6 +912,32 @@ export class PluginRuntime {
           model: settings.settings.aiModel
         })
       }
+      case 'sockets.connect': {
+        const options = validateSocketOptions(params?.options ?? {})
+        await this.requirePermission(options.permissionKey, 'network.socket')
+        const socket = await this.connectSocket(options)
+        return { id: socket.id }
+      }
+      case 'sockets.send': {
+        const socket = this.sockets.get(String(params?.id ?? ''))
+        if (!socket) throw new Error('Socket 不存在或已断开')
+        await socket.send(params?.data)
+        return null
+      }
+      case 'sockets.emit': {
+        const socket = this.sockets.get(String(params?.id ?? ''))
+        if (!socket) throw new Error('Socket 不存在或已断开')
+        await socket.emit(String(params?.event ?? ''), params?.data)
+        return null
+      }
+      case 'sockets.disconnect': {
+        const socket = this.sockets.get(String(params?.id ?? ''))
+        if (socket) {
+          this.sockets.delete(socket.id)
+          await socket.disconnect()
+        }
+        return null
+      }
       case 'window.control':
         return null
       default:
@@ -945,7 +979,8 @@ export class PluginRuntime {
       call('tasks', ['schedule', 'cancel'], ['background']),
       call('ai', ['generate'], ['ai']),
       call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
-      call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl'])
+      call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl']),
+      call('sockets', ['connect', 'send', 'emit', 'disconnect'], ['network'])
     ]
   }
 
@@ -964,6 +999,71 @@ export class PluginRuntime {
       this.scheduleTask(task)
     }, task.intervalMs)
     this.scheduledTasks.set(task.id, { ...task, timer })
+  }
+
+  private async connectSocket(options: ReturnType<typeof validateSocketOptions>): Promise<PluginSocketRuntime> {
+    const id = 'socket-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+    if (options.kind === 'websocket') {
+      const socket = new WebSocket(options.url)
+      socket.onopen = () => this.publish(socketEventName(id, 'open'), null)
+      socket.onmessage = (event) => this.publish(socketEventName(id, 'message'), parseSocketPayload(event))
+      socket.onclose = (event) => this.publish(socketEventName(id, 'close'), event.reason || 'closed')
+      socket.onerror = () => this.publish(socketEventName(id, 'error'), 'Socket connection failed')
+      const runtime: PluginSocketRuntime = {
+        id,
+        kind: 'websocket',
+        send: async (data) => socket.send(typeof data === 'string' ? data : JSON.stringify(data)),
+        emit: async () => {
+          throw new Error('原生 WebSocket 不支持 emit，请使用 send')
+        },
+        disconnect: async () => socket.close(),
+        close: () => socket.close()
+      }
+      this.sockets.set(id, runtime)
+      return runtime
+    }
+
+    const { io } = await import('socket.io-client')
+    const socket = io(options.url, {
+      ...(options.path ? { path: options.path } : {}),
+      ...(options.auth ? { auth: options.auth } : {}),
+      reconnection: options.reconnection !== false,
+      transports: ['websocket']
+    })
+    socket.onAny((event, ...args) => {
+      const value = args.length === 1 ? args[0] : args
+      this.publish(socketEventName(id, String(event)), value)
+    })
+    socket.on('connect', () => this.publish(socketEventName(id, 'connect'), null))
+    socket.on('disconnect', (reason) => this.publish(socketEventName(id, 'disconnect'), reason))
+    socket.on('connect_error', (error) => this.publish(socketEventName(id, 'error'), error?.message || 'Socket connection failed'))
+    const runtime: PluginSocketRuntime = {
+      id,
+      kind: 'socket.io',
+      send: async (data) => {
+          socket.send(data)
+        },
+      emit: async (event, data) => {
+          socket.emit(event, data)
+        },
+      disconnect: async () => {
+          await socket.disconnect()
+        },
+      close: () => socket.disconnect()
+    }
+    this.sockets.set(id, runtime)
+    return runtime
+  }
+
+  private clearSockets() {
+    for (const socket of this.sockets.values()) {
+      try {
+        socket.close()
+      } catch {
+        // Closing a failed socket must not block runtime teardown.
+      }
+    }
+    this.sockets.clear()
   }
 
   private clearScheduledTasks() {
