@@ -1,7 +1,9 @@
 import { parsePluginArtifact } from '@/services/plugin/artifact'
+import type { UISlotName } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { PluginRecord } from '@/types/plugin'
 
 export interface PluginStyleEntry {
+  id: string
   key: string
   pluginKey: string
   css: string
@@ -23,6 +25,111 @@ function cssResourceValue(resource: any): string {
     return new TextDecoder().decode(bytes)
   }
   return ''
+}
+
+function serializeStyleRule(rule: CSSStyleRule, scopeSelector: string): string {
+  const selectors = rule.selectorText
+    .split(',')
+    .map((selector) => selector.trim())
+    .filter(Boolean)
+    .map((selector) => {
+      if (selector === ':root') return scopeSelector
+      if (selector.startsWith(':root')) return scopeSelector + selector.slice(':root'.length)
+      return `${scopeSelector} ${selector}`
+    })
+    .join(', ')
+  return `${selectors} { ${rule.style.cssText} }`
+}
+
+function serializeCssRule(rule: CSSRule, scopeSelector: string): string {
+  if (rule instanceof CSSStyleRule) return serializeStyleRule(rule, scopeSelector)
+  if (rule instanceof CSSMediaRule) {
+    const body = [...rule.cssRules]
+      .map((child) => serializeCssRule(child, scopeSelector))
+      .join('\n  ')
+    return `@media ${rule.conditionText} {\n  ${body}\n}`
+  }
+  if (rule instanceof CSSSupportsRule) {
+    const body = [...rule.cssRules]
+      .map((child) => serializeCssRule(child, scopeSelector))
+      .join('\n  ')
+    return `@supports ${rule.conditionText} {\n  ${body}\n}`
+  }
+  if (rule instanceof CSSKeyframesRule || rule instanceof CSSFontFaceRule) {
+    return rule.cssText
+  }
+  return ''
+}
+
+/**
+ * Prefixes host-rendered scoped CSS without loading remote imports. iOS 14
+ * cannot rely on constructable stylesheets, so parsing uses a temporary style
+ * element and CSSOM.
+ */
+export function scopeCss(css: string, scopeSelector: string): string {
+  if (!css.trim()) return ''
+  const element = document.createElement('style')
+  element.textContent = css
+  element.setAttribute('data-ceru-css-parser', '')
+  document.head.appendChild(element)
+  try {
+    const rules = [...(element.sheet?.cssRules ?? [])]
+    return rules
+      .map((rule) => serializeCssRule(rule, scopeSelector))
+      .filter(Boolean)
+      .join('\n')
+  } finally {
+    element.remove()
+  }
+}
+
+function collectScopedStyleEntries(
+  records: readonly PluginRecord[],
+  scope: 'slot' | 'surface',
+  slot?: UISlotName
+): PluginStyleEntry[] {
+  const entries: PluginStyleEntry[] = []
+  let totalBytes = 0
+  for (const record of records) {
+    if (!record.enabled || !record.artifactSource) continue
+    let artifact
+    try {
+      artifact = parsePluginArtifact(record.artifactSource)
+    } catch {
+      continue
+    }
+    for (const style of artifact.manifest.contributes?.styles ?? []) {
+      if (style.scope !== scope) continue
+      if (scope === 'slot' && style.slots?.length && (!slot || !style.slots.includes(slot))) continue
+      const css = cssResourceValue(artifact.resources[style.resource])
+      if (!css.trim()) continue
+      const bytes = new TextEncoder().encode(css).length
+      if (bytes > MAX_STYLE_BYTES) continue
+      if (totalBytes + bytes > MAX_TOTAL_BYTES) break
+      totalBytes += bytes
+      entries.push({
+        id: style.id,
+        key: record.key + ':' + style.id,
+        pluginKey: record.key,
+        css,
+        order: Number(style.order || 0)
+      })
+    }
+  }
+  return entries.sort(
+    (left, right) => left.order - right.order || left.key.localeCompare(right.key)
+  )
+}
+
+export function collectSlotStyles(
+  records: readonly PluginRecord[],
+  slot: UISlotName
+): PluginStyleEntry[] {
+  return collectScopedStyleEntries(records, 'slot', slot)
+}
+
+export function collectSurfaceStyles(records: readonly PluginRecord[]): PluginStyleEntry[] {
+  return collectScopedStyleEntries(records, 'surface')
 }
 
 /**
@@ -57,6 +164,7 @@ export function collectApplicationStyles(
       if (totalBytes + bytes > MAX_TOTAL_BYTES) break
       totalBytes += bytes
       entries.push({
+        id: style.id,
         key: record.key + ':' + style.id,
         pluginKey: record.key,
         css,

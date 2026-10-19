@@ -2,6 +2,7 @@ import type { PluginManifest, SurfaceDeclaration } from '@shiqianjiang/ceru-plug
 import type { PluginRecord } from '@/types/plugin'
 import { parsePluginArtifact } from '@/services/plugin/artifact'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
+import { collectSurfaceStyles } from '@/services/pluginStyles'
 
 let runtimeAssets:
   | Promise<{ runtime: string; catalog: Record<string, any> }>
@@ -99,11 +100,16 @@ export async function createPluginWebSurface(
     '  setTimeout(report, 80);' +
     '  setTimeout(report, 500);' +
     '})();'
+  const surfaceCss = collectSurfaceStyles([record])
+    .map((entry) => entry.css)
+    .join('\n')
+    .replace(/<\/style/gi, '<\\/style')
   const html =
     '<!doctype html><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src data:; style-src \'unsafe-inline\'; img-src data: blob:; font-src data:; connect-src \'none\'; object-src \'none\'; frame-src \'none\'; form-action \'none\'; base-uri \'none\'">' +
     '<style>html,body{margin:0;min-height:100%;background:transparent;color-scheme:light dark}#plugin-root{min-height:100%}</style>' +
+    (surfaceCss ? '<style data-ceru-plugin-surface-style>' + surfaceCss + '</style>' : '') +
     '<div id="plugin-root"></div>' +
     dataScript(runtime) +
     dataScript('globalThis.__ceruStart(' + code + ');') +

@@ -3,7 +3,10 @@ import { parsePluginArtifact } from './plugin/artifact'
 import {
   applyPluginApplicationStyles,
   clearPluginApplicationStyles,
-  collectApplicationStyles
+  collectApplicationStyles,
+  collectSlotStyles,
+  collectSurfaceStyles,
+  scopeCss
 } from './pluginStyles'
 import type { PluginRecord } from '@/types/plugin'
 
@@ -17,7 +20,9 @@ const artifactSource = `exports.manifest = {
   contributes: {
     styles: [
       { id: 'theme', resource: 'css.theme', scope: 'application', order: 2 },
-      { id: 'surface-only', resource: 'css.surface', scope: 'surface' }
+      { id: 'surface-only', resource: 'css.surface', scope: 'surface' },
+      { id: 'slot-home', resource: 'css.slot', scope: 'slot', slots: ['home.header'] },
+      { id: 'slot-player', resource: 'css.other', scope: 'slot', slots: ['player.actions'] }
     ]
   },
   permissions: [
@@ -31,7 +36,9 @@ exports.package = {
   modules: { 'logic.main': 'function (ctx) {}' },
   resources: {
     'css.theme': { type: 'text', mime: 'text/css', value: ':root { --plugin-accent: #123456; }' },
-    'css.surface': { type: 'text', mime: 'text/css', value: '.inside { color: red; }' }
+    'css.surface': { type: 'text', mime: 'text/css', value: '.inside { color: red; }' },
+    'css.slot': { type: 'text', mime: 'text/css', value: '.item { color: red; } :root { --slot-accent: #654321; } @media (min-width: 700px) { .item { font-size: 14px; } } @import url("https://example.invalid/x.css");' },
+    'css.other': { type: 'text', mime: 'text/css', value: '.other { color: blue; }' }
   }
 };
 exports.activate = function (ctx) {};`
@@ -57,6 +64,7 @@ describe('plugin application styles', () => {
     expect(collectApplicationStyles([record], () => false)).toEqual([])
     expect(collectApplicationStyles([record], () => true)).toEqual([
       {
+        id: 'theme',
         key: 'style.test:theme',
         pluginKey: 'style.test',
         css: ':root { --plugin-accent: #123456; }',
@@ -71,6 +79,28 @@ describe('plugin application styles', () => {
     ).toEqual([])
     const style = collectApplicationStyles([record], () => true)[0]
     expect(style.css).not.toContain('.inside')
+  })
+
+  it('collects and scopes slot styles without loading imports', () => {
+    expect(collectSlotStyles([record], 'home.header').map((item) => item.id)).toEqual([
+      'slot-home'
+    ])
+    const css = scopeCss(
+      collectSlotStyles([record], 'home.header')[0].css,
+      '[data-plugin-slot="home.header"]'
+    )
+    expect(css).toContain('[data-plugin-slot="home.header"] .item')
+    expect(css).toContain('[data-plugin-slot="home.header"] { --slot-accent: #654321; }')
+    expect(css).toContain('@media (min-width: 700px)')
+    expect(css).toContain('font-size: 14px;')
+    expect(css).not.toContain('@import')
+    expect(css).not.toContain('.other')
+  })
+
+  it('collects surface styles separately from application styles', () => {
+    expect(collectSurfaceStyles([record]).map((item) => item.id)).toEqual([
+      'surface-only'
+    ])
   })
 
   it('replaces installed style elements instead of duplicating them', () => {

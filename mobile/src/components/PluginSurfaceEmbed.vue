@@ -1,5 +1,5 @@
 <template>
-  <section class="plugin-surface-embed">
+  <section ref="surfaceElement" class="plugin-surface-embed" :data-plugin-surface="record.key + ':' + surface.id">
     <header v-if="surface.kind === 'web'" class="embed-head">
       <span class="embed-title">{{ surface.title || record.manifest.name }}</span>
       <small>{{ record.manifest.name }}</small>
@@ -29,19 +29,51 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import type { SurfaceDeclaration } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { PluginRecord } from '@/types/plugin'
 import PluginWebSurface from '@/components/PluginWebSurface.vue'
 import PluginNativeSurface from '@/components/PluginNativeSurface.vue'
 import PluginSchemaSurface from '@/components/PluginSchemaSurface.vue'
+import { collectSurfaceStyles, scopeCss } from '@/services/pluginStyles'
 
-defineProps<{
+const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
 }>()
 
+const surfaceElement = ref<HTMLElement | null>(null)
 const error = ref('')
+let styleElement: HTMLStyleElement | null = null
+
+const scopedCss = computed(() =>
+  props.surface.kind === 'web'
+    ? ''
+    : collectSurfaceStyles([props.record])
+        .map((entry) =>
+          scopeCss(
+            entry.css,
+            `[data-plugin-surface="${props.record.key}:${props.surface.id}"]`
+          )
+        )
+        .join('\n')
+)
+
+watchEffect(() => {
+  const css = scopedCss.value
+  const host = surfaceElement.value
+  if (!host || !css) return
+  styleElement?.remove()
+  styleElement = document.createElement('style')
+  styleElement.setAttribute('data-ceru-plugin-surface-style', props.surface.id)
+  styleElement.textContent = css
+  host.prepend(styleElement)
+})
+
+onBeforeUnmount(() => {
+  styleElement?.remove()
+  styleElement = null
+})
 </script>
 
 <style scoped>
