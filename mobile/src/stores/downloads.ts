@@ -1,0 +1,418 @@
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
+import type { DownloadStatus, DownloadTask } from '@/types/download'
+import type { Track } from '@/types/music'
+import { getDb, toPlain } from '@/services/db'
+import { usePluginStore } from '@/stores/plugins'
+import { useLibraryStore } from '@/stores/library'
+import { useSettingsStore } from '@/stores/settings'
+
+function extFromMime(mime?: string, url?: string): string {
+  if (mime?.includes('flac')) return 'flac'
+  if (mime?.includes('mpeg')) return 'mp3'
+  if (mime?.includes('mp4')) return 'm4a'
+  if (mime?.includes('ogg')) return 'ogg'
+  if (mime?.includes('wav')) return 'wav'
+  try {
+    const path = new URL(url || '').pathname
+    const match = path.match(/\.([a-z0-9]{2,5})$/i)
+    if (match) return match[1].toLowerCase()
+  } catch {
+    // Fall through.
+  }
+  return 'mp3'
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('读取下载数据失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+export const useDownloadStore = defineStore('downloads', () => {
+  const pluginStore = usePluginStore()
+  const library = useLibraryStore()
+  const settings = useSettingsStore()
+  const tasks = ref<DownloadTask[]>([])
+  const initialized = ref(false)
+  const activeRequests = new Map<string, XMLHttpRequest>()
+
+  const runningCount = computed(
+    () => tasks.value.filter((task) => task.status === 'running' || task.status === 'queued').length
+  )
+  const completed = computed(() => tasks.value.filter((task) => task.status === 'completed'))
+
+  async function init(): Promise<void> {
+    if (initialized.value) return
+    const db = await getDb()
+    tasks.value = (await db.getAll('downloads')).sort((a, b) => b.createdAt - a.createdAt)
+    initialized.value = true
+    for (const task of tasks.value) {
+      if (task.status === 'running' || task.status === 'queued') {
+        task.status = 'paused'
+        await db.put('downloads', toPlain(task))
+      }
+    }
+  }
+
+  async function persist(task: DownloadTask): Promise<void> {
+    const db = await getDb()
+    await db.put('downloads', toPlain(task))
+    pluginStore.publishDownloads({
+      id: task.id,
+      track: library.getTrack(task.trackKey)?.raw ?? { ref: { providerId: 'download', kind: 'track', id: task.id }, title: task.title, capabilities: [] },
+      status: task.status === 'cancelled' ? 'cancelled' : task.status,
+      receivedBytes: task.receivedBytes,
+      totalBytes: task.totalBytes,
+      error: task.error ? { code: 'INTERNAL', message: task.error } : undefined
+    })
+  }
+
+  function updateTask(id: string, patch: Partial<DownloadTask>): void {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task) return
+    Object.assign(task, patch, { updatedAt: Date.now() })
+    void persist(task)
+  }
+
+  async function downloadWithXhr(
+    task: DownloadTask,
+    url: string,
+    headers?: Record<string, string>
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      activeRequests.set(task.id, xhr)
+      xhr.open('GET', url, true)
+      xhr.responseType = 'blob'
+      if (headers) {
+        for (const [key, value] of Object.entries(headers)) {
+          try {
+            xhr.setRequestHeader(key, value)
+          } catch {
+            // Some headers are forbidden by the WebView; the direct URL may still work.
+          }
+        }
+      }
+      xhr.onprogress = (event) => {
+        if (event.lengthComputable) {
+          updateTask(task.id, {
+            receivedBytes: event.loaded,
+            totalBytes: event.total,
+            status: 'running'
+          })
+        } else {
+          updateTask(task.id, { receivedBytes: event.loaded, status: 'running' })
+        }
+      }
+      xhr.onerror = () => {
+        activeRequests.delete(task.id)
+        reject(new Error('网络下载失败'))
+      }
+      xhr.onabort = () => {
+        activeRequests.delete(task.id)
+        reject(new Error('下载已取消'))
+      }
+      xhr.onload = async () => {
+        activeRequests.delete(task.id)
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(`下载失败：HTTP ${xhr.status}`))
+          return
+        }
+        try {
+          const blob = xhr.response as Blob
+          const mime = blob.type || xhr.getResponseHeader('content-type') || 'audio/mpeg'
+          const ext = extFromMime(mime, url)
+          const path = `downloads/${task.id}.${ext}`
+          const base64 = await blobToBase64(blob)
+          await Filesystem.writeFile({
+            path,
+            data: base64,
+            directory: Directory.Data,
+            recursive: true
+          })
+          const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+          updateTask(task.id, {
+            status: 'completed',
+            receivedBytes: blob.size,
+            totalBytes: blob.size,
+            filePath: uri.uri,
+            relativePath: path,
+            mime
+          })
+          const track = library.getTrack(task.trackKey)
+          if (track) {
+            library.upsertTrack({
+              ...track,
+              downloadedPath: uri.uri,
+              downloadedRelativePath: path
+            })
+          }
+          resolve()
+        } catch (error) {
+          reject(error)
+        }
+      }
+      xhr.send()
+    })
+  }
+
+  function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    const chunk = 0x8000
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+    }
+    return btoa(binary)
+  }
+
+  async function responseToBase64(data: any): Promise<string> {
+    if (typeof data === 'string') {
+      return data.includes(',') ? data.slice(data.indexOf(',') + 1) : data
+    }
+    if (data instanceof Blob) return blobToBase64(data)
+    if (data instanceof ArrayBuffer) return arrayBufferToBase64(data)
+    if (ArrayBuffer.isView(data)) {
+      return arrayBufferToBase64(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer)
+    }
+    throw new Error('下载响应不是二进制数据')
+  }
+
+  async function downloadWithNativeHttp(
+    task: DownloadTask,
+    url: string,
+    headers?: Record<string, string>
+  ): Promise<void> {
+    updateTask(task.id, { status: 'running', receivedBytes: 0, error: undefined })
+    const response = await CapacitorHttp.request({
+      url,
+      method: 'GET',
+      headers,
+      responseType: 'blob',
+      connectTimeout: 30000,
+      readTimeout: 120000
+    })
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`下载失败：HTTP ${response.status}`)
+    }
+    const mime =
+      (response.headers && (response.headers['content-type'] || response.headers['Content-Type'])) ||
+      'audio/mpeg'
+    const ext = extFromMime(String(mime), url)
+    const path = `downloads/${task.id}.${ext}`
+    const base64 = await responseToBase64(response.data)
+    await Filesystem.writeFile({
+      path,
+      data: base64,
+      directory: Directory.Data,
+      recursive: true
+    })
+    const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+    const size = Math.floor((base64.length * 3) / 4)
+    updateTask(task.id, {
+      status: 'completed',
+      receivedBytes: size,
+      totalBytes: size,
+      filePath: uri.uri,
+      relativePath: path,
+      mime: String(mime)
+    })
+    const track = library.getTrack(task.trackKey)
+    if (track) {
+      library.upsertTrack({
+        ...track,
+        downloadedPath: uri.uri,
+        downloadedRelativePath: path
+      })
+    }
+  }
+
+  async function createDownload(track: Track, quality?: string): Promise<DownloadTask> {
+    library.upsertTrack(track)
+    const task: DownloadTask = {
+      id: `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      trackKey: track.key,
+      title: track.title,
+      artist: track.artists.join(' / '),
+      cover: track.artworkUrl,
+      quality: quality || settings.settings.downloadQuality || settings.settings.preferredQuality || undefined,
+      status: 'queued',
+      receivedBytes: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    tasks.value = [task, ...tasks.value]
+    await persist(task)
+    void runTask(task.id)
+    return task
+  }
+
+  async function runTask(id: string): Promise<void> {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task) return
+    if (task.status === 'completed' || task.status === 'cancelled') return
+    const active = tasks.value.filter((item) => item.status === 'running')
+    if (active.length >= Math.max(1, settings.settings.maxConcurrentDownloads)) {
+      task.status = 'queued'
+      return
+    }
+    const track = library.getTrack(task.trackKey)
+    if (!track) {
+      updateTask(id, { status: 'failed', error: '歌曲已不在资料库中' })
+      return
+    }
+    updateTask(id, { status: 'running', receivedBytes: 0, error: undefined })
+    try {
+      const resolved = await pluginStore.resolve(track, task.quality)
+      task.totalBytes = undefined
+      if (Capacitor.isNativePlatform()) {
+        await downloadWithNativeHttp(task, resolved.url, resolved.requestHeaders)
+      } else {
+        await downloadWithXhr(task, resolved.url, resolved.requestHeaders)
+      }
+      const next = tasks.value.find((item) => item.status === 'queued')
+      if (next) void runTask(next.id)
+    } catch (error) {
+      const currentStatus = task.status as DownloadStatus
+      if (currentStatus === 'cancelled' || currentStatus === 'paused') return
+      updateTask(id, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error)
+      })
+      const next = tasks.value.find((item) => item.status === 'queued')
+      if (next) void runTask(next.id)
+    }
+  }
+
+  function pause(ids: string[]): void {
+    for (const id of ids) {
+      const task = tasks.value.find((item) => item.id === id)
+      if (!task) continue
+      activeRequests.get(id)?.abort()
+      activeRequests.delete(id)
+      if (task.status === 'running' || task.status === 'queued') updateTask(id, { status: 'paused' })
+    }
+  }
+
+  function resume(ids: string[]): void {
+    for (const id of ids) {
+      const task = tasks.value.find((item) => item.id === id)
+      if (!task) continue
+      if (task.status === 'completed') continue
+      updateTask(id, { status: 'queued' })
+      void runTask(id)
+    }
+  }
+
+  function cancel(ids: string[]): void {
+    for (const id of ids) {
+      activeRequests.get(id)?.abort()
+      activeRequests.delete(id)
+      updateTask(id, { status: 'cancelled' })
+    }
+  }
+
+  function retry(ids: string[]): void {
+    resume(ids)
+  }
+
+  async function remove(id: string, deleteFile = true): Promise<void> {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task) return
+    activeRequests.get(id)?.abort()
+    if (deleteFile && task.filePath) {
+      try {
+        if (task.relativePath) await Filesystem.deleteFile({ path: task.relativePath, directory: Directory.Data })
+      } catch {
+        // File may already be gone.
+      }
+    }
+    const db = await getDb()
+    await db.delete('downloads', id)
+    tasks.value = tasks.value.filter((item) => item.id !== id)
+  }
+
+  async function share(id: string): Promise<void> {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task?.filePath) throw new Error('文件尚未下载完成')
+    await Share.share({
+      title: task.title,
+      text: `${task.title} - ${task.artist}`,
+      url: Capacitor.convertFileSrc(task.filePath)
+    })
+  }
+
+  function play(id: string): Track | null {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task?.filePath) return null
+    const track = library.getTrack(task.trackKey)
+    if (!track) return null
+    return { ...track, downloadedPath: task.filePath }
+  }
+
+  function asHostTasks() {
+    return tasks.value.map((task) => ({
+      id: task.id,
+      track: library.getTrack(task.trackKey)?.raw ?? {
+        ref: { providerId: 'download', kind: 'track', id: task.id },
+        title: task.title,
+        capabilities: []
+      },
+      status: task.status,
+      receivedBytes: task.receivedBytes,
+      totalBytes: task.totalBytes,
+      error: task.error ? { code: 'INTERNAL', message: task.error } : undefined
+    }))
+  }
+
+  async function createHostDownloads(request: any) {
+    const result: DownloadTask[] = []
+    for (const reference of request?.tracks ?? []) {
+      const track =
+        library.getTrack(`${reference.providerId}:${reference.id}`) ??
+        library.getTrack(`${reference.pluginId}:${reference.providerId}:${reference.id}`)
+      if (track) result.push(await createDownload(track, request?.quality))
+    }
+    return result.map((task) => ({
+      id: task.id,
+      track: library.getTrack(task.trackKey)?.raw ?? { ref: { providerId: 'download', kind: 'track', id: task.id }, title: task.title, capabilities: [] },
+      status: task.status,
+      receivedBytes: task.receivedBytes,
+      totalBytes: task.totalBytes
+    }))
+  }
+
+  async function clearCompleted(): Promise<void> {
+    const ids = tasks.value.filter((task) => task.status === 'completed').map((task) => task.id)
+    for (const id of ids) await remove(id, true)
+  }
+
+  return {
+    tasks,
+    initialized,
+    runningCount,
+    completed,
+    init,
+    createDownload,
+    pause,
+    resume,
+    cancel,
+    retry,
+    remove,
+    share,
+    play,
+    asHostTasks,
+    createHostDownloads,
+    clearCompleted
+  }
+})

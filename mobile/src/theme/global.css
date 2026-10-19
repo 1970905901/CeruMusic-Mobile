@@ -1,0 +1,307 @@
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: var(--ceru-bg);
+  color: var(--ceru-text);
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ion-font-family);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+ion-app {
+  background: var(--ceru-bg);
+}
+
+ion-content {
+  --background: var(--ceru-bg);
+}
+
+ion-toolbar {
+  --border-width: 0;
+  --background: var(--ceru-bg);
+}
+
+ion-title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+ion-list {
+  background: transparent;
+  padding: 0;
+}
+
+ion-item {
+  --background: transparent;
+  --border-color: var(--ceru-border);
+  --padding-start: 16px;
+  --inner-padding-end: 16px;
+}
+
+ion-tab-bar {
+  border-top: 1px solid var(--ceru-border);
+  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(56px + env(safe-area-inset-bottom));
+}
+
+html.ios ion-tab-bar {
+  backdrop-filter: var(--ceru-blur);
+  -webkit-backdrop-filter: var(--ceru-blur);
+  border-top-color: rgba(127, 127, 127, 0.18);
+}
+
+html.md ion-tab-bar {
+  height: calc(64px + env(safe-area-inset-bottom));
+}
+
+ion-tab-button {
+  --padding-top: 6px;
+  --padding-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+ion-button {
+  --border-radius: 14px;
+}
+
+html.ios ion-button {
+  --border-radius: 999px;
+  font-weight: 600;
+}
+
+html.md ion-button {
+  --border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ceru-page {
+  min-height: 100%;
+}
+
+.ceru-safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.ceru-pad {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.ceru-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.ceru-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ceru-card {
+  background: var(--ceru-bg-elevated);
+  border: 1px solid var(--ceru-border);
+  border-radius: var(--ceru-card-radius);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+}
+
+html.dark .ceru-card {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+}
+
+.ceru-glass {
+  background: var(--ceru-bg-soft);
+  backdrop-filter: var(--ceru-blur);
+  -webkit-backdrop-filter: var(--ceru-blur);
+}
+
+.ceru-muted {
+  color: var(--ceru-text-secondary);
+}
+
+.ceru-brand {
+  color: var(--ceru-brand);
+}
+
+.ceru-title {
+  font-size: 28px;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  margin: 0;
+}
+
+html.md .ceru-title {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+.ceru-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.ceru-section-subtitle {
+  font-size: 13px;
+  color: var(--ceru-text-secondary);
+  margin: 4px 0 0;
+}
+
+.ceru-cover {
+  border-radius: 12px;
+  object-fit: cover;
+  background: linear-gradient(135deg, rgba(0, 218, 192, 0.24), rgba(80, 120, 255, 0.18));
+}
+
+.ceru-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(0, 218, 192, 0.3), rgba(80, 120, 255, 0.24));
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ceru-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ceru-press {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.ceru-press:active {
+  transform: scale(0.975);
+  opacity: 0.9;
+}
+
+.ceru-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ceru-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--ceru-text-secondary);
+}
+
+.ceru-empty ion-icon {
+  font-size: 44px;
+  color: var(--ceru-brand);
+  opacity: 0.8;
+}
+
+.ceru-error {
+  color: var(--ceru-danger);
+}
+
+.ceru-chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.ceru-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ceru-chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--ceru-border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ceru-text-secondary);
+  background: var(--ceru-bg-elevated);
+}
+
+.ceru-chip.active {
+  color: var(--ceru-brand-contrast);
+  background: var(--ceru-brand);
+  border-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html.ios ion-modal {
+  --border-radius: 24px 24px 0 0;
+}
+
+html.ios ion-modal.fullscreen {
+  --border-radius: 0;
+}
+
+ion-modal.player-modal {
+  --width: 100%;
+  --height: 100%;
+  --border-radius: 0;
+  --background: transparent;
+}
+
+ion-toast {
+  --border-radius: 14px;
+}
+
+
+/* Safari 14.0 ships grid gap but not flex gap. Keep the key rows spaced. */
+html.no-flex-gap .ceru-row > * + *,
+html.no-flex-gap .track-row > * + *,
+html.no-flex-gap .playlist-row > * + *,
+html.no-flex-gap .plugin-card > * + *,
+html.no-flex-gap .task-top > * + *,
+html.no-flex-gap .hero > * + * {
+  margin-left: 12px;
+}
+html.no-flex-gap .mini .body > * + *,
+html.no-flex-gap .quick-card > * + *,
+html.no-flex-gap .feature > * + *,
+html.no-flex-gap .source-row > * + *,
+html.no-flex-gap .queue-main > * + *,
+html.no-flex-gap .plugin-title-row > * + *,
+html.no-flex-gap .plugin-tail > * + * {
+  margin-left: 8px;
+}
+html.no-flex-gap .horizontal-list > * + * {
+  margin-left: 12px;
+}
+html.no-flex-gap .bottom-actions > * + * {
+  margin-left: 8px;
+}
+html.no-flex-gap .top-bar > * + * {
+  margin-left: 8px;
+}
+html.no-flex-gap .hero-actions > * + * {
+  margin-left: 8px;
+}

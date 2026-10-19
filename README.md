@@ -377,3 +377,12 @@ CeruMuisc/
 
 若您认可本项目的技术价值，欢迎通过以下方式支持开发者（仅用于项目技术维护与迭代）：
 <img src="assets/image-20250827175356006.png" alt="赞助方式1" style="zoom:33%;" /><img src="assets/image-20250827175547444.png" alt="赞助方式2" style="zoom: 33%;" />
+
+## 移动端（iOS / Android）
+
+移动端移植工程位于 [mobile/](./mobile/)，使用 Vue 3 + Ionic Vue + Capacitor 7，保留 Ceru v2 插件协议。
+
+- iOS：iPhone / iPad，部署目标 iOS 14.0。
+- Android：arm64-v8a release APK，最低 Android 7.0。
+- GitHub Actions：手动运行 **Build Ceru Music Mobile**，或推送 **mobile-v*** 标签。产物为 Android APK 与 iOS unsigned IPA。
+- 构建、签名与当前功能边界见 [mobile/README.md](./mobile/README.md)。

@@ -1,0 +1,165 @@
+name: Build Ceru Music Mobile
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'mobile-v*'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android arm64 APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build web assets
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Configure production signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/keystore.jks
+            {
+              printf 'storeFile=../keystore.jks\n'
+              printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
+              printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            } > android/keystore.properties
+            echo "Using production keystore."
+          else
+            echo "No keystore secrets; release APK will use the debug key for sideloading."
+          fi
+
+      - name: Build release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Collect APK
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            artifacts/CeruMusic-2.3.1-android-arm64.apk
+          ls -lh artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ceru-music-android
+          path: mobile/artifacts/CeruMusic-2.3.1-android-arm64.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS iPhone/iPad build
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build web assets
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Install CocoaPods
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Build unsigned iPhone and iPad app
+        run: |
+          set -euo pipefail
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package unsigned IPA for sideload signing
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/Payload
+          cp -R ios/App/build/Build/Products/Release-iphoneos/App.app artifacts/Payload/
+          cd artifacts
+          zip -qry CeruMusic-2.3.1-ios-unsigned.ipa Payload
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ceru-music-ios
+          path: mobile/artifacts/CeruMusic-2.3.1-ios-unsigned.ipa
+          if-no-files-found: error
+
+  release:
+    name: Publish mobile release
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-latest
+    needs: [android, ios]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

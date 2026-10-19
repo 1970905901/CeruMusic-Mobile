@@ -1,0 +1,14 @@
+Ceru Music Mobile
+================
+
+This mobile port is derived from Ceru Music:
+https://github.com/timeshiftsauce/CeruMusic
+
+Original project Copyright (c) 澜音团队 and contributors.
+Licensed under the GNU Affero General Public License v3.0 only.
+
+Mobile port modifications are distributed under the same license.
+The mobile app does not bundle any music source, audio files, or default plugins.
+
+Third-party runtime and UI dependencies retain their respective licenses; see
+mobile/package.json and mobile/package-lock.json for the dependency inventory.

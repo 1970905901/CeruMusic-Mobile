@@ -1,0 +1,62 @@
+:root {
+  --ceru-bg: #f5f7f8;
+  --ceru-bg-elevated: #ffffff;
+  --ceru-bg-soft: rgba(255, 255, 255, 0.72);
+  --ceru-text: #101418;
+  --ceru-text-secondary: #68727d;
+  --ceru-border: rgba(16, 20, 24, 0.09);
+  --ceru-brand: #00b39b;
+  --ceru-brand-bright: #00dac0;
+  --ceru-brand-contrast: #032b26;
+  --ceru-danger: #e5484d;
+  --ceru-shadow: 0 18px 50px rgba(20, 32, 42, 0.12);
+  --ceru-card-radius: 18px;
+  --ceru-blur: saturate(180%) blur(24px);
+
+  --ion-background-color: var(--ceru-bg);
+  --ion-background-color-rgb: 245, 247, 248;
+  --ion-text-color: var(--ceru-text);
+  --ion-text-color-rgb: 16, 20, 24;
+  --ion-color-primary: var(--ceru-brand);
+  --ion-color-primary-rgb: 0, 179, 155;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #009e89;
+  --ion-color-primary-tint: #1abaa5;
+  --ion-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ion-tab-bar-background: var(--ceru-bg-elevated);
+  --ion-tab-bar-color: var(--ceru-text-secondary);
+  --ion-tab-bar-color-selected: var(--ceru-brand);
+  --ion-toolbar-background: var(--ceru-bg);
+  --ion-item-background: transparent;
+  --ion-card-background: var(--ceru-bg-elevated);
+}
+
+html.dark {
+  --ceru-bg: #0b0f14;
+  --ceru-bg-elevated: #121922;
+  --ceru-bg-soft: rgba(18, 25, 34, 0.74);
+  --ceru-text: #f2f6f8;
+  --ceru-text-secondary: #8b97a4;
+  --ceru-border: rgba(255, 255, 255, 0.09);
+  --ceru-brand: #00dac0;
+  --ceru-brand-bright: #49ffe5;
+  --ceru-brand-contrast: #032b26;
+  --ceru-danger: #ff6b6f;
+  --ceru-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+
+  --ion-background-color: var(--ceru-bg);
+  --ion-background-color-rgb: 11, 15, 20;
+  --ion-text-color: var(--ceru-text);
+  --ion-text-color-rgb: 242, 246, 248;
+  --ion-color-primary: var(--ceru-brand);
+  --ion-color-primary-rgb: 0, 218, 192;
+  --ion-color-primary-contrast: #032b26;
+  --ion-color-primary-contrast-rgb: 3, 43, 38;
+  --ion-color-primary-shade: #00c0aa;
+  --ion-color-primary-tint: #1ae0c6;
+  --ion-tab-bar-background: rgba(11, 15, 20, 0.88);
+  --ion-toolbar-background: var(--ceru-bg);
+  --ion-card-background: var(--ceru-bg-elevated);
+}
