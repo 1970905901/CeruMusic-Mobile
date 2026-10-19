@@ -410,7 +410,12 @@ const context: any = {
     revoke: (id: string, call?: any) => rpc('sharing.revoke', { id, call }),
     resolve: (url: string) => rpc('sharing.resolve', { url })
   },
-  rooms: unsupportedService('rooms'),
+  rooms: {
+    getState: (call?: any) => rpc('rooms.getState', { call }),
+    join: (inviteCode: string, call?: any) => rpc('rooms.join', { inviteCode, call }),
+    leave: (call?: any) => rpc('rooms.leave', { call }),
+    requestTrack: (track: any, call?: any) => rpc('rooms.requestTrack', { track, call })
+  },
   devices: unsupportedService('devices'),
   ai: {
     generate: (request: any, call?: any) => rpc('ai.generate', { request, call })

@@ -7,6 +7,7 @@ import { kvDelete, kvGet, kvSet, toPlain } from '@/services/db'
 import { useSettingsStore } from '@/stores/settings'
 import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
 import { generatePluginAI } from '@/services/pluginAI'
+import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import {
   createShareDescriptor,
   readShareDescriptor,
@@ -855,6 +856,44 @@ export class PluginRuntime {
       case 'sharing.revoke':
         await this.requirePermission(params?.call?.permissionKey, '撤销分享')
         return null
+      case 'rooms.getState': {
+        await this.requirePermission(params?.call?.permissionKey, '一起听状态读取')
+        const { useListenTogetherStore } = await import('@/stores/listenTogether')
+        const room = useListenTogetherStore()
+        return pluginRoomState({
+          room: room.room,
+          members: room.members,
+          role: room.myRole
+        })
+      }
+      case 'rooms.join': {
+        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        const { useListenTogetherStore } = await import('@/stores/listenTogether')
+        const room = useListenTogetherStore()
+        await room.resolveAndJoin(String(params?.inviteCode ?? ''))
+        return pluginRoomState({
+          room: room.room,
+          members: room.members,
+          role: room.myRole
+        })
+      }
+      case 'rooms.leave': {
+        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        const { useListenTogetherStore } = await import('@/stores/listenTogether')
+        await useListenTogetherStore().leave()
+        return null
+      }
+      case 'rooms.requestTrack': {
+        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        const { useListenTogetherStore } = await import('@/stores/listenTogether')
+        const room = useListenTogetherStore()
+        const { usePlayerStore } = await import('@/stores/player')
+        const player = usePlayerStore()
+        const candidates = player.currentTrack ? [player.currentTrack, ...player.queue] : player.queue
+        const track = findTrackByRef(params?.track, candidates)
+        if (!track || !room.requestTrack(track)) throw new Error('点播歌曲不在当前队列中')
+        return null
+      }
       case 'ai.generate': {
         await this.requirePermission(params?.call?.permissionKey, 'AI 服务')
         const settings = useSettingsStore()
@@ -905,7 +944,8 @@ export class PluginRuntime {
       call('window', ['control'], ['window']),
       call('tasks', ['schedule', 'cancel'], ['background']),
       call('ai', ['generate'], ['ai']),
-      call('sharing', ['create', 'revoke', 'resolve'], ['sharing'])
+      call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
+      call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl'])
     ]
   }
 

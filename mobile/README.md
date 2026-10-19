@@ -133,7 +133,7 @@ esizeableActivity 与大屏支持。
 
 ## 当前版本边界
 
-已实现的移动端能力包括：插件安装/启用与管理、Web/Native/Schema Surface、Guest 兼容子插件、Home/Settings/Sidebar/Playlist 贡献入口、playlist.item.actions 命令与共享 Surface、插件歌单导入器、歌词转换器、插件周期任务、插件 AI 调用、插件数据分享链接、插件账号、搜索、播放、歌词、歌曲评论、后端歌曲/歌单分享链接与深链打开、队列、收藏、歌单、本地导入、下载、识别、歌单转换、社区、AI 助手、一起听、通知、云账号与 Logto、主题与设置。
+已实现的移动端能力包括：插件安装/启用与管理、Web/Native/Schema Surface、Guest 兼容子插件、Home/Settings/Sidebar/Playlist 贡献入口、playlist.item.actions 命令与共享 Surface、插件歌单导入器、歌词转换器、插件周期任务、插件 AI 调用、插件数据分享链接、插件一起听、插件账号、搜索、播放、歌词、歌曲评论、后端歌曲/歌单分享链接与深链打开、队列、收藏、歌单、本地导入、下载、识别、歌单转换、社区、AI 助手、一起听、通知、云账号与 Logto、主题与设置。
 
 以下能力仍待后续里程碑完成，界面上不会伪装成可用：
 
