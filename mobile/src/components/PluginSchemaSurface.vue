@@ -99,6 +99,7 @@ import {
 } from '@ionic/vue'
 import type { PluginRecord } from '@/types/plugin'
 import type { SurfaceDeclaration } from '@shiqianjiang/ceru-plugin-sdk/manifest'
+import type { PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import { readPluginSchemaResource } from '@/services/pluginSurface'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
 import { usePluginStore } from '@/stores/plugins'
@@ -140,6 +141,7 @@ const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
   embedded?: boolean
+  mount?: PluginSurfaceMount
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -253,7 +255,7 @@ async function closeLifecycle() {
   if (closed || !action) return
   closed = true
   try {
-    await pluginStore.invokeAction(props.record.key, action, {})
+    await pluginStore.invokeAction(props.record.key, action, props.mount?.context ?? {})
   } catch {
     // Page teardown must not be blocked by plugin cleanup.
   }
@@ -275,7 +277,7 @@ onMounted(async () => {
     const action = schema.value?.presentation.openAction
     if (action && !opened) {
       opened = true
-      await pluginStore.invokeAction(props.record.key, action, {})
+      await pluginStore.invokeAction(props.record.key, action, props.mount?.context ?? {})
     }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '插件表单初始化失败'

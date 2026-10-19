@@ -19,6 +19,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { IonSpinner, toastController } from '@ionic/vue'
 import type { PluginRecord } from '@/types/plugin'
 import type { SurfaceDeclaration } from '@shiqianjiang/ceru-plugin-sdk/manifest'
+import type { PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import { createPluginWebSurface } from '@/services/pluginSurface'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
 import { usePluginStore } from '@/stores/plugins'
@@ -27,6 +28,7 @@ const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
   embedded?: boolean
+  mount?: PluginSurfaceMount
 }>()
 const emit = defineEmits<{ close: []; error: [message: string] }>()
 
@@ -81,7 +83,7 @@ async function receive(event: MessageEvent) {
     if (!opened && props.surface.lifecycle?.openAction) {
       opened = true
       try {
-        await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.openAction, {})
+        await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.openAction, props.mount?.context ?? {})
       } catch (cause) {
         error.value = cause instanceof Error ? cause.message : '插件页面初始化失败'
         emit('error', error.value)
@@ -132,7 +134,7 @@ async function closeLifecycle() {
   if (closed || !props.surface.lifecycle?.closeAction) return
   closed = true
   try {
-    await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.closeAction, {})
+    await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.closeAction, props.mount?.context ?? {})
   } catch {
     // Closing the plugin surface must not block navigation.
   }
@@ -146,7 +148,7 @@ onMounted(async () => {
     }
   })
   try {
-    document.value = await createPluginWebSurface(props.record, props.surface.id, sessionId)
+    document.value = await createPluginWebSurface(props.record, props.surface.id, sessionId, props.mount)
     send('init', document.value.init)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '插件页面加载失败'

@@ -90,6 +90,7 @@ import { chevronForwardOutline, ellipsisHorizontal } from 'ionicons/icons'
 import type { NativeView, NativeViewSection } from '@shiqianjiang/ceru-plugin-sdk'
 import type { PluginRecord } from '@/types/plugin'
 import type { SurfaceDeclaration } from '@shiqianjiang/ceru-plugin-sdk/manifest'
+import type { PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import CoverImage from '@/components/CoverImage.vue'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
 import { usePluginStore } from '@/stores/plugins'
@@ -98,6 +99,7 @@ const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
   embedded?: boolean
+  mount?: PluginSurfaceMount
 }>()
 
 const pluginStore = usePluginStore()
@@ -125,7 +127,7 @@ async function render() {
   loading.value = true
   error.value = ''
   try {
-    const result = await pluginStore.invokeAction(props.record.key, props.surface.entry, {})
+    const result = await pluginStore.invokeAction(props.record.key, props.surface.entry, props.mount?.context ?? {})
     if (!result || typeof result !== 'object' || !Array.isArray(result.sections)) {
       throw new Error('插件返回了无效的原生页面')
     }
@@ -195,7 +197,7 @@ async function closeLifecycle() {
   if (closed || !props.surface.lifecycle?.closeAction) return
   closed = true
   try {
-    await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.closeAction, {})
+    await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.closeAction, props.mount?.context ?? {})
   } catch {
     // Navigation must not be blocked by plugin cleanup.
   }
@@ -213,7 +215,7 @@ onMounted(async () => {
   try {
     if (!opened && props.surface.lifecycle?.openAction) {
       opened = true
-      await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.openAction, {})
+      await pluginStore.invokeAction(props.record.key, props.surface.lifecycle.openAction, props.mount?.context ?? {})
     }
     await render()
   } catch (cause) {

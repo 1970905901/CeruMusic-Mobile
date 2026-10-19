@@ -5,6 +5,7 @@
       :key="extension.plugin.key + ':' + extension.id"
       :record="extension.plugin"
       :surface="extension.surface"
+      :mount="extensionMount(extension)"
     />
   </div>
 </template>
@@ -13,14 +14,16 @@
 import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import type { UISlotName } from '@shiqianjiang/ceru-plugin-sdk/manifest'
+import type { PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import PluginSurfaceEmbed from '@/components/PluginSurfaceEmbed.vue'
-import { getPluginSurface } from '@/services/pluginSurface'
+import { collectPluginSlotExtensions } from '@/services/pluginSlot'
 import { useAuthStore } from '@/stores/auth'
 import { usePluginStore } from '@/stores/plugins'
 import { collectSlotStyles, scopeCss } from '@/services/pluginStyles'
 
 const props = defineProps<{
   slot: UISlotName
+  context?: Record<string, any>
 }>()
 
 const route = useRoute()
@@ -29,12 +32,13 @@ const pluginStore = usePluginStore()
 const slotElement = ref<HTMLElement | null>(null)
 let styleElement: HTMLStyleElement | null = null
 
-function routeMatches(pattern?: string): boolean {
-  if (!pattern) return true
-  const current = route.path
-  if (pattern.endsWith('*')) return current.startsWith(pattern.slice(0, -1))
-  const base = pattern.replace(/\/+$/, '')
-  return current === base || current.startsWith(base + '/')
+function extensionMount(extension: (typeof extensions.value)[number]): PluginSurfaceMount {
+  return {
+    kind: 'slot',
+    slot: props.slot,
+    mode: extension.mode,
+    context: props.context
+  }
 }
 
 const scopedCss = computed(() =>
@@ -54,33 +58,12 @@ watchEffect(() => {
   host.prepend(styleElement)
 })
 
-const extensions = computed(() => {
-  const result = []
-  for (const plugin of pluginStore.enabledPlugins) {
-    for (const extension of plugin.manifest.contributes?.uiExtensions ?? []) {
-      if (extension.slot !== props.slot) continue
-      if (
-        extension.when?.loggedIn !== undefined &&
-        extension.when.loggedIn !== auth.authenticated
-      ) {
-        continue
-      }
-      if (!routeMatches(extension.when?.route)) continue
-      const surface = getPluginSurface(plugin.manifest, extension.view)
-      if (!surface) continue
-      result.push({
-        ...extension,
-        plugin,
-        surface
-      })
-    }
-  }
-  return result.sort(
-    (left, right) =>
-      Number(left.order || 0) - Number(right.order || 0) ||
-      left.plugin.manifest.name.localeCompare(right.plugin.manifest.name)
-  )
-})
+const extensions = computed(() =>
+  collectPluginSlotExtensions(pluginStore.enabledPlugins, props.slot, {
+    routePath: route.path,
+    authenticated: auth.authenticated
+  })
+)
 
 onBeforeUnmount(() => {
   styleElement?.remove()

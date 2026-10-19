@@ -2,6 +2,7 @@ import type { PluginManifest, SurfaceDeclaration } from '@shiqianjiang/ceru-plug
 import type { PluginRecord } from '@/types/plugin'
 import { parsePluginArtifact } from '@/services/plugin/artifact'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
+import { prepareSurfaceMount, type PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import { collectSurfaceStyles } from '@/services/pluginStyles'
 
 let runtimeAssets:
@@ -60,7 +61,8 @@ export interface PluginWebSurfaceDocument {
 export async function createPluginWebSurface(
   record: PluginRecord,
   surfaceId: string,
-  sessionId: string
+  sessionId: string,
+  mount?: PluginSurfaceMount
 ): Promise<PluginWebSurfaceDocument> {
   const artifact = parsePluginArtifact(record.artifactSource || record.code)
   const surface = artifact.manifest.modules?.surfaces?.find((item) => item.id === surfaceId)
@@ -127,7 +129,7 @@ export async function createPluginWebSurface(
       manifest: { ...artifact.manifest, config: {} },
       resources: artifact.resources,
       catalog,
-      mount: { kind: 'page' }
+      mount: prepareSurfaceMount(mount)
     }
   }
 }

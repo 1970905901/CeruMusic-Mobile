@@ -44,14 +44,15 @@
       <p v-if="error" class="error">{{ error }}</p>
 
       <div v-if="tracks.length" class="list-block">
-        <TrackRow
-          v-for="track in tracks"
-          :key="track.key"
-          :track="track"
-          :favorite="library.isFavorite(track)"
-          @play="play"
-          @more="openMore"
-        />
+        <div v-for="track in tracks" :key="track.key" class="track-list-item">
+          <TrackRow
+            :track="track"
+            :favorite="library.isFavorite(track)"
+            @play="play"
+            @more="openMore"
+          />
+          <PlaylistItemActions :track="track" />
+        </div>
       </div>
 
       <div v-if="playlistSections.length" class="playlist-plugin-sections ceru-pad">
@@ -109,6 +110,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
+import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'

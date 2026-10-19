@@ -8,6 +8,7 @@
       v-if="surface.kind === 'web'"
       :record="record"
       :surface="surface"
+      :mount="mount"
       embedded
       @error="error = $event"
     />
@@ -15,12 +16,14 @@
       v-else-if="surface.kind === 'native'"
       :record="record"
       :surface="surface"
+      :mount="mount"
       embedded
     />
     <PluginSchemaSurface
       v-else-if="surface.kind === 'schema'"
       :record="record"
       :surface="surface"
+      :mount="mount"
       embedded
     />
     <div v-else class="embed-error">不支持的插件界面类型</div>
@@ -32,6 +35,7 @@
 import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import type { SurfaceDeclaration } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { PluginRecord } from '@/types/plugin'
+import type { PluginSurfaceMount } from '@/services/pluginSurfaceMount'
 import PluginWebSurface from '@/components/PluginWebSurface.vue'
 import PluginNativeSurface from '@/components/PluginNativeSurface.vue'
 import PluginSchemaSurface from '@/components/PluginSchemaSurface.vue'
@@ -40,6 +44,7 @@ import { collectSurfaceStyles, scopeCss } from '@/services/pluginStyles'
 const props = defineProps<{
   record: PluginRecord
   surface: SurfaceDeclaration
+  mount?: PluginSurfaceMount
 }>()
 
 const surfaceElement = ref<HTMLElement | null>(null)

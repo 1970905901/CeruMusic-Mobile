@@ -114,7 +114,8 @@ mobile/
 - 洛雪兼容子插件：Guest 脚本在沙箱 iframe 中运行，网络权限逐项确认，脚本 SHA-256 校验并在 IndexedDB 持久化。
 - iOS 版本外观类名：根据运行中的 iOS 主版本添加 `ios-14` … `ios-26`、`ios-legacy`、`ios-modern`、`ios-liquid`，用于版本差异化外壳样式。
 - iPad 宽屏布局：内容区宽度限制、弹窗宽度和歌单网格列数在大屏设备上自适应。
-- Android 平板/大屏：最短边 ≥ 600dp 时启用平板布局，浮动 Material 导航栏、1180px 内容区、四列发现卡片、六列歌单网格、播放页双栏；横竖屏与分屏窗口缩放会实时切换；AndroidManifest 声明 esizeableActivity 与大屏支持。
+- Android 平板/大屏：最短边 ≥ 600dp 时启用平板布局，浮动 Material 导航栏、1180px 内容区、四列发现卡片、六列歌单网格、播放页双栏；横竖屏与分屏窗口缩放会实时切换；AndroidManifest 声明
+esizeableActivity 与大屏支持。
 
 > 说明：iOS 版本差异化目前是 Ionic 外壳上的版本类名与样式分支，不是 SwiftUI/UIKit 原生控件级的逐版本实现。其余剩余边界见下方“当前版本边界”。
 
@@ -132,12 +133,12 @@ mobile/
 
 ## 当前版本边界
 
-已实现的移动端能力包括：插件安装/启用与管理、Web/Native/Schema Surface、Guest 兼容子插件、Home/Settings/Sidebar/Playlist 贡献入口、插件账号、搜索、播放、歌词、歌曲评论、后端歌曲分享链接与深链打开、队列、收藏、歌单、本地导入、下载、识别、歌单转换、社区、AI 助手、一起听、通知、云账号与 Logto、主题与设置。
+已实现的移动端能力包括：插件安装/启用与管理、Web/Native/Schema Surface、Guest 兼容子插件、Home/Settings/Sidebar/Playlist 贡献入口、playlist.item.actions 上下文 Surface、插件账号、搜索、播放、歌词、歌曲评论、后端歌曲分享链接与深链打开、队列、收藏、歌单、本地导入、下载、识别、歌单转换、社区、AI 助手、一起听、通知、云账号与 Logto、主题与设置。
 
 以下能力仍待后续里程碑完成，界面上不会伪装成可用：
 
 - 后端歌单分享链接（依赖云歌单）与分享链接批量导入
-- `uiExtensions` 的 `playlist.item.actions` 内嵌；slot/surface/应用级样式与菜单贡献已接入
+
 - HTTP/SOCKS5 代理与自定义 CA
 - iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放，SAF 导入/下载已接入）
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件（当前为 Ionic iOS 模式、安全区与 `ios-14` … `ios-26` 版本化样式）
