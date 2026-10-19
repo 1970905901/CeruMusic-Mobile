@@ -13,7 +13,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.PluginMethod;
+import com.getcapacitor.PluginMethod;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
