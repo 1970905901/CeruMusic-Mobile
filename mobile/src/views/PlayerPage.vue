@@ -86,6 +86,10 @@
               <ion-icon :icon="textOutline" />
               歌词
             </button>
+            <button type="button" class="action-pill" @click="openComments">
+              <ion-icon :icon="chatbubbleEllipsesOutline" />
+              评论
+            </button>
             <button type="button" class="action-pill" @click="openQueue">
               <ion-icon :icon="listOutline" />
               队列
@@ -149,6 +153,8 @@
         </ion-reorder-group>
       </ion-content>
     </ion-modal>
+
+    <TrackCommentsSheet :open="commentsOpen" :track="track" @close="commentsOpen = false" />
   </ion-page>
 </template>
 
@@ -169,6 +175,7 @@ import {
   useIonRouter
 } from '@ionic/vue'
 import {
+  chatbubbleEllipsesOutline,
   chevronDown,
   cloudDownloadOutline,
   ellipsisHorizontal,
@@ -190,6 +197,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
@@ -228,6 +236,7 @@ const lyricsLoading = ref(false)
 const lyricsDoc = ref<LyricDocument>({ lines: [], format: 'plain' })
 const lyricsContainer = ref<HTMLElement | null>(null)
 const queueOpen = ref(false)
+const commentsOpen = ref(false)
 const artSize = ref(Math.min(360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
 
@@ -348,6 +357,10 @@ async function choosePlaybackRate() {
   })
   await sheet.present()
 }
+async function openComments() {
+  commentsOpen.value = true
+}
+
 async function openQueue() {
   queueOpen.value = true
 }
@@ -376,6 +389,10 @@ async function openMore() {
           player.setSleepTimer(player.sleepRemainingMs ? null : 15)
           void toast(player.sleepRemainingMs ? '已关闭睡眠定时' : '将在 15 分钟后暂停')
         }
+      },
+      {
+        text: '查看评论',
+        handler: () => openComments()
       },
       {
         text: '分享',

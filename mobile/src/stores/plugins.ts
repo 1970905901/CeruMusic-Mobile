@@ -6,6 +6,15 @@ import type { SearchPage, Track } from '@/types/music'
 import { clearPluginKv, getDb, kvGet, kvSet, toPlain } from '@/services/db'
 import { parsePluginArtifact } from '@/services/plugin/artifact'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
+import {
+  buildCommentSong,
+  COMMENT_PAGE_SIZE,
+  commentActionFor,
+  commentKindLabel,
+  normalizeCommentPage,
+  type CommentKind,
+  type CommentPage
+} from '@/services/comments'
 import { useSettingsStore } from '@/stores/settings'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
@@ -313,6 +322,55 @@ export const usePluginStore = defineStore('plugins', () => {
     return runtime.invokeAction(actionId, input)
   }
 
+  async function comments(
+    track: Track,
+    kind: CommentKind,
+    page = 1,
+    limit = COMMENT_PAGE_SIZE
+  ): Promise<CommentPage> {
+    if (track.localUri || track.downloadedPath) throw new Error('本地歌曲没有在线评论')
+    const source = track.ref?.providerId
+    if (!source) throw new Error('这首歌缺少音源信息')
+    const action = commentActionFor(kind)
+    const safePage = Math.max(1, Math.trunc(Number(page) || 1))
+    const safeLimit = Math.min(100, Math.max(1, Math.trunc(Number(limit) || COMMENT_PAGE_SIZE)))
+    const ownerKey = settings.capabilityOwner(source, `action:${action}`)
+    const selected = selectedProvider(source)
+    const candidates = providerImplementations(source)
+    const ordered = [
+      ...(ownerKey ? candidates.filter((item) => item.pluginKey === ownerKey) : []),
+      ...(selected ? candidates.filter((item) => item.pluginKey === selected.pluginKey) : []),
+      ...candidates
+    ].filter(
+      (item, index, list) => list.findIndex((entry) => entry.pluginKey === item.pluginKey) === index
+    )
+    let activated = false
+    let chosen: ProviderEntry | undefined
+    for (const candidate of ordered) {
+      const runtime = pluginRuntimeManager.get(candidate.pluginKey)
+      if (!runtime) continue
+      activated = true
+      if (runtime.getInfo().actions.includes(action)) {
+        chosen = candidate
+        break
+      }
+    }
+    if (!chosen) {
+      if (!candidates.length) throw new Error('找不到这首歌的音源插件')
+      if (!activated) throw new Error('这首歌的音源插件未启用')
+      throw new Error(`当前音源插件不支持${commentKindLabel(kind)}`)
+    }
+    const runtime = pluginRuntimeManager.get(chosen.pluginKey)
+    if (!runtime) throw new Error('音源插件未启用')
+    const result = await runtime.invokeAction(action, {
+      source,
+      song: buildCommentSong(track, source),
+      page: safePage,
+      limit: safeLimit
+    })
+    return normalizeCommentPage(result, { source, page: safePage, limit: safeLimit })
+  }
+
   async function searchTracks(
     source: string,
     query: string,
@@ -510,6 +568,7 @@ export const usePluginStore = defineStore('plugins', () => {
     remove,
     saveConfig,
     invokeAction,
+    comments,
     searchTracks,
     searchPlaylists,
     playlistCategories,
