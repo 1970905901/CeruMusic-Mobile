@@ -11,7 +11,7 @@ function assetUrl(path: string): string {
   return (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/') + 'ceru-plugin/' + path
 }
 
-async function loadRuntimeAssets() {
+export async function loadPluginRuntimeAssets() {
   if (!runtimeAssets) {
     runtimeAssets = (async () => {
       const [runtimeResponse, catalogResponse] = await Promise.all([
@@ -69,7 +69,7 @@ export async function createPluginWebSurface(
 
   const code = artifact.modules[surface.entry]
   if (!code) throw new Error('插件页面模块缺失')
-  const { runtime, catalog } = await loadRuntimeAssets()
+  const { runtime, catalog } = await loadPluginRuntimeAssets()
   const title =
     surface.title ||
     artifact.manifest.contributes?.commands?.find((item) => item.view === surfaceId)?.title ||

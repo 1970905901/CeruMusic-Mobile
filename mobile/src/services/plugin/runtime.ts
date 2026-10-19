@@ -516,6 +516,39 @@ export class PluginRuntime {
       case 'ui.pluginUpdate.request':
         await showToast('插件更新请求已记录，请重新导入新版插件文件')
         return null
+      case 'guests.list': {
+        const { guestStoreFor } = await import('@/services/plugin/guests')
+        return guestStoreFor(this.record).list()
+      }
+      case 'guests.import': {
+        const { guestStoreFor } = await import('@/services/plugin/guests')
+        const store = guestStoreFor(this.record)
+        const adapterId = String(params?.adapterId || '')
+        const file = await store.pickFile(adapterId)
+        if (!file) return null
+        return store.importFile(adapterId, file)
+      }
+      case 'guests.select': {
+        const { guestStoreFor } = await import('@/services/plugin/guests')
+        const store = guestStoreFor(this.record)
+        await store.select(params?.guestId ? String(params.guestId) : null)
+        return null
+      }
+      case 'guests.remove': {
+        const { guestStoreFor } = await import('@/services/plugin/guests')
+        const store = guestStoreFor(this.record)
+        await store.remove(String(params?.guestId || ''))
+        return null
+      }
+      case 'guests.invoke': {
+        const { guestStoreFor } = await import('@/services/plugin/guests')
+        const store = guestStoreFor(this.record)
+        return store.invoke(
+          String(params?.guestId || ''),
+          String(params?.method || ''),
+          params?.input
+        )
+      }
       case 'capabilities.list':
         return this.capabilityList()
       case 'capabilities.get': {
@@ -827,6 +860,7 @@ export class PluginRuntime {
       call('clipboard', ['readText', 'writeText'], ['clipboardRead', 'clipboardWrite']),
       call('localMusic', ['list', 'scan', 'getTags', 'writeTags'], ['localMusic']),
       call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
+      call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
       call('window', ['control'], ['window'])
     ]
   }
@@ -944,6 +978,9 @@ export class PluginRuntimeManager {
     if (!runtime) return
     runtime.dispose()
     this.runtimes.delete(pluginKey)
+    void import('@/services/plugin/guests')
+      .then(({ disposeGuestStore }) => disposeGuestStore(pluginKey))
+      .catch(() => undefined)
     for (const key of [...this.surfaceStates.keys()]) {
       if (key.startsWith(pluginKey + '\n')) this.surfaceStates.delete(key)
     }

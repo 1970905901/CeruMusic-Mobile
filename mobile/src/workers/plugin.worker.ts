@@ -411,7 +411,14 @@ const context: any = {
   ai: unsupportedService('ai'),
   tasks: unsupportedService('tasks'),
   sockets: unsupportedService('sockets'),
-  guests: unsupportedService('guests'),
+  guests: {
+    list: () => rpc('guests.list'),
+    import: (adapterId: string) => rpc('guests.import', { adapterId }),
+    select: (guestId: string | null) => rpc('guests.select', { guestId }),
+    remove: (guestId: string) => rpc('guests.remove', { guestId }),
+    invoke: (guestId: string, method: string, input: any) =>
+      rpc('guests.invoke', { guestId, method, input })
+  },
   events: {
     on(event: string, listener: (value: any) => void) {
       let listeners = eventListeners.get(event)

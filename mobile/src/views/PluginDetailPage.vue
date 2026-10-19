@@ -162,6 +162,36 @@
           </ion-item>
         </ion-list>
 
+        <ion-list v-if="guestAdapters.length" class="group">
+          <div class="group-title">兼容子插件</div>
+          <ion-item v-for="adapter in guestAdapters" :key="adapter.id">
+            <ion-label>
+              <h2>{{ adapter.title }}</h2>
+              <p>{{ adapter.format }} · {{ (adapter.extensions || []).join(', ') }}</p>
+            </ion-label>
+            <ion-button fill="outline" size="small" @click="importGuest(adapter.id)">导入</ion-button>
+          </ion-item>
+          <ion-item v-if="!guestRecords.length">
+            <ion-label color="medium">尚未安装子插件</ion-label>
+          </ion-item>
+          <ion-item v-for="guest in guestRecords" :key="guest.id">
+            <ion-label>
+              <h2>{{ guest.name }} <span class="guest-version">v{{ guest.version }}</span></h2>
+              <p>
+                {{ guest.state === 'ready' ? '运行中' : guest.state === 'error' ? '运行失败' : '未运行' }}
+                <span v-if="guest.providers.length"> · {{ guest.providers.map((item) => item.name).join(' / ') }}</span>
+                <span v-if="guest.error"> · {{ guest.error }}</span>
+              </p>
+            </ion-label>
+            <ion-toggle
+              :checked="guest.selected"
+              :disabled="guestsLoading"
+              @ionChange="toggleGuest(guest, $event.detail.checked)"
+            />
+            <ion-button slot="end" fill="clear" size="small" color="danger" @click="removeGuest(guest)">删除</ion-button>
+          </ion-item>
+        </ion-list>
+
         <ion-list v-if="logs.length" class="group">
           <div class="group-title">最近日志</div>
           <ion-item v-for="log in logs.slice(0, 20)" :key="log.at + log.message">
@@ -226,6 +256,8 @@ import { useRoute, useRouter } from 'vue-router'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
+import { guestStoreFor } from '@/services/plugin/guests'
+import type { GuestAdapterView, GuestRecord } from '@/types/plugin'
 import type { PluginRecord } from '@/types/plugin'
 
 const route = useRoute()
@@ -245,6 +277,80 @@ const settingsPages = computed(() => plugin.value?.manifest.contributes?.setting
 const accountItems = computed(() => plugin.value?.manifest.contributes?.accountItems || [])
 const surfaces = computed(() => plugin.value?.manifest.modules?.surfaces || [])
 const logs = computed(() => pluginStore.logs.filter((item) => item.pluginKey === key))
+const guestAdapters = ref<GuestAdapterView[]>([])
+const guestRecords = ref<GuestRecord[]>([])
+const guestsLoading = ref(false)
+
+async function refreshGuests() {
+  if (!plugin.value) return
+  const store = guestStoreFor(plugin.value, () => {
+    void refreshGuests()
+  })
+  guestAdapters.value = store.adapters()
+  guestRecords.value = await store.list()
+}
+
+async function importGuest(adapterId: string) {
+  if (!plugin.value || guestsLoading.value) return
+  const store = guestStoreFor(plugin.value)
+  const file = await store.pickFile(adapterId)
+  if (!file) return
+  guestsLoading.value = true
+  try {
+    const record = await store.importFile(adapterId, file)
+    if (record) await toast('子插件已安装')
+    await refreshGuests()
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '子插件安装失败', 'danger')
+  } finally {
+    guestsLoading.value = false
+  }
+}
+
+async function toggleGuest(guest: GuestRecord, enabled: boolean) {
+  if (!plugin.value || guestsLoading.value) return
+  guestsLoading.value = true
+  try {
+    const store = guestStoreFor(plugin.value)
+    await store.select(enabled ? guest.id : null)
+    await refreshGuests()
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '子插件启动失败', 'danger')
+    await refreshGuests()
+  } finally {
+    guestsLoading.value = false
+  }
+}
+
+async function removeGuest(guest: GuestRecord) {
+  if (!plugin.value) return
+  const alert = await alertController.create({
+    header: '删除子插件？',
+    message: '删除后需要重新导入脚本才能使用。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '删除', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'destructive') return
+  try {
+    await guestStoreFor(plugin.value).remove(guest.id)
+    await refreshGuests()
+    await toast('子插件已删除')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '删除失败', 'danger')
+  }
+}
+
+watch(
+  plugin,
+  () => {
+    void refreshGuests()
+  },
+  { immediate: true }
+)
 
 const configFields = computed(() => {
   const config = plugin.value?.manifest.config
@@ -510,6 +616,12 @@ ion-item p {
 .field-hint {
   color: var(--ceru-text-secondary);
   font-size: 10px;
+}
+.guest-version {
+  margin-left: 4px;
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+  font-weight: 500;
 }
 .log-line {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

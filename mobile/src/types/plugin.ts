@@ -49,3 +49,34 @@ export interface PluginLogEntry {
   message: string
   at: number
 }
+export interface GuestProviderInfo {
+  id: string
+  name: string
+  qualities: string[]
+  protocols: string[]
+}
+
+export interface GuestRecord {
+  id: string
+  pluginKey: string
+  adapterId: string
+  name: string
+  version: string
+  author?: string
+  description?: string
+  homepage?: string
+  digest: string
+  selected: boolean
+  grants: string[]
+  providers: GuestProviderInfo[]
+  state: 'ready' | 'stopped' | 'error'
+  error?: string
+}
+
+export interface GuestAdapterView {
+  id: string
+  title: string
+  extensions: string[]
+  format: string
+  badge?: { label: string; backgroundColor: string; textColor: string }
+}
