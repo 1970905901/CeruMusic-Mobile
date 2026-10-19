@@ -139,6 +139,28 @@ export const usePluginStore = defineStore('plugins', () => {
       }))
     )
   )
+  const menus = computed(() =>
+    enabledPlugins.value.flatMap((plugin) => {
+      const commands = new Map(
+        (plugin.manifest.contributes?.commands ?? []).map((command) => [command.id, command])
+      )
+      return (plugin.manifest.contributes?.menus ?? []).flatMap((menu) => {
+        const command = commands.get(menu.commandId)
+        if (!command) return []
+        return [{
+          pluginKey: plugin.key,
+          pluginName: plugin.manifest.name,
+          id: menu.id,
+          slot: menu.slot,
+          title: menu.title,
+          description: menu.description,
+          commandId: menu.commandId,
+          action: command.action,
+          when: menu.when
+        }]
+      })
+    })
+  )
 
   function providerImplementations(source: string): ProviderEntry[] {
     return providers.value.filter((provider) => provider.providerId === source)
@@ -554,6 +576,7 @@ export const usePluginStore = defineStore('plugins', () => {
     sources,
     actions,
     settingsPages,
+    menus,
     providerImplementations,
     selectedProvider,
     providerForProtocol,

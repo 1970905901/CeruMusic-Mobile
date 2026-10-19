@@ -8,6 +8,7 @@ import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
+import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -561,7 +562,12 @@ export const useLibraryStore = defineStore('library', () => {
 
     let fileTagWritten = false
     let fileTagWarning: string | undefined
-    if (record.relativePath && (isMp3File(record.fileName, record.mime) || isFlacFile(record.fileName, record.mime))) {
+    if (
+      record.relativePath &&
+      (isMp3File(record.fileName, record.mime) ||
+        isFlacFile(record.fileName, record.mime) ||
+        isM4aFile(record.fileName, record.mime))
+    ) {
       try {
         const file = await Filesystem.readFile({
           path: record.relativePath,
@@ -576,9 +582,13 @@ export const useLibraryStore = defineStore('library', () => {
           lyrics: record.lyrics,
           coverDataUrl: record.cover
         }
-        const tagged = isMp3File(record.fileName, record.mime)
+        const isMp3 = isMp3File(record.fileName, record.mime)
+        const isFlac = isFlacFile(record.fileName, record.mime)
+        const tagged = isMp3
           ? writeMp3TagsToBase64(base64, tags)
-          : writeFlacTagsToBase64(base64, tags)
+          : isFlac
+            ? writeFlacTagsToBase64(base64, tags)
+            : writeM4aTagsToBase64(base64, tags)
         await Filesystem.writeFile({
           path: record.relativePath,
           data: tagged,

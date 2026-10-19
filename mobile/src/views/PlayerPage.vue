@@ -205,6 +205,7 @@ import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { useDownloadStore } from '@/stores/downloads'
 import { useShareStore } from '@/stores/share'
+import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import type { LyricDocument } from '@/types/music'
@@ -216,6 +217,7 @@ const library = useLibraryStore()
 const pluginStore = usePluginStore()
 const downloadStore = useDownloadStore()
 const shareStore = useShareStore()
+const auth = useAuthStore()
 const settings = useSettingsStore()
 
 const track = computed(() => player.currentTrack)
@@ -398,6 +400,27 @@ async function openMore() {
         text: '查看评论',
         handler: () => openComments()
       },
+      ...pluginStore.menus
+        .filter(
+          (menu) =>
+            menu.slot === 'player.actions' &&
+            (!menu.when?.loggedIn || auth.authenticated) &&
+            (!menu.when?.kinds?.length || menu.when.kinds.includes('track'))
+        )
+        .map((menu) => ({
+          text: menu.title,
+          handler: () => {
+            if (!track.value) return
+            void pluginStore
+              .invokeAction(menu.pluginKey, menu.action, {
+                track: track.value.raw,
+                trackKey: track.value.key
+              })
+              .catch((error) =>
+                toast(error instanceof Error ? error.message : '插件操作失败', 'danger')
+              )
+          }
+        })),
       {
         text: '分享链接',
         handler: () => {

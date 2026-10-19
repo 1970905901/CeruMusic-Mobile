@@ -4,6 +4,8 @@ import type { Track } from '@/types/music'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { useDownloadStore } from '@/stores/downloads'
+import { usePluginStore } from '@/stores/plugins'
+import { useAuthStore } from '@/stores/auth'
 import { useShareStore } from '@/stores/share'
 
 async function toast(message: string, color = 'medium') {
@@ -15,6 +17,8 @@ export async function openTrackActions(track: Track): Promise<void> {
   const player = usePlayerStore()
   const library = useLibraryStore()
   const downloads = useDownloadStore()
+  const plugins = usePluginStore()
+  const auth = useAuthStore()
   const share = useShareStore()
 
   const favorite = library.isFavorite(track)
@@ -52,6 +56,26 @@ export async function openTrackActions(track: Track): Promise<void> {
             .catch((error) => toast(error instanceof Error ? error.message : String(error), 'danger'))
         }
       },
+      ...plugins.menus
+        .filter(
+          (menu) =>
+            menu.slot === 'track.actions' &&
+            (!menu.when?.loggedIn || auth.authenticated) &&
+            (!menu.when?.kinds?.length || menu.when.kinds.includes('track'))
+        )
+        .map((menu) => ({
+          text: menu.title,
+          handler: () => {
+            void plugins
+              .invokeAction(menu.pluginKey, menu.action, {
+                track: track.raw,
+                trackKey: track.key
+              })
+              .catch((error) =>
+                toast(error instanceof Error ? error.message : '插件操作失败', 'danger')
+              )
+          }
+        })),
       {
         text: '分享链接',
         handler: () => share.show(track)

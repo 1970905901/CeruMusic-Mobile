@@ -28,6 +28,15 @@
             <ion-icon :icon="chevronDown" />
           </button>
           <button
+            v-if="searchMenus.length"
+            class="source-pill"
+            type="button"
+            @click="openPluginTools"
+          >
+            <ion-icon :icon="extensionPuzzleOutline" />
+            插件工具
+          </button>
+          <button
             v-if="query"
             class="source-pill"
             type="button"
@@ -167,6 +176,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
 import type { Track } from '@/types/music'
 
@@ -176,6 +186,7 @@ const pluginStore = usePluginStore()
 const library = useLibraryStore()
 const player = usePlayerStore()
 const settings = useSettingsStore()
+const auth = useAuthStore()
 
 const query = ref('')
 const kind = ref<'tracks' | 'playlists'>('tracks')
@@ -185,12 +196,47 @@ const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
 const history = computed(() => settings.settings.searchHistory)
+const searchMenus = computed(() =>
+  pluginStore.menus.filter(
+    (menu) =>
+      menu.slot === 'search.tools' && (!menu.when?.loggedIn || auth.authenticated)
+  )
+)
 
 const source = computed(() => {
   const id = settings.settings.lastSource
   return pluginStore.sources.find((item) => item.id === id) ?? pluginStore.sources[0]
 })
 const sourceName = computed(() => source.value?.name ?? '选择音源')
+
+async function toast(message: string, color = 'medium') {
+  const element = await toastController.create({ message, duration: 2200, color })
+  await element.present()
+}
+
+async function openPluginTools() {
+  if (!searchMenus.value.length) return
+  const sheet = await actionSheetController.create({
+    header: '插件工具',
+    buttons: [
+      ...searchMenus.value.map((menu) => ({
+        text: menu.title,
+        handler: () => {
+          void pluginStore
+            .invokeAction(menu.pluginKey, menu.action, {
+              query: query.value,
+              kind: kind.value
+            })
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '插件操作失败', 'danger')
+            )
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
 
 async function chooseSource() {
   const sheet = await actionSheetController.create({

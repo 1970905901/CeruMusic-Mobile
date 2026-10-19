@@ -11,6 +11,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { buildDownloadFilename } from '@/utils/filename'
 import { isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
+import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 
 function normalizeSubfolder(value: string): string {
   const parts = String(value || '')
@@ -140,7 +141,8 @@ export const useDownloadStore = defineStore('downloads', () => {
     if (!settings.settings.downloadWriteTags) return base64
     const isMp3 = isMp3File(`download.${ext}`, mime)
     const isFlac = isFlacFile(`download.${ext}`, mime)
-    if (!isMp3 && !isFlac) return base64
+    const isM4a = isM4aFile(`download.${ext}`, mime)
+    if (!isMp3 && !isFlac && !isM4a) return base64
     const track = library.getTrack(task.trackKey)
     try {
       const tags = {
@@ -150,7 +152,9 @@ export const useDownloadStore = defineStore('downloads', () => {
       }
       return isMp3
         ? writeMp3TagsToBase64(base64, tags)
-        : writeFlacTagsToBase64(base64, tags)
+        : isFlac
+          ? writeFlacTagsToBase64(base64, tags)
+          : writeM4aTagsToBase64(base64, tags)
     } catch (error) {
       console.warn('写入下载文件标签失败', error)
       return base64

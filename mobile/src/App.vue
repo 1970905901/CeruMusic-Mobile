@@ -1,7 +1,9 @@
 <template>
   <ion-app>
     <ion-router-outlet />
-    <PluginProgressOverlay />`n    <ShareSongSheet />
+    <PluginProgressOverlay />
+    <ShareSongSheet />
+    <PluginStyleHost />
   </ion-app>
 </template>
 
@@ -9,4 +11,5 @@
 import { IonApp, IonRouterOutlet } from '@ionic/vue'
 import PluginProgressOverlay from '@/components/PluginProgressOverlay.vue'
 import ShareSongSheet from '@/components/ShareSongSheet.vue'
+import PluginStyleHost from '@/components/PluginStyleHost.vue'
 </script>

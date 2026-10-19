@@ -112,6 +112,7 @@ import PluginSlot from '@/components/PluginSlot.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
 import type { Track } from '@/types/music'
 
@@ -120,6 +121,7 @@ const router = useRouter()
 const library = useLibraryStore()
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
+const auth = useAuthStore()
 
 const remoteId = String(route.params.id || '')
 const isLocal = !remoteId.startsWith('remote-')
@@ -142,6 +144,15 @@ const cover = computed(() => {
   if (isLocal) return library.playlistTracks(remoteId).find((item) => item.artworkUrl)?.artworkUrl
   return String(route.query.cover || '')
 })
+const playlistMenus = computed(() =>
+  pluginStore.menus.filter(
+    (menu) =>
+      menu.slot === 'playlist.actions' &&
+      (!menu.when?.loggedIn || auth.authenticated) &&
+      (!menu.when?.kinds?.length || menu.when.kinds.includes('playlist'))
+  )
+)
+
 const playlistSections = computed(() =>
   pluginStore.enabledPlugins.flatMap((plugin) =>
     (plugin.manifest.contributes?.playlistSections || []).map((section) => ({
@@ -244,11 +255,35 @@ async function loadMore(event: any) {
   }
 }
 
+async function toast(message: string, color = 'medium') {
+  const element = await toastController.create({ message, duration: 2200, color })
+  await element.present()
+}
+
 async function openPlaylistMenu() {
   if (!isLocal || !localPlaylist.value) return
   const sheet = await actionSheetController.create({
     header: localPlaylist.value.name,
     buttons: [
+      ...playlistMenus.value.map((menu) => ({
+        text: menu.title,
+        handler: () => {
+          if (!localPlaylist.value) return
+          void pluginStore
+            .invokeAction(menu.pluginKey, menu.action, {
+              playlist: {
+                id: localPlaylist.value.id,
+                name: localPlaylist.value.name,
+                description: localPlaylist.value.description || '',
+                trackKeys: [...localPlaylist.value.trackKeys]
+              },
+              tracks: tracks.value.map((track) => track.raw)
+            })
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '插件操作失败', 'danger')
+            )
+        }
+      })),
       {
         text: '重命名',
         handler: () => {
