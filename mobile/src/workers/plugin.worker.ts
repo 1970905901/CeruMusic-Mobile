@@ -417,7 +417,10 @@ const context: any = {
     leave: (call?: any) => rpc('rooms.leave', { call }),
     requestTrack: (track: any, call?: any) => rpc('rooms.requestTrack', { track, call })
   },
-  devices: unsupportedService('devices'),
+  devices: {
+    list: (call?: any) => rpc('devices.list', { call }),
+    select: (id: string, call?: any) => rpc('devices.select', { id, call })
+  },
   ai: {
     generate: (request: any, call?: any) => rpc('ai.generate', { request, call })
   },

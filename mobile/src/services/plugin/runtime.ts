@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
 import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
+import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDevices'
 import {
   parseSocketPayload,
   socketEventName,
@@ -902,6 +903,15 @@ export class PluginRuntime {
         if (!track || !room.requestTrack(track)) throw new Error('点播歌曲不在当前队列中')
         return null
       }
+      case 'devices.list': {
+        await this.requirePermission(params?.call?.permissionKey, '音频设备控制')
+        return pluginAudioDevices()
+      }
+      case 'devices.select': {
+        await this.requirePermission(params?.call?.permissionKey, '音频设备控制')
+        selectPluginAudioDevice(params?.id)
+        return null
+      }
       case 'ai.generate': {
         await this.requirePermission(params?.call?.permissionKey, 'AI 服务')
         const settings = useSettingsStore()
@@ -980,7 +990,8 @@ export class PluginRuntime {
       call('ai', ['generate'], ['ai']),
       call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
       call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl']),
-      call('sockets', ['connect', 'send', 'emit', 'disconnect'], ['network'])
+      call('sockets', ['connect', 'send', 'emit', 'disconnect'], ['network']),
+      call('devices', ['list', 'select'], ['devices'])
     ]
   }
 
