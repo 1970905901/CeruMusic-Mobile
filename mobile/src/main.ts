@@ -62,6 +62,7 @@ document.documentElement.classList.add('capacitor')
 function applyResponsiveLayout() {
   const shortestSide = Math.min(window.innerWidth, window.innerHeight)
   document.documentElement.classList.toggle('android-tablet', ionicMode === 'md' && shortestSide >= 600)
+  document.documentElement.classList.toggle('ios-tablet', ionicMode === 'ios' && shortestSide >= 744)
 }
 
 applyResponsiveLayout()

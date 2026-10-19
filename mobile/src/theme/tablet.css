@@ -153,3 +153,165 @@ html.android-tablet ion-modal {
     margin-top: 28px;
   }
 }
+/* iPad / Stage Manager large-window layout. The threshold is the shortest
+   logical iPad edge, so iPhone landscape still keeps the compact layout. */
+html.ios-tablet {
+  --ceru-card-radius: 22px;
+}
+
+html.ios-tablet .ceru-pad {
+  max-width: 1180px;
+  padding-left: max(32px, env(safe-area-inset-left));
+  padding-right: max(32px, env(safe-area-inset-right));
+}
+
+html.ios-tablet ion-tab-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 60;
+  width: min(620px, calc(100vw - 72px));
+  height: 68px;
+  padding: 5px 9px;
+  transform: translateX(-50%);
+  border: 0.5px solid rgba(127, 127, 127, 0.2);
+  border-radius: 24px;
+  background: var(--ion-tab-bar-background);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.12);
+  backdrop-filter: var(--ceru-blur);
+  -webkit-backdrop-filter: var(--ceru-blur);
+  contain: none;
+}
+
+html.ios-tablet ion-tab-button {
+  max-width: none;
+  height: 56px;
+  border-radius: 18px;
+}
+
+html.ios-tablet ion-tab-button.tab-selected {
+  color: var(--ceru-brand);
+}
+
+html.ios-tablet .mini-host {
+  left: 50%;
+  right: auto;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  width: min(620px, calc(100vw - 76px));
+  transform: translateX(-50%);
+}
+
+html.ios-tablet .horizontal-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 4px 32px 8px;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+html.ios-tablet .horizontal-list .collection-card {
+  flex: none;
+  width: 100%;
+}
+
+html.ios-tablet .horizontal-list .collection-card .cover {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1;
+}
+
+html.ios-tablet .category-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+html.ios-tablet .playlist-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+html.ios-tablet .player-page .player-shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 38%) minmax(0, 1fr);
+  grid-auto-rows: min-content;
+  column-gap: 44px;
+  align-items: start;
+  max-width: 1180px;
+  padding: 12px 40px 56px;
+}
+
+html.ios-tablet .player-page .top-bar {
+  grid-column: 1 / -1;
+}
+
+html.ios-tablet .player-page .art-wrap {
+  grid-column: 1;
+  grid-row: 2 / span 6;
+  align-self: start;
+  justify-self: center;
+  margin-top: 20px;
+}
+
+html.ios-tablet .player-page .track-head,
+html.ios-tablet .player-page .play-error,
+html.ios-tablet .player-page .timeline,
+html.ios-tablet .player-page .controls,
+html.ios-tablet .player-page .bottom-actions,
+html.ios-tablet .player-page .player-plugin-slot,
+html.ios-tablet .player-page .lyrics-panel {
+  grid-column: 2;
+}
+
+html.ios-tablet .player-page .track-head {
+  margin-top: 18px;
+}
+
+html.ios-tablet .player-page .track-title {
+  font-size: 32px;
+}
+
+html.ios-tablet .player-page .lyrics-lines {
+  max-height: 42vh;
+}
+
+html.ios-tablet .player-page .lyrics-panel {
+  padding-bottom: 20px;
+}
+
+html.ios-tablet ion-modal {
+  --width: min(820px, 92vw);
+}
+
+html.ios-liquid.ios-tablet ion-tab-bar,
+html.ios-liquid.ios-tablet .ceru-card,
+html.ios-liquid.ios-tablet .mini {
+  background: var(--ceru-bg-soft);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+  backdrop-filter: saturate(180%) blur(30px);
+}
+
+@media (max-width: 860px) {
+  html.ios-tablet .horizontal-list,
+  html.ios-tablet .category-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  html.ios-tablet .playlist-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  html.ios-tablet .player-page .player-shell {
+    display: flex;
+    max-width: 760px;
+    padding: 8px 24px 40px;
+  }
+
+  html.ios-tablet .player-page .art-wrap {
+    margin-top: 28px;
+  }
+}
