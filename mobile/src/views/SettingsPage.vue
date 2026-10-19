@@ -172,6 +172,66 @@
       </ion-list>
 
       <ion-list class="group">
+        <div class="group-title">歌词</div>
+        <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>歌词字号</h2>
+            <p>{{ settings.settings.lyricFontSize }} px</p>
+          </ion-label>
+          <ion-range :value="settings.settings.lyricFontSize" :min="16" :max="34" :step="1" @ionInput="settings.settings.lyricFontSize = Number($event.detail.value)" />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="languageOutline" color="primary" />
+          <ion-label>
+            <h2>显示翻译</h2>
+            <p>歌词包含翻译时同时显示</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricShowTranslation" @ionChange="settings.settings.lyricShowTranslation = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="globeOutline" color="primary" />
+          <ion-label>
+            <h2>显示音译</h2>
+            <p>歌词包含罗马音时同时显示</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricShowRomanization" @ionChange="settings.settings.lyricShowRomanization = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
+          <ion-label>
+            <h2>歌词动效</h2>
+            <p>当前句跳动与发光</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricAnimate" @ionChange="settings.settings.lyricAnimate = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="timerOutline" color="primary" />
+          <ion-label>
+            <h2>歌词偏移</h2>
+            <p>{{ formatLyricOffset(settings.settings.lyricOffsetMs) }}</p>
+          </ion-label>
+          <ion-select :value="settings.settings.lyricOffsetMs" interface="action-sheet" cancel-text="取消" @ionChange="settings.settings.lyricOffsetMs = Number($event.detail.value)">
+            <ion-select-option :value="-2000">-2.0 秒</ion-select-option>
+            <ion-select-option :value="-1000">-1.0 秒</ion-select-option>
+            <ion-select-option :value="-500">-0.5 秒</ion-select-option>
+            <ion-select-option :value="0">不偏移</ion-select-option>
+            <ion-select-option :value="500">+0.5 秒</ion-select-option>
+            <ion-select-option :value="1000">+1.0 秒</ion-select-option>
+            <ion-select-option :value="2000">+2.0 秒</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="colorWandOutline" color="primary" />
+          <ion-label>
+            <h2>播放器背景动效</h2>
+            <p>封面光晕缓慢呼吸</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.playerBackgroundAnimation" @ionChange="settings.settings.playerBackgroundAnimation = $event.detail.checked" />
+        </ion-item>
+      </ion-list>
+
+      <ion-list class="group">
         <div class="group-title">下载与存储</div>
         <ion-item>
           <ion-icon slot="start" :icon="cloudDownloadOutline" color="primary" />
@@ -200,6 +260,24 @@
             @ionInput="settings.settings.maxConcurrentDownloads = Number($event.detail.value)"
           />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="folderOpenOutline" color="primary" />
+          <ion-label>
+            <h2>下载位置</h2>
+            <p>{{ settings.settings.downloadDirectoryMode === 'documents' ? '文件 App / Documents / ' + settings.settings.downloadSubfolder : '应用私有目录' }}</p>
+          </ion-label>
+          <ion-select v-model="settings.settings.downloadDirectoryMode" interface="action-sheet" cancel-text="取消">
+            <ion-select-option value="data">应用私有目录</ion-select-option>
+            <ion-select-option value="documents">Documents（文件 App）</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item v-if="settings.settings.downloadDirectoryMode === 'documents'" button @click="editDownloadSubfolder">
+          <ion-icon slot="start" :icon="createOutline" color="primary" />
+          <ion-label>
+            <h2>下载子目录</h2>
+            <p>{{ settings.settings.downloadSubfolder }}</p>
+          </ion-label>
+        </ion-item>
         <ion-item button detail @click="$router.push('/downloads')">
           <ion-icon slot="start" :icon="downloadOutline" color="primary" />
           <ion-label>
@@ -224,8 +302,8 @@
         <ion-item>
           <ion-icon slot="start" :icon="pricetagOutline" color="primary" />
           <ion-label>
-            <h2>写入 MP3 标签</h2>
-            <p>下载完成后写入标题、艺术家和专辑</p>
+            <h2>写入音频标签</h2>
+            <p>MP3 / FLAC 下载完成后写入标题、艺术家和专辑</p>
           </ion-label>
           <ion-toggle
             :checked="settings.settings.downloadWriteTags"
@@ -370,10 +448,15 @@ import {
 } from '@ionic/vue'
 import {
   bookOutline,
+  createOutline,
   cloudDownloadOutline,
   documentTextOutline,
   folderOpenOutline,
   colorPaletteOutline,
+  globeOutline,
+  languageOutline,
+  textOutline,
+  timerOutline,
   cloudDoneOutline,
   colorWandOutline,
   downloadOutline,
@@ -453,8 +536,43 @@ function setSleep(value: any) {
   player.setSleepTimer(minutes > 0 ? minutes : null)
 }
 
+function formatLyricOffset(value: number): string {
+  if (!value) return '不偏移'
+  const seconds = Math.abs(value) / 1000
+  return (value > 0 ? '+' : '-') + seconds.toFixed(1) + ' 秒'
+}
+
 function setPlaybackRate(value: any) {
   player.setPlaybackRate(Number(value) || 1)
+}
+
+async function editDownloadSubfolder() {
+  const alert = await alertController.create({
+    header: '下载子目录',
+    message: '文件将保存到 Documents 下的该目录。',
+    inputs: [
+      {
+        name: 'folder',
+        type: 'text',
+        value: settings.settings.downloadSubfolder,
+        placeholder: 'CeruMusic'
+      }
+    ],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  const folder = String(data?.values?.folder ?? '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((part) => part.trim().replace(/[<>:\"|?*]/g, ''))
+    .filter((part) => part && part !== '.' && part !== '..')
+    .join('/')
+  settings.settings.downloadSubfolder = folder || 'CeruMusic'
 }
 
 async function editFilenameTemplate() {

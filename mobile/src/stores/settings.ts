@@ -28,6 +28,14 @@ export interface AppSettings {
   aiModel: string
   cloudSyncEnabled: boolean
   autoUpdatePlugins: boolean
+  downloadDirectoryMode: 'data' | 'documents'
+  downloadSubfolder: string
+  lyricFontSize: number
+  lyricShowTranslation: boolean
+  lyricShowRomanization: boolean
+  lyricAnimate: boolean
+  lyricOffsetMs: number
+  playerBackgroundAnimation: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -54,7 +62,15 @@ const defaults: AppSettings = {
   aiBaseURL: 'https://api.deepseek.com',
   aiModel: 'deepseek-chat',
   cloudSyncEnabled: true,
-  autoUpdatePlugins: false
+  autoUpdatePlugins: false,
+  downloadDirectoryMode: 'data',
+  downloadSubfolder: 'CeruMusic',
+  lyricFontSize: 22,
+  lyricShowTranslation: true,
+  lyricShowRomanization: false,
+  lyricAnimate: true,
+  lyricOffsetMs: 0,
+  playerBackgroundAnimation: true
 }
 
 function load(): AppSettings {

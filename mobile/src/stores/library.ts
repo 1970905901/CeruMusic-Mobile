@@ -6,7 +6,7 @@ import type { Playlist, FavoriteEntry, HistoryEntry, Track } from '@/types/music
 import type { LocalTrackRecord } from '@/types/download'
 import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
-import { base64ToArrayBuffer, isMp3File, writeMp3TagsToBase64 } from '@/services/audioTags'
+import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -544,7 +544,7 @@ export const useLibraryStore = defineStore('library', () => {
 
     let fileTagWritten = false
     let fileTagWarning: string | undefined
-    if (record.relativePath && isMp3File(record.fileName, record.mime)) {
+    if (record.relativePath && (isMp3File(record.fileName, record.mime) || isFlacFile(record.fileName, record.mime))) {
       try {
         const file = await Filesystem.readFile({
           path: record.relativePath,
@@ -552,13 +552,16 @@ export const useLibraryStore = defineStore('library', () => {
         })
         const base64 = typeof file.data === 'string' ? file.data : ''
         if (!base64) throw new Error('读取音频文件失败')
-        const tagged = writeMp3TagsToBase64(base64, {
+        const tags = {
           title: record.title,
           artists: record.artist.split(/\s*\/\s*/).filter(Boolean),
           album: record.album,
           lyrics: record.lyrics,
           coverDataUrl: record.cover
-        })
+        }
+        const tagged = isMp3File(record.fileName, record.mime)
+          ? writeMp3TagsToBase64(base64, tags)
+          : writeFlacTagsToBase64(base64, tags)
         await Filesystem.writeFile({
           path: record.relativePath,
           data: tagged,

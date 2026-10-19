@@ -1,5 +1,5 @@
 <template>
-  <ion-page class="player-page">
+  <ion-page class="player-page" :class="{ 'background-animated': settings.settings.playerBackgroundAnimation }">
     <ion-content :fullscreen="true" class="player-content">
       <div v-if="track" class="bg-layer" :style="bgStyle" />
       <div class="bg-shade" />
@@ -109,16 +109,17 @@
               <ion-spinner name="crescent" />
               正在读取歌词…
             </div>
-            <div v-else-if="lyricsDoc.lines.length" ref="lyricsContainer" class="lyrics-lines">
+            <div v-else-if="lyricsDoc.lines.length" ref="lyricsContainer" class="lyrics-lines" :class="{ 'lyric-animate': settings.settings.lyricAnimate }" :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px' }">
               <p
                 v-for="(line, index) in lyricsDoc.lines"
                 :key="index"
                 class="lyric-line"
                 :class="{ active: index === currentLineIndex }"
-                @click="seekTo(line.startMs / 1000)"
+                @click="seekTo((line.startMs - settings.settings.lyricOffsetMs) / 1000)"
               >
                 <span class="lyric-text">{{ line.text }}</span>
-                <span v-if="line.translation" class="lyric-translation">{{ line.translation }}</span>
+                <span v-if="settings.settings.lyricShowTranslation && line.translation" class="lyric-translation">{{ line.translation }}</span>
+                <span v-if="settings.settings.lyricShowRomanization && line.romanization" class="lyric-romanization">{{ line.romanization }}</span>
               </p>
             </div>
             <div v-else class="plain-lyrics">{{ lyricsDoc.plainText || '暂无歌词' }}</div>
@@ -230,7 +231,8 @@ const queueOpen = ref(false)
 const artSize = ref(Math.min(360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
 
-const currentLineIndex = computed(() => currentLyricIndex(lyricsDoc.value.lines, player.positionMs))
+const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0))
+const currentLineIndex = computed(() => currentLyricIndex(lyricsDoc.value.lines, lyricPositionMs.value))
 
 function closePlayer() {
   if (window.history.length > 1) {
@@ -687,6 +689,13 @@ onBeforeUnmount(() => {
 .action-pill ion-icon {
   font-size: 16px;
 }
+.lyric-romanization {
+  display: block;
+  margin-top: 3px;
+  color: var(--ceru-text-secondary);
+  font-size: 0.68em;
+  font-weight: 500;
+}
 .lyrics-panel {
   margin-top: 26px;
   padding: 6px 4px 20px;
@@ -711,6 +720,7 @@ onBeforeUnmount(() => {
   display: none;
 }
 .lyric-line {
+  font-size: var(--lyric-size, 22px);
   margin: 0;
   padding: 10px 6px;
   color: rgba(245, 248, 251, 0.28);
@@ -722,6 +732,15 @@ onBeforeUnmount(() => {
   color: #f5f8fb;
   transform: scale(1.035);
   font-weight: 650;
+}
+.lyric-animate .lyric-line.active .lyric-text {
+  display: inline-block;
+  animation: lyric-beat 1.8s ease-in-out infinite;
+  text-shadow: 0 0 20px rgba(0, 218, 192, 0.36);
+}
+@keyframes lyric-beat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
 }
 .lyric-text {
   display: block;
@@ -819,5 +838,12 @@ onBeforeUnmount(() => {
   .lyrics-lines {
     max-height: 40vh;
   }
+}
+.background-animated .bg-layer {
+  animation: background-breathe 12s ease-in-out infinite alternate;
+}
+@keyframes background-breathe {
+  from { transform: scale(1.05); opacity: 0.42; }
+  to { transform: scale(1.16); opacity: 0.62; }
 }
 </style>

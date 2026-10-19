@@ -10,7 +10,20 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { buildDownloadFilename } from '@/utils/filename'
-import { isMp3File, writeMp3TagsToBase64 } from '@/services/audioTags'
+import { isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
+
+function normalizeSubfolder(value: string): string {
+  const parts = String(value || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((part) => part.trim().replace(/[<>:"|?*\u0000-\u001f]/g, ''))
+    .filter((part) => part && part !== '.' && part !== '..')
+  return (parts.length ? parts.join('/') : 'CeruMusic').slice(0, 120)
+}
+
+function storageDirectory(task: DownloadTask): Directory {
+  return task.directory === 'documents' ? Directory.Documents : Directory.Data
+}
 
 function extFromMime(mime?: string, url?: string): string {
   if (mime?.includes('flac')) return 'flac'
@@ -86,6 +99,11 @@ export const useDownloadStore = defineStore('downloads', () => {
     void persist(task)
   }
 
+  function downloadPrefix(task: DownloadTask): string {
+    if (task.directory !== 'documents') return 'downloads'
+    return normalizeSubfolder(settings.settings.downloadSubfolder)
+  }
+
   async function resolveDownloadPath(task: DownloadTask, ext: string): Promise<string> {
     const track = library.getTrack(task.trackKey)
     const filename = buildDownloadFilename(settings.settings.downloadFilenameTemplate, {
@@ -98,17 +116,19 @@ export const useDownloadStore = defineStore('downloads', () => {
     const dot = filename.lastIndexOf('.')
     const base = dot > 0 ? filename.slice(0, dot) : filename
     const extension = dot > 0 ? filename.slice(dot + 1) : ext
+    const directory = storageDirectory(task)
+    const prefix = downloadPrefix(task)
     let suffix = 1
     while (suffix < 1000) {
-      const candidate = `downloads/${base}${suffix > 1 ? ` (${suffix})` : ''}.${extension}`
+      const candidate = prefix + '/' + base + (suffix > 1 ? ' (' + suffix + ')' : '') + '.' + extension
       try {
-        await Filesystem.stat({ path: candidate, directory: Directory.Data })
+        await Filesystem.stat({ path: candidate, directory })
         suffix++
       } catch {
         return candidate
       }
     }
-    return `downloads/${task.id}.${extension}`
+    return prefix + '/' + task.id + '.' + extension
   }
 
   async function prepareDownloadData(
@@ -117,14 +137,20 @@ export const useDownloadStore = defineStore('downloads', () => {
     ext: string,
     mime: string
   ): Promise<string> {
-    if (!settings.settings.downloadWriteTags || !isMp3File(`download.${ext}`, mime)) return base64
+    if (!settings.settings.downloadWriteTags) return base64
+    const isMp3 = isMp3File(`download.${ext}`, mime)
+    const isFlac = isFlacFile(`download.${ext}`, mime)
+    if (!isMp3 && !isFlac) return base64
     const track = library.getTrack(task.trackKey)
     try {
-      return writeMp3TagsToBase64(base64, {
+      const tags = {
         title: task.title,
         artists: task.artist.split(/\s*\/\s*/).filter(Boolean),
         album: track?.album
-      })
+      }
+      return isMp3
+        ? writeMp3TagsToBase64(base64, tags)
+        : writeFlacTagsToBase64(base64, tags)
     } catch (error) {
       console.warn('写入下载文件标签失败', error)
       return base64
@@ -185,10 +211,10 @@ export const useDownloadStore = defineStore('downloads', () => {
           await Filesystem.writeFile({
             path,
             data: base64,
-            directory: Directory.Data,
+            directory: storageDirectory(task),
             recursive: true
           })
-          const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+          const uri = await Filesystem.getUri({ path, directory: storageDirectory(task) })
           const size = Math.floor((base64.length * 3) / 4)
           updateTask(task.id, {
             status: 'completed',
@@ -264,10 +290,10 @@ export const useDownloadStore = defineStore('downloads', () => {
     await Filesystem.writeFile({
       path,
       data: base64,
-      directory: Directory.Data,
+      directory: storageDirectory(task),
       recursive: true
     })
-    const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+    const uri = await Filesystem.getUri({ path, directory: storageDirectory(task) })
     const size = Math.floor((base64.length * 3) / 4)
     updateTask(task.id, {
       status: 'completed',
@@ -297,6 +323,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       cover: track.artworkUrl,
       quality: quality || settings.settings.downloadQuality || settings.settings.preferredQuality || undefined,
       status: 'queued',
+      directory: settings.settings.downloadDirectoryMode,
       receivedBytes: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -382,7 +409,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     activeRequests.get(id)?.abort()
     if (deleteFile && task.filePath) {
       try {
-        if (task.relativePath) await Filesystem.deleteFile({ path: task.relativePath, directory: Directory.Data })
+        if (task.relativePath) await Filesystem.deleteFile({ path: task.relativePath, directory: storageDirectory(task) })
       } catch {
         // File may already be gone.
       }

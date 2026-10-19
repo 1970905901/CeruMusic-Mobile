@@ -13,6 +13,8 @@ export interface DownloadTask {
   filePath?: string
   relativePath?: string
   mime?: string
+  /** Storage root selected when the download was created. */
+  directory?: 'data' | 'documents'
   error?: string
   createdAt: number
   updatedAt: number
