@@ -13,6 +13,8 @@ export interface AppSettings {
   grantedPermissions: Record<string, Record<string, boolean>>
   deniedPermissions: Record<string, Record<string, boolean>>
   downloadQuality: string
+  downloadFilenameTemplate: string
+  downloadWriteTags: boolean
   maxConcurrentDownloads: number
   autoPlayOnOpen: boolean
   showLyricsInPlayer: boolean
@@ -33,6 +35,8 @@ const defaults: AppSettings = {
   grantedPermissions: {},
   deniedPermissions: {},
   downloadQuality: '',
+  downloadFilenameTemplate: '{artist} - {title}',
+  downloadWriteTags: false,
   maxConcurrentDownloads: 2,
   autoPlayOnOpen: false,
   showLyricsInPlayer: true,

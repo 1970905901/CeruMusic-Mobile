@@ -53,6 +53,7 @@ export const usePlayerStore = defineStore('player', () => {
   const durationMs = ref(0)
   const volume = ref(0.8)
   const muted = ref(false)
+  const playbackRate = ref(1)
   const repeat = ref<RepeatMode>('off')
   const shuffle = ref(false)
   const shuffleOrder = ref<number[]>([])
@@ -81,6 +82,7 @@ export const usePlayerStore = defineStore('player', () => {
   let lastPersistAt = 0
 
   audio.volume = volume.value
+  audio.playbackRate = playbackRate.value
 
   function persistedSnapshot() {
     return {
@@ -89,6 +91,7 @@ export const usePlayerStore = defineStore('player', () => {
       positionMs: positionMs.value,
       volume: volume.value,
       muted: muted.value,
+      playbackRate: playbackRate.value,
       repeat: repeat.value,
       shuffle: shuffle.value
     }
@@ -113,6 +116,7 @@ export const usePlayerStore = defineStore('player', () => {
       restorePositionMs = Number(saved.positionMs) || 0
       volume.value = Number.isFinite(saved.volume) ? saved.volume : 0.8
       muted.value = !!saved.muted
+      playbackRate.value = Math.max(0.5, Math.min(3, Number(saved.playbackRate) || 1))
       repeat.value = saved.repeat === 'one' || saved.repeat === 'all' ? saved.repeat : 'off'
       shuffle.value = !!saved.shuffle
       audio.volume = volume.value
@@ -146,6 +150,7 @@ export const usePlayerStore = defineStore('player', () => {
         durationMs: Math.round(durationMs.value || track?.durationMs || 0),
         volume: muted.value ? 0 : volume.value,
         muted: muted.value,
+        playbackRate: playbackRate.value,
         repeat: repeat.value,
         shuffle: shuffle.value
       })
@@ -187,7 +192,7 @@ export const usePlayerStore = defineStore('player', () => {
       await MediaSession.setPositionState({
         duration: (durationMs.value || track.durationMs || 0) / 1000,
         position: positionMs.value / 1000,
-        playbackRate: 1
+        playbackRate: playbackRate.value
       }).catch(() => undefined)
     }
     if ('mediaSession' in navigator) {
@@ -211,7 +216,7 @@ export const usePlayerStore = defineStore('player', () => {
     await MediaSession.setPositionState({
       duration,
       position: Math.min(positionMs.value / 1000, duration),
-      playbackRate: 1
+      playbackRate: playbackRate.value
     }).catch(() => undefined)
   }
 
@@ -345,6 +350,7 @@ export const usePlayerStore = defineStore('player', () => {
       cleanupObjectUrl()
       const source = await prepareSource(track)
       audio.src = source
+      audio.playbackRate = playbackRate.value
       audio.load()
       durationMs.value = track.durationMs ?? 0
       positionMs.value = 0
@@ -435,6 +441,15 @@ export const usePlayerStore = defineStore('player', () => {
     muted.value = !muted.value
     audio.muted = muted.value
     publishState()
+  }
+
+  function setPlaybackRate(value: number): void {
+    if (!Number.isFinite(value)) return
+    playbackRate.value = Math.max(0.5, Math.min(3, Math.round(value * 100) / 100))
+    audio.playbackRate = playbackRate.value
+    persistState()
+    publishState()
+    void updateNativePosition()
   }
 
   function nextIndex(): number {
@@ -543,6 +558,7 @@ export const usePlayerStore = defineStore('player', () => {
       setStatus('loading')
       const source = await prepareSource(track)
       audio.src = source
+      audio.playbackRate = playbackRate.value
       audio.load()
       positionMs.value = restorePositionMs
       durationMs.value = track.durationMs ?? 0
@@ -573,7 +589,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   watch(
-    () => [queue.value, currentIndex.value, repeat.value, shuffle.value, volume.value, muted.value],
+    () => [queue.value, currentIndex.value, repeat.value, shuffle.value, volume.value, muted.value, playbackRate.value],
     () => persistState(),
     { deep: true }
   )
@@ -586,6 +602,7 @@ export const usePlayerStore = defineStore('player', () => {
       durationMs: Math.round(durationMs.value),
       volume: muted.value ? 0 : volume.value,
       muted: muted.value,
+      playbackRate: playbackRate.value,
       repeat: repeat.value === 'one' ? 'one' : repeat.value === 'all' ? 'all' : 'off',
       shuffle: shuffle.value
     }
@@ -690,6 +707,7 @@ export const usePlayerStore = defineStore('player', () => {
     durationMs,
     volume,
     muted,
+    playbackRate,
     repeat,
     shuffle,
     error,
@@ -707,6 +725,7 @@ export const usePlayerStore = defineStore('player', () => {
     seek,
     setVolume,
     toggleMute,
+    setPlaybackRate,
     next,
     previous,
     toggleShuffle,

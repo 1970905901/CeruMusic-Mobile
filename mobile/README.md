@@ -34,8 +34,8 @@ mobile/android/app/build/outputs/apk/release/app-release.apk
 仓库自带 GitHub Actions 工作流：.github/workflows/mobile-build.yml。手动触发 **Build Ceru Music Mobile** 即可得到：
 
 ~~~text
-CeruMusic-2.3.1-android-arm64.apk
-CeruMusic-2.3.1-ios-unsigned.ipa
+CeruMusic-2.3.2-android-arm64.apk
+CeruMusic-2.3.2-ios-unsigned.ipa
 ~~~
 
 未提供签名 secret 时，release APK 使用 Android debug key 签名，可直接侧载安装。生产发布请配置：
@@ -99,6 +99,19 @@ mobile/
 | 后台播放 | iOS UIBackgroundModes: audio + AVAudioSession；Android 前台媒体服务 |
 | 桌面歌词、托盘、全局快捷键、DLNA、系统音频采集 | 不适用于手机；以锁屏控制、分享、本地导入替代 |
 | 自动更新 | 由应用商店/侧载更新取代 |
+
+## 本轮新增能力
+
+- 播放速度：0.5×、0.75×、1×、1.25×、1.5×、2×；播放页和设置页均可切换，并随播放器状态持久化。
+- 本地目录扫描：扫描应用 `Documents` 目录（Android 额外扫描应用外部目录），递归识别常见音频格式并按文件路径/大小去重。
+- 本地歌曲标签编辑：应用内标题、艺术家、专辑可编辑；MP3 文件会同时写回 ID3v2.3 标签，封面与歌词在存在时一并写入。
+- 下载文件名模板：支持 `{title}`、`{artist}`、`{album}`、`{quality}`、`{ext}`，自动处理非法字符和重名文件。
+- 下载标签写入：可选在 MP3 下载完成后写入标题、艺术家和专辑标签。
+- 插件系统通知：插件调用 `ui.notify` 时，原生端请求通知权限并显示系统通知；未授权时回退到应用内提示。
+- iOS 版本外观类名：根据运行中的 iOS 主版本添加 `ios-14` … `ios-26`、`ios-legacy`、`ios-modern`、`ios-liquid`，用于版本差异化外壳样式。
+- iPad 宽屏布局：内容区宽度限制、弹窗宽度和歌单网格列数在大屏设备上自适应。
+
+> 说明：iOS 版本差异化目前是 Ionic 外壳上的版本类名与样式分支，不是 SwiftUI/UIKit 原生控件级的逐版本实现。插件 Web/Native Surface、Guest、插件账号、云账号、社区、AI、一起听、通知中心等仍未移植。
 
 ## 权限与安全边界
 

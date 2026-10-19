@@ -105,6 +105,13 @@
       </div>
 
       <div v-else-if="activeSegment === 'local'" class="section">
+        <div class="local-tools ceru-pad">
+          <ion-button fill="outline" size="small" :disabled="library.importingLocal" @click="scanLocal">
+            <ion-icon slot="start" :icon="folderOpenOutline" />
+            扫描 Documents 目录
+          </ion-button>
+          <span>也可以把音频放入“文件”App 的本应用目录</span>
+        </div>
         <div v-if="library.localRecords.length" class="list-block">
           <TrackRow
             v-for="track in library.localTracks"
@@ -297,11 +304,68 @@ async function renamePlaylist(playlist: Playlist) {
   if (name) await library.renamePlaylist(playlist.id, name)
 }
 
+async function showToast(message: string, color = 'medium') {
+  const element = await toastController.create({ message, duration: 2200, color })
+  await element.present()
+}
+
+async function scanLocal() {
+  try {
+    const records = await library.scanLocalMusic()
+    await showToast(
+      records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件',
+      records.length ? 'success' : 'medium'
+    )
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+async function editLocalTags(track: Track) {
+  const alert = await alertController.create({
+    header: '编辑本地信息',
+    inputs: [
+      { name: 'title', type: 'text', placeholder: '标题', value: track.title },
+      { name: 'artist', type: 'text', placeholder: '艺术家', value: track.artists.join(' / ') },
+      { name: 'album', type: 'text', placeholder: '专辑', value: track.album || '' }
+    ],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  const title = String(data?.values?.title ?? '').trim()
+  if (!title) {
+    await showToast('标题不能为空', 'danger')
+    return
+  }
+  try {
+    const artist = String(data?.values?.artist ?? '').trim()
+    const album = String(data?.values?.album ?? '').trim()
+    const result = await library.writeLocalTags(track, {
+      title,
+      artists: artist ? [artist] : [],
+      album: album || undefined
+    })
+    if (result.fileTagWarning) {
+      await showToast('应用内信息已保存；音频文件标签写入失败', 'warning')
+    } else {
+      await showToast(result.fileTagWritten ? '已保存并写入 MP3 标签' : '应用内信息已保存')
+    }
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
 async function openLocalActions(track: Track) {
   const sheet = await actionSheetController.create({
     header: track.title,
     buttons: [
       { text: '播放', handler: () => void play(track) },
+      { text: '编辑信息', handler: () => void editLocalTags(track) },
       { text: '歌曲信息', handler: () => void openTrackActions(track) },
       {
         text: '删除本地文件',
@@ -437,6 +501,17 @@ async function openLocalActions(track: Track) {
   align-items: center;
   justify-content: center;
 }
+.local-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+}
+.local-tools span {
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+}
 .importing {
   display: flex;
   align-items: center;
@@ -454,4 +529,8 @@ async function openLocalActions(track: Track) {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-</style>
+@media (min-width: 1000px) {
+  .playlist-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}</style>

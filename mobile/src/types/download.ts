@@ -27,6 +27,8 @@ export interface LocalTrackRecord {
   fileName: string
   path: string
   relativePath?: string
+  /** Original path when the file was discovered by directory scanning. */
+  sourcePath?: string
   mime?: string
   cover?: string
   lyrics?: string

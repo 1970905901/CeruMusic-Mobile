@@ -425,9 +425,18 @@ export class PluginRuntime {
       case 'ui.toast':
         await showToast(params?.message || String(params ?? ''))
         return null
-      case 'ui.notify':
-        await showToast(params?.body || params?.message || params?.title || '插件通知')
+      case 'ui.notify': {
+        const title = String(params?.title || '澜音')
+        const body = String(params?.body || params?.message || params?.title || '插件通知')
+        if (document.visibilityState === 'visible') {
+          await showToast(body)
+          return null
+        }
+        const { showSystemNotification } = await import('@/services/notifications')
+        const shown = await showSystemNotification(title, body)
+        if (!shown) await showToast(body)
         return null
+      }
       case 'ui.navigation.open': {
         const { default: router } = await import('@/router')
         const page = params?.page

@@ -62,6 +62,26 @@
           />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="speedometerOutline" color="primary" />
+          <ion-label>
+            <h2>播放速度</h2>
+            <p>当前 {{ player.playbackRate }}×</p>
+          </ion-label>
+          <ion-select
+            :value="player.playbackRate"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="setPlaybackRate($event.detail.value)"
+          >
+            <ion-select-option :value="0.5">0.5×</ion-select-option>
+            <ion-select-option :value="0.75">0.75×</ion-select-option>
+            <ion-select-option :value="1">1×（正常）</ion-select-option>
+            <ion-select-option :value="1.25">1.25×</ion-select-option>
+            <ion-select-option :value="1.5">1.5×</ion-select-option>
+            <ion-select-option :value="2">2×</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="moonOutline" color="primary" />
           <ion-label>
             <h2>睡眠定时</h2>
@@ -122,6 +142,35 @@
           <ion-label color="danger">
             <h2>清除已完成下载</h2>
             <p>同时删除应用内下载文件</p>
+          </ion-label>
+        </ion-item>
+        <ion-item button @click="editFilenameTemplate">
+          <ion-icon slot="start" :icon="documentTextOutline" color="primary" />
+          <ion-label>
+            <h2>下载文件名</h2>
+            <p>{{ settings.settings.downloadFilenameTemplate }}</p>
+          </ion-label>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="pricetagOutline" color="primary" />
+          <ion-label>
+            <h2>写入 MP3 标签</h2>
+            <p>下载完成后写入标题、艺术家和专辑</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.downloadWriteTags"
+            @ionChange="settings.settings.downloadWriteTags = $event.detail.checked"
+          />
+        </ion-item>
+      </ion-list>
+
+      <ion-list class="group">
+        <div class="group-title">本地音乐</div>
+        <ion-item button @click="scanLocal">
+          <ion-icon slot="start" :icon="folderOpenOutline" color="primary" />
+          <ion-label>
+            <h2>扫描 Documents 目录</h2>
+            <p>识别放入应用文档目录的音频文件，自动去重</p>
           </ion-label>
         </ion-item>
       </ion-list>
@@ -217,6 +266,7 @@ import {
   IonSelect,
   IonSelectOption,
   IonTitle,
+  IonToggle,
   IonToolbar,
   actionSheetController,
   alertController,
@@ -225,6 +275,8 @@ import {
 import {
   bookOutline,
   cloudDownloadOutline,
+  documentTextOutline,
+  folderOpenOutline,
   colorPaletteOutline,
   colorWandOutline,
   downloadOutline,
@@ -234,7 +286,9 @@ import {
   layersOutline,
   logoGithub,
   moonOutline,
+  pricetagOutline,
   shieldCheckmarkOutline,
+  speedometerOutline,
   sparklesOutline,
   trashOutline,
   volumeHighOutline
@@ -244,11 +298,13 @@ import { useSettingsStore } from '@/stores/settings'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
+import { useLibraryStore } from '@/stores/library'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
 const downloadStore = useDownloadStore()
+const library = useLibraryStore()
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
 
@@ -265,6 +321,48 @@ function setTheme(value: any) {
 function setSleep(value: any) {
   const minutes = Number(value) || 0
   player.setSleepTimer(minutes > 0 ? minutes : null)
+}
+
+function setPlaybackRate(value: any) {
+  player.setPlaybackRate(Number(value) || 1)
+}
+
+async function editFilenameTemplate() {
+  const alert = await alertController.create({
+    header: '下载文件名模板',
+    message: '可用变量：{title} {artist} {album} {quality} {ext}',
+    inputs: [
+      {
+        name: 'template',
+        type: 'text',
+        value: settings.settings.downloadFilenameTemplate
+      }
+    ],
+    buttons: [
+      {
+        text: '恢复默认',
+        handler: () => {
+          settings.settings.downloadFilenameTemplate = '{artist} - {title}'
+        }
+      },
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  const template = String(data?.values?.template ?? '').trim()
+  if (template) settings.settings.downloadFilenameTemplate = template
+}
+
+async function scanLocal() {
+  try {
+    const records = await library.scanLocalMusic()
+    await toast(records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : String(error), 'danger')
+  }
 }
 
 async function openSourceRouting() {

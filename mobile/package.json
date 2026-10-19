@@ -1,6 +1,6 @@
 {
   "name": "ceru-music-mobile",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "private": true,
   "description": "Ceru Music mobile port for iOS 14+ and Android (arm64)",
   "type": "module",
@@ -30,6 +30,7 @@
     "@capacitor/filesystem": "7.1.9",
     "@capacitor/haptics": "7.0.5",
     "@capacitor/keyboard": "7.0.6",
+    "@capacitor/local-notifications": "7.0.7",
     "@capacitor/network": "7.0.4",
     "@capacitor/preferences": "7.0.4",
     "@capacitor/share": "7.0.4",
@@ -40,32 +41,33 @@
     "@ionic/vue": "8.8.19",
     "@ionic/vue-router": "8.8.19",
     "@shiqianjiang/ceru-plugin-sdk": "0.3.14",
+    "browser-id3-writer": "6.4.0",
     "crypto-js": "4.2.0",
     "fflate": "0.8.2",
     "idb": "8.0.4",
     "ionicons": "7.4.0",
     "json5": "2.2.3",
+    "lodash-es": "4.18.1",
     "music-metadata-browser": "2.5.11",
     "pinia": "3.0.3",
     "vue": "3.5.21",
-    "vue-router": "4.5.1",
-    "lodash-es": "4.18.1"
+    "vue-router": "4.5.1"
   },
   "devDependencies": {
     "@capacitor/android": "7.6.9",
     "@capacitor/assets": "3.0.5",
     "@capacitor/cli": "7.6.9",
     "@capacitor/ios": "7.6.9",
+    "@types/crypto-js": "4.2.2",
+    "@types/lodash-es": "4.17.12",
+    "@types/node": "26.6.5",
     "@vitejs/plugin-vue": "6.0.10",
+    "happy-dom": "21.0.3",
     "sass": "1.90.0",
     "typescript": "5.9.2",
     "vite": "7.3.7",
     "vitest": "3.2.7",
-    "vue-tsc": "3.0.3",
-    "@types/lodash-es": "4.17.12",
-    "@types/node": "26.6.5",
-    "happy-dom": "21.0.3",
-    "@types/crypto-js": "4.2.2"
+    "vue-tsc": "3.0.3"
   },
   "engines": {
     "node": ">=22.12.0"

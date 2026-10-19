@@ -94,6 +94,10 @@
               <ion-icon :icon="optionsOutline" />
               {{ qualityLabel }}
             </button>
+            <button type="button" class="action-pill" @click="choosePlaybackRate">
+              <ion-icon :icon="speedometerOutline" />
+              {{ player.playbackRate }}×
+            </button>
             <button type="button" class="action-pill" @click="downloadTrack">
               <ion-icon :icon="cloudDownloadOutline" />
               下载
@@ -178,6 +182,7 @@ import {
   playSkipForward,
   repeat,
   shuffle,
+  speedometerOutline,
   textOutline
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
@@ -322,6 +327,21 @@ async function downloadTrack() {
   }
 }
 
+async function choosePlaybackRate() {
+  const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
+  const sheet = await actionSheetController.create({
+    header: '播放速度',
+    subHeader: `当前 ${player.playbackRate}×`,
+    buttons: [
+      ...rates.map((rate) => ({
+        text: rate === 1 ? '1×（正常）' : `${rate}×`,
+        handler: () => player.setPlaybackRate(rate)
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
 async function openQueue() {
   queueOpen.value = true
 }

@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
+import { Device } from '@capacitor/device'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { createPinia } from 'pinia'
 
@@ -52,6 +53,21 @@ const forcedMode = new URLSearchParams(location.search).get('mode')
 const ionicMode = forcedMode === 'ios' || platform === 'ios' ? 'ios' : 'md'
 document.documentElement.classList.add(ionicMode)
 document.documentElement.classList.add('capacitor')
+
+async function applyIosVersionStyles() {
+  if (platform !== 'ios') return
+  try {
+    const info = await Device.getInfo()
+    const major = Number(String(info.osVersion || '').split('.')[0])
+    if (!Number.isFinite(major) || major < 14) return
+    document.documentElement.classList.add(`ios-${major}`)
+    document.documentElement.classList.add(major >= 26 ? 'ios-liquid' : major >= 15 ? 'ios-modern' : 'ios-legacy')
+  } catch {
+    // Device information is optional; Ionic's iOS mode remains the fallback.
+  }
+}
+
+void applyIosVersionStyles()
 
 const pinia = createPinia()
 const app = createApp(App).use(IonicVue, { mode: ionicMode }).use(pinia)

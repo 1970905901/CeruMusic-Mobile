@@ -9,6 +9,8 @@ import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
+import { buildDownloadFilename } from '@/utils/filename'
+import { isMp3File, writeMp3TagsToBase64 } from '@/services/audioTags'
 
 function extFromMime(mime?: string, url?: string): string {
   if (mime?.includes('flac')) return 'flac'
@@ -84,6 +86,51 @@ export const useDownloadStore = defineStore('downloads', () => {
     void persist(task)
   }
 
+  async function resolveDownloadPath(task: DownloadTask, ext: string): Promise<string> {
+    const track = library.getTrack(task.trackKey)
+    const filename = buildDownloadFilename(settings.settings.downloadFilenameTemplate, {
+      title: task.title,
+      artist: task.artist,
+      album: track?.album,
+      quality: task.quality,
+      ext
+    })
+    const dot = filename.lastIndexOf('.')
+    const base = dot > 0 ? filename.slice(0, dot) : filename
+    const extension = dot > 0 ? filename.slice(dot + 1) : ext
+    let suffix = 1
+    while (suffix < 1000) {
+      const candidate = `downloads/${base}${suffix > 1 ? ` (${suffix})` : ''}.${extension}`
+      try {
+        await Filesystem.stat({ path: candidate, directory: Directory.Data })
+        suffix++
+      } catch {
+        return candidate
+      }
+    }
+    return `downloads/${task.id}.${extension}`
+  }
+
+  async function prepareDownloadData(
+    task: DownloadTask,
+    base64: string,
+    ext: string,
+    mime: string
+  ): Promise<string> {
+    if (!settings.settings.downloadWriteTags || !isMp3File(`download.${ext}`, mime)) return base64
+    const track = library.getTrack(task.trackKey)
+    try {
+      return writeMp3TagsToBase64(base64, {
+        title: task.title,
+        artists: task.artist.split(/\s*\/\s*/).filter(Boolean),
+        album: track?.album
+      })
+    } catch (error) {
+      console.warn('写入下载文件标签失败', error)
+      return base64
+    }
+  }
+
   async function downloadWithXhr(
     task: DownloadTask,
     url: string,
@@ -132,8 +179,9 @@ export const useDownloadStore = defineStore('downloads', () => {
           const blob = xhr.response as Blob
           const mime = blob.type || xhr.getResponseHeader('content-type') || 'audio/mpeg'
           const ext = extFromMime(mime, url)
-          const path = `downloads/${task.id}.${ext}`
-          const base64 = await blobToBase64(blob)
+          const path = await resolveDownloadPath(task, ext)
+          const rawBase64 = await blobToBase64(blob)
+          const base64 = await prepareDownloadData(task, rawBase64, ext, mime)
           await Filesystem.writeFile({
             path,
             data: base64,
@@ -141,10 +189,11 @@ export const useDownloadStore = defineStore('downloads', () => {
             recursive: true
           })
           const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+          const size = Math.floor((base64.length * 3) / 4)
           updateTask(task.id, {
             status: 'completed',
-            receivedBytes: blob.size,
-            totalBytes: blob.size,
+            receivedBytes: size,
+            totalBytes: size,
             filePath: uri.uri,
             relativePath: path,
             mime
@@ -209,8 +258,9 @@ export const useDownloadStore = defineStore('downloads', () => {
       (response.headers && (response.headers['content-type'] || response.headers['Content-Type'])) ||
       'audio/mpeg'
     const ext = extFromMime(String(mime), url)
-    const path = `downloads/${task.id}.${ext}`
-    const base64 = await responseToBase64(response.data)
+    const path = await resolveDownloadPath(task, ext)
+    const rawBase64 = await responseToBase64(response.data)
+    const base64 = await prepareDownloadData(task, rawBase64, ext, String(mime))
     await Filesystem.writeFile({
       path,
       data: base64,

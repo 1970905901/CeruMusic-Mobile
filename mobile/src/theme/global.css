@@ -305,3 +305,44 @@ html.no-flex-gap .top-bar > * + * {
 html.no-flex-gap .hero-actions > * + * {
   margin-left: 8px;
 }
+
+/* iOS major-version polish. Ionic supplies the shared iOS controls; these
+   classes let the shell follow the visual language of the running OS. */
+html.ios-14 ion-tab-bar {
+  background: var(--ceru-bg-elevated);
+}
+html.ios-modern ion-tab-bar {
+  background: var(--ceru-bg-soft);
+}
+html.ios-18 ion-tab-bar {
+  border-top-color: rgba(127, 127, 127, 0.14);
+}
+html.ios-liquid ion-tab-bar,
+html.ios-liquid .ceru-card,
+html.ios-liquid .mini {
+  background: var(--ceru-bg-soft);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
+}
+html.ios-liquid .ceru-card {
+  border-color: rgba(255, 255, 255, 0.22);
+  border-radius: 26px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+html.ios-liquid ion-button {
+  --border-radius: 999px;
+}
+html.ios-14 .ceru-glass {
+  background: var(--ceru-bg-elevated);
+}
+
+@media (min-width: 900px) {
+  .ceru-pad {
+    max-width: 980px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  ion-modal:not(.player-modal) {
+    --width: min(760px, 92vw);
+  }
+}

@@ -6,6 +6,7 @@ import type { Playlist, FavoriteEntry, HistoryEntry, Track } from '@/types/music
 import type { LocalTrackRecord } from '@/types/download'
 import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
+import { base64ToArrayBuffer, isMp3File, writeMp3TagsToBase64 } from '@/services/audioTags'
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -210,62 +211,106 @@ export const useLibraryStore = defineStore('library', () => {
     history.value = [entry, ...history.value.filter((item) => item.track.key !== track.key)].slice(0, 300)
   }
 
+  const AUDIO_EXTENSIONS = new Set([
+    'mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'oga', 'opus', 'webm', 'wma', 'aiff', 'aif', 'alac'
+  ])
+
+  function isAudioFileName(name: string): boolean {
+    const ext = extFromName(name)
+    return AUDIO_EXTENSIONS.has(ext)
+  }
+
+  function mimeForAudio(name: string): string {
+    const ext = extFromName(name)
+    const values: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      m4a: 'audio/mp4',
+      aac: 'audio/aac',
+      flac: 'audio/flac',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      oga: 'audio/ogg',
+      opus: 'audio/opus',
+      webm: 'audio/webm',
+      wma: 'audio/x-ms-wma',
+      aiff: 'audio/aiff',
+      aif: 'audio/aiff',
+      alac: 'audio/mp4'
+    }
+    return values[ext] || 'audio/mpeg'
+  }
+
+  async function importLocalFile(
+    file: File,
+    options: { sourcePath?: string } = {}
+  ): Promise<LocalTrackRecord | null> {
+    const existing = options.sourcePath
+      ? localRecords.value.find((item) => item.sourcePath === options.sourcePath)
+      : undefined
+    if (existing && existing.size === file.size) return null
+    const key = uid('local')
+    const ext = extFromName(file.name)
+    const path = `local/${key}.${ext}`
+    const data = await blobToBase64(file)
+    await Filesystem.writeFile({
+      path,
+      data,
+      directory: Directory.Data,
+      recursive: true
+    })
+    const uri = await Filesystem.getUri({ path, directory: Directory.Data })
+    let title = file.name.replace(/\.[^.]+$/, '')
+    let artist = '未知艺术家'
+    let album: string | undefined
+    let durationMs: number | undefined
+    let cover: string | undefined
+    try {
+      const { parseBlob } = await import('music-metadata-browser')
+      const metadata = await parseBlob(file, { skipCovers: false })
+      title = metadata.common.title || title
+      artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
+      album = metadata.common.album || undefined
+      durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
+      const picture = metadata.common.picture?.[0]
+      if (picture) {
+        const blob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
+          type: picture.format
+        })
+        cover = await blobToDataUrl(blob)
+      }
+    } catch {
+      // Metadata is optional; the file remains playable with its filename.
+    }
+    const record: LocalTrackRecord = {
+      key,
+      title,
+      artist,
+      album,
+      durationMs,
+      fileName: file.name,
+      path: uri.uri,
+      relativePath: path,
+      sourcePath: options.sourcePath,
+      mime: file.type || mimeForAudio(file.name),
+      cover,
+      size: file.size,
+      createdAt: Date.now()
+    }
+    const db = await getDb()
+    await db.put('localTracks', toPlain(record))
+    localRecords.value = [record, ...localRecords.value]
+    tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
+    return record
+  }
+
   async function importLocalFiles(files: File[]): Promise<LocalTrackRecord[]> {
     importingLocal.value = true
     const imported: LocalTrackRecord[] = []
     try {
       for (const file of files) {
         try {
-          const key = uid('local')
-          const ext = extFromName(file.name)
-          const path = `local/${key}.${ext}`
-          const data = await blobToBase64(file)
-          await Filesystem.writeFile({
-            path,
-            data,
-            directory: Directory.Data,
-            recursive: true
-          })
-          const uri = await Filesystem.getUri({ path, directory: Directory.Data })
-          let title = file.name.replace(/\.[^.]+$/, '')
-          let artist = '未知艺术家'
-          let album: string | undefined
-          let durationMs: number | undefined
-          let cover: string | undefined
-          try {
-            const { parseBlob } = await import('music-metadata-browser')
-            const metadata = await parseBlob(file, { skipCovers: false })
-            title = metadata.common.title || title
-            artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
-            album = metadata.common.album || undefined
-            durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
-            const picture = metadata.common.picture?.[0]
-            if (picture) {
-              const blob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], { type: picture.format })
-              cover = await blobToDataUrl(blob)
-            }
-          } catch {
-            // Metadata is optional; the file remains playable with its filename.
-          }
-          const record: LocalTrackRecord = {
-            key,
-            title,
-            artist,
-            album,
-            durationMs,
-            fileName: file.name,
-            path: uri.uri,
-            relativePath: path,
-            mime: file.type,
-            cover,
-            size: file.size,
-            createdAt: Date.now()
-          }
-          const db = await getDb()
-          await db.put('localTracks', toPlain(record))
-          localRecords.value = [record, ...localRecords.value]
-          tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
-          imported.push(record)
+          const record = await importLocalFile(file)
+          if (record) imported.push(record)
         } catch (error) {
           console.warn('导入本地歌曲失败', file.name, error)
         }
@@ -297,10 +342,81 @@ export const useLibraryStore = defineStore('library', () => {
     })
   }
 
-  async function scanLocalMusic(): Promise<LocalTrackRecord[]> {
-    return pickLocalFiles()
+  interface ScannedAudioFile {
+    path: string
+    name: string
+    size: number
+    directory: Directory
   }
 
+  async function collectAudioFiles(
+    path: string,
+    directory: Directory,
+    depth: number,
+    output: ScannedAudioFile[]
+  ): Promise<void> {
+    if (depth > 8 || output.length >= 2000) return
+    let entries: any[] = []
+    try {
+      const result = await Filesystem.readdir({ path, directory })
+      entries = result.files ?? []
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (output.length >= 2000) return
+      if (!path && ['local', 'downloads', 'exports'].includes(String(entry.name))) continue
+      const childPath = path ? `${path}/${entry.name}` : entry.name
+      if (entry.type === 'directory') {
+        await collectAudioFiles(childPath, directory, depth + 1, output)
+      } else if (isAudioFileName(entry.name)) {
+        output.push({
+          path: childPath,
+          name: entry.name,
+          size: Number(entry.size) || 0,
+          directory
+        })
+      }
+    }
+  }
+
+  async function scanLocalMusic(): Promise<LocalTrackRecord[]> {
+    importingLocal.value = true
+    const imported: LocalTrackRecord[] = []
+    try {
+      const directories: Directory[] = [Directory.Documents]
+      if (Capacitor.getPlatform() === 'android') directories.push(Directory.External)
+      const files: ScannedAudioFile[] = []
+      for (const directory of directories) {
+        await collectAudioFiles('', directory, 0, files)
+      }
+      for (const file of files) {
+        try {
+          const sourcePath = `${file.directory}:${file.path}`
+          const existing = localRecords.value.find(
+            (item) =>
+              item.sourcePath === sourcePath ||
+              (item.fileName === file.name && item.size === file.size)
+          )
+          if (existing && existing.size === file.size) continue
+          const data = await Filesystem.readFile({ path: file.path, directory: file.directory })
+          const base64 = typeof data.data === 'string' ? data.data : ''
+          const bytes = new Uint8Array(base64ToArrayBuffer(base64))
+          const blob = new Blob([bytes], { type: mimeForAudio(file.name) })
+          const record = await importLocalFile(
+            new File([blob], file.name, { type: mimeForAudio(file.name) }),
+            { sourcePath: `${file.directory}:${file.path}` }
+          )
+          if (record) imported.push(record)
+        } catch (error) {
+          console.warn('扫描本地歌曲失败', file.path, error)
+        }
+      }
+      return imported
+    } finally {
+      importingLocal.value = false
+    }
+  }
   async function deleteLocalTrack(key: string): Promise<void> {
     const record = localRecords.value.find((item) => item.key === key)
     if (!record) return
@@ -419,15 +535,47 @@ export const useLibraryStore = defineStore('library', () => {
   async function writeLocalTags(track: any, tags: any) {
     const record = localRecords.value.find((item) => item.key === track?.id || item.key === track?.ref?.id)
     if (!record) throw new Error('本地歌曲不存在')
-    record.title = tags?.title ?? record.title
-    record.artist = tags?.artists?.join(' / ') ?? record.artist
-    record.album = tags?.album ?? record.album
+    if (tags?.title != null) record.title = String(tags.title).trim() || record.title
+    if (Array.isArray(tags?.artists)) {
+      record.artist = tags.artists.map(String).filter(Boolean).join(' / ') || '未知艺术家'
+    }
+    if (tags?.album != null) record.album = String(tags.album).trim() || undefined
+    if (tags?.lyrics != null) record.lyrics = String(tags.lyrics)
+
+    let fileTagWritten = false
+    let fileTagWarning: string | undefined
+    if (record.relativePath && isMp3File(record.fileName, record.mime)) {
+      try {
+        const file = await Filesystem.readFile({
+          path: record.relativePath,
+          directory: Directory.Data
+        })
+        const base64 = typeof file.data === 'string' ? file.data : ''
+        if (!base64) throw new Error('读取音频文件失败')
+        const tagged = writeMp3TagsToBase64(base64, {
+          title: record.title,
+          artists: record.artist.split(/\s*\/\s*/).filter(Boolean),
+          album: record.album,
+          lyrics: record.lyrics,
+          coverDataUrl: record.cover
+        })
+        await Filesystem.writeFile({
+          path: record.relativePath,
+          data: tagged,
+          directory: Directory.Data,
+          recursive: true
+        })
+        fileTagWritten = true
+      } catch (error) {
+        fileTagWarning = error instanceof Error ? error.message : String(error)
+      }
+    }
+
     const db = await getDb()
     await db.put('localTracks', toPlain(record))
     tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
-    return { success: true }
+    return { success: true, fileTagWritten, fileTagWarning }
   }
-
   function historyPage(cursor?: string) {
     return {
       items: history.value.map((item) => item.track.raw),
