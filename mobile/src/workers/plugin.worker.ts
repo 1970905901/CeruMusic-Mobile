@@ -409,7 +409,10 @@ const context: any = {
   rooms: unsupportedService('rooms'),
   devices: unsupportedService('devices'),
   ai: unsupportedService('ai'),
-  tasks: unsupportedService('tasks'),
+  tasks: {
+    schedule: (request: any, call?: any) => rpc('tasks.schedule', { request, call }),
+    cancel: (id: string, call?: any) => rpc('tasks.cancel', { id, call })
+  },
   sockets: unsupportedService('sockets'),
   guests: {
     list: () => rpc('guests.list'),

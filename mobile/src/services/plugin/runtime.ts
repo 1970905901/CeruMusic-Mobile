@@ -5,6 +5,7 @@ import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { PluginLogEntry, PluginRecord, PluginRuntimeInfo } from '@/types/plugin'
 import { kvDelete, kvGet, kvSet, toPlain } from '@/services/db'
 import { useSettingsStore } from '@/stores/settings'
+import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
 
 export interface PluginRuntimeOptions {
   record: PluginRecord
@@ -194,6 +195,7 @@ export class PluginRuntime {
   private activated = false
   private disposed = false
   private info: PluginRuntimeInfo = { providers: [], actions: [], importers: [], converters: [] }
+  private scheduledTasks = new Map<string, PluginScheduledTask & { timer: ReturnType<typeof setTimeout> }>()
   private activationError: string | null = null
 
   constructor(options: PluginRuntimeOptions) {
@@ -286,6 +288,7 @@ export class PluginRuntime {
       pending.reject(new Error('插件运行时已停止'))
     }
     this.pending.clear()
+    this.clearScheduledTasks()
   }
 
   private invoke(payload: { kind: string; target: string; method?: string; args: any[] }): Promise<any> {
@@ -824,6 +827,19 @@ export class PluginRuntime {
         }
         return null
       }
+      case 'tasks.schedule': {
+        await this.requirePermission(params?.call?.permissionKey, 'background')
+        const task = validateScheduledTask(params?.request ?? {}, this.info.actions)
+        this.scheduleTask(task)
+        return { id: task.id }
+      }
+      case 'tasks.cancel': {
+        const id = String(params?.id ?? '')
+        const timer = this.scheduledTasks.get(id)
+        if (timer) clearTimeout(timer.timer)
+        this.scheduledTasks.delete(id)
+        return null
+      }
       case 'window.control':
         return null
       default:
@@ -861,8 +877,31 @@ export class PluginRuntime {
       call('localMusic', ['list', 'scan', 'getTags', 'writeTags'], ['localMusic']),
       call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
       call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
-      call('window', ['control'], ['window'])
+      call('window', ['control'], ['window']),
+      call('tasks', ['schedule', 'cancel'], ['background'])
     ]
+  }
+
+  private scheduleTask(task: PluginScheduledTask) {
+    const previous = this.scheduledTasks.get(task.id)
+    if (previous) clearTimeout(previous.timer)
+    const timer = setTimeout(() => {
+      void this.invokeAction(task.commandId, {}).catch((error) => {
+        this.options.onLog?.({
+          pluginKey: this.record.key,
+          level: 'warn',
+          message: '插件后台任务执行失败: ' + (error instanceof Error ? error.message : String(error)),
+          at: Date.now()
+        })
+      })
+      this.scheduleTask(task)
+    }, task.intervalMs)
+    this.scheduledTasks.set(task.id, { ...task, timer })
+  }
+
+  private clearScheduledTasks() {
+    for (const task of this.scheduledTasks.values()) clearTimeout(task.timer)
+    this.scheduledTasks.clear()
   }
 
   private pickedFiles = new Map<string, File>()
