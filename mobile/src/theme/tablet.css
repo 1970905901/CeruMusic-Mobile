@@ -1,0 +1,155 @@
+/* Android tablet / large-window layout. The class is applied for Material
+   (md) mode when the shortest viewport side is at least 600 CSS pixels, so
+   phones in landscape keep their compact layout. */
+html.android-tablet {
+  --ceru-card-radius: 20px;
+}
+
+html.android-tablet .ceru-pad {
+  max-width: 1180px;
+  padding-left: max(32px, env(safe-area-inset-left));
+  padding-right: max(32px, env(safe-area-inset-right));
+}
+
+html.android-tablet ion-tab-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 60;
+  width: min(620px, calc(100vw - 64px));
+  height: 70px;
+  padding: 6px 10px;
+  transform: translateX(-50%);
+  border: 1px solid var(--ceru-border);
+  border-radius: 26px;
+  background: var(--ion-tab-bar-background);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+  backdrop-filter: var(--ceru-blur);
+  -webkit-backdrop-filter: var(--ceru-blur);
+  contain: none;
+}
+
+html.android-tablet ion-tab-button {
+  max-width: none;
+  height: 58px;
+  border-radius: 18px;
+}
+
+html.android-tablet ion-tab-button.tab-selected {
+  background: rgba(var(--ion-color-primary-rgb), 0.12);
+}
+
+html.android-tablet .mini-host {
+  left: 50%;
+  right: auto;
+  bottom: calc(98px + env(safe-area-inset-bottom));
+  width: min(620px, calc(100vw - 72px));
+  transform: translateX(-50%);
+}
+
+html.android-tablet .horizontal-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 4px 32px 8px;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+html.android-tablet .horizontal-list .collection-card {
+  flex: none;
+  width: 100%;
+}
+
+html.android-tablet .horizontal-list .collection-card .cover {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1;
+}
+
+html.android-tablet .category-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+html.android-tablet .playlist-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+html.android-tablet .player-page .player-shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 40%) minmax(0, 1fr);
+  grid-auto-rows: min-content;
+  column-gap: 40px;
+  align-items: start;
+  max-width: 1180px;
+  padding: 12px 40px 56px;
+}
+
+html.android-tablet .player-page .top-bar {
+  grid-column: 1 / -1;
+}
+
+html.android-tablet .player-page .art-wrap {
+  grid-column: 1;
+  grid-row: 2 / span 6;
+  align-self: start;
+  justify-self: center;
+  margin-top: 20px;
+}
+
+html.android-tablet .player-page .track-head,
+html.android-tablet .player-page .play-error,
+html.android-tablet .player-page .timeline,
+html.android-tablet .player-page .controls,
+html.android-tablet .player-page .bottom-actions,
+html.android-tablet .player-page .player-plugin-slot,
+html.android-tablet .player-page .lyrics-panel {
+  grid-column: 2;
+}
+
+html.android-tablet .player-page .track-head {
+  margin-top: 18px;
+}
+
+html.android-tablet .player-page .track-title {
+  font-size: 32px;
+}
+
+html.android-tablet .player-page .lyrics-lines {
+  max-height: 42vh;
+}
+
+html.android-tablet .player-page .lyrics-panel {
+  padding-bottom: 20px;
+}
+
+html.android-tablet ion-modal {
+  --width: min(820px, 92vw);
+}
+
+@media (max-width: 860px) {
+  html.android-tablet .horizontal-list,
+  html.android-tablet .category-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  html.android-tablet .playlist-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  html.android-tablet .player-page .player-shell {
+    display: flex;
+    max-width: 760px;
+    padding: 8px 24px 40px;
+  }
+
+  html.android-tablet .player-page .art-wrap {
+    margin-top: 28px;
+  }
+}

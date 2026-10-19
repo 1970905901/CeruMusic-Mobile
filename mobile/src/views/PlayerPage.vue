@@ -243,7 +243,7 @@ const lyricsDoc = ref<LyricDocument>({ lines: [], format: 'plain' })
 const lyricsContainer = ref<HTMLElement | null>(null)
 const queueOpen = ref(false)
 const commentsOpen = ref(false)
-const artSize = ref(Math.min(360, Math.max(220, window.innerWidth - 84)))
+const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
 
 const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0))
@@ -464,7 +464,7 @@ async function toast(message: string, color = 'medium') {
 }
 
 function updateArtSize() {
-  artSize.value = Math.min(360, Math.max(220, window.innerWidth - 84))
+  artSize.value = Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84))
 }
 
 watch(

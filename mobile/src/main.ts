@@ -21,6 +21,7 @@ import '@ionic/vue/css/display.css'
 import '@ionic/vue/css/palettes/dark.class.css'
 import '@/theme/variables.css'
 import '@/theme/global.css'
+import '@/theme/tablet.css'
 
 import App from './App.vue'
 import router from './router'
@@ -57,6 +58,15 @@ const forcedMode = new URLSearchParams(location.search).get('mode')
 const ionicMode = forcedMode === 'ios' || platform === 'ios' ? 'ios' : 'md'
 document.documentElement.classList.add(ionicMode)
 document.documentElement.classList.add('capacitor')
+
+function applyResponsiveLayout() {
+  const shortestSide = Math.min(window.innerWidth, window.innerHeight)
+  document.documentElement.classList.toggle('android-tablet', ionicMode === 'md' && shortestSide >= 600)
+}
+
+applyResponsiveLayout()
+window.addEventListener('resize', applyResponsiveLayout)
+window.addEventListener('orientationchange', applyResponsiveLayout)
 
 async function applyIosVersionStyles() {
   if (platform !== 'ios') return

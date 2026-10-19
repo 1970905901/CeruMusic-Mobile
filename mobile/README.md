@@ -113,6 +113,7 @@ mobile/
 - 洛雪兼容子插件：Guest 脚本在沙箱 iframe 中运行，网络权限逐项确认，脚本 SHA-256 校验并在 IndexedDB 持久化。
 - iOS 版本外观类名：根据运行中的 iOS 主版本添加 `ios-14` … `ios-26`、`ios-legacy`、`ios-modern`、`ios-liquid`，用于版本差异化外壳样式。
 - iPad 宽屏布局：内容区宽度限制、弹窗宽度和歌单网格列数在大屏设备上自适应。
+- Android 平板/大屏：最短边 ≥ 600dp 时启用平板布局，浮动 Material 导航栏、1180px 内容区、四列发现卡片、六列歌单网格、播放页双栏；横竖屏与分屏窗口缩放会实时切换；AndroidManifest 声明 esizeableActivity 与大屏支持。
 
 > 说明：iOS 版本差异化目前是 Ionic 外壳上的版本类名与样式分支，不是 SwiftUI/UIKit 原生控件级的逐版本实现。其余剩余边界见下方“当前版本边界”。
 
@@ -137,7 +138,7 @@ mobile/
 - 后端歌单分享链接（依赖云歌单）与分享链接批量导入
 - `uiExtensions` 的 `playlist.item.actions` 内嵌与 slot 级样式；应用级样式与菜单贡献已接入
 - 自动缓存容量管理、HTTP/SOCKS5 代理与自定义 CA
-- Android SAF 任意目录授权；iPad Stage Manager、原生多窗口与原生分屏
+- Android SAF 任意目录授权；iPad Stage Manager 与 iOS 原生多窗口/分屏（Android 已支持系统分屏缩放）
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件（当前为 Ionic iOS 模式、安全区与 `ios-14` … `ios-26` 版本化样式）
 
 DLNA、桌面歌词、全局快捷键、托盘、系统音频采集仍属于桌面专属能力，不以移动端占位界面伪装实现。
