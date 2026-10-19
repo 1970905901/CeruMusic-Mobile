@@ -76,6 +76,26 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PluginDetailPage.vue')
   },
   {
+    path: '/account',
+    name: 'account',
+    component: () => import('@/views/AccountPage.vue')
+  },
+  {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('@/views/NotificationsPage.vue')
+  },
+  {
+    path: '/community',
+    name: 'community',
+    component: () => import('@/views/CommunityPage.vue')
+  },
+  {
+    path: '/community/:id',
+    name: 'community-post',
+    component: () => import('@/views/CommunityPostPage.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/tabs/discover'
   }

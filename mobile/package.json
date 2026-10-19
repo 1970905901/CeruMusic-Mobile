@@ -1,6 +1,6 @@
 {
   "name": "ceru-music-mobile",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "private": true,
   "description": "Ceru Music mobile port for iOS 14+ and Android (arm64)",
   "type": "module",
@@ -40,6 +40,7 @@
     "@capgo/capacitor-media-session": "7.3.0",
     "@ionic/vue": "8.8.19",
     "@ionic/vue-router": "8.8.19",
+    "@logto/capacitor": "4.1.1",
     "@shiqianjiang/ceru-plugin-sdk": "0.3.14",
     "browser-id3-writer": "6.4.0",
     "crypto-js": "4.2.0",
@@ -50,6 +51,7 @@
     "lodash-es": "4.18.1",
     "music-metadata-browser": "2.5.11",
     "pinia": "3.0.3",
+    "socket.io-client": "^4.8.1",
     "vue": "3.5.21",
     "vue-router": "4.5.1"
   },

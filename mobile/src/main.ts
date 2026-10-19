@@ -29,6 +29,8 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/stores/notifications'
 import { installLegacyPolyfills } from '@/utils/polyfills'
 
 installLegacyPolyfills()
@@ -94,6 +96,16 @@ app.use(router)
 void (async () => {
   await router.isReady()
   try {
+    await useAuthStore(pinia).init()
+    const notifications = useNotificationsStore(pinia)
+    notifications.startRealtime()
+    watch(
+      () => useAuthStore(pinia).authenticated,
+      (authenticated) => {
+        if (authenticated) notifications.startRealtime()
+        else notifications.stopRealtime()
+      }
+    )
     await usePluginStore(pinia).init()
     await useLibraryStore(pinia).init()
     await useDownloadStore(pinia).init()
@@ -129,6 +141,7 @@ void (async () => {
 if (Capacitor.isNativePlatform()) {
   void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
     if (!isActive) usePlayerStore(pinia).persistState()
+    else useNotificationsStore(pinia).wakeRealtime()
   })
 
   void CapacitorApp.addListener('backButton', ({ canGoBack }) => {

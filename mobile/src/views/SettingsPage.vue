@@ -14,6 +14,32 @@
       </div>
 
       <ion-list class="group">
+        <div class="group-title">账号与社区</div>
+        <ion-item button detail @click="$router.push('/account')">
+          <ion-icon slot="start" :icon="personCircleOutline" color="primary" />
+          <ion-label>
+            <h2>账号</h2>
+            <p>{{ auth.authenticated ? auth.displayName : '登录 Ceru 账号，同步个人资料' }}</p>
+          </ion-label>
+        </ion-item>
+        <ion-item button detail @click="$router.push('/notifications')">
+          <ion-icon slot="start" :icon="notificationsOutline" color="primary" />
+          <ion-label>
+            <h2>消息通知</h2>
+            <p>{{ notifications.counts.all ? notifications.counts.all + ' 条未读' : '点赞、回复和系统通知' }}</p>
+          </ion-label>
+          <ion-badge v-if="notifications.counts.all" color="danger">{{ notifications.counts.all > 99 ? '99+' : notifications.counts.all }}</ion-badge>
+        </ion-item>
+        <ion-item button detail @click="$router.push('/community')">
+          <ion-icon slot="start" :icon="peopleOutline" color="primary" />
+          <ion-label>
+            <h2>社区</h2>
+            <p>分享音乐、图片与此刻的心情</p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+
+      <ion-list class="group">
         <div class="group-title">音源与插件</div>
         <ion-item button detail @click="$router.push('/tabs/plugins')">
           <ion-icon slot="start" :icon="extensionPuzzleOutline" color="primary" />
@@ -269,8 +295,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import {
+  IonBadge,
   IonContent,
   IonHeader,
   IonIcon,
@@ -302,6 +329,9 @@ import {
   gitNetworkOutline,
   informationCircleOutline,
   layersOutline,
+  notificationsOutline,
+  peopleOutline,
+  personCircleOutline,
   logoGithub,
   micOutline,
   moonOutline,
@@ -319,12 +349,18 @@ import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { useLibraryStore } from '@/stores/library'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/stores/notifications'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
 const downloadStore = useDownloadStore()
 const library = useLibraryStore()
+const auth = useAuthStore()
+const notifications = useNotificationsStore()
+
+watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
 
