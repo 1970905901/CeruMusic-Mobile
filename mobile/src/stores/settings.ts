@@ -38,6 +38,9 @@ export interface AppSettings {
   lyricAnimate: boolean
   lyricOffsetMs: number
   playerBackgroundAnimation: boolean
+  audioCacheEnabled: boolean
+  audioCacheMaxBytes: number
+  audioCacheMaxQuality: string
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -72,7 +75,10 @@ const defaults: AppSettings = {
   lyricShowRomanization: false,
   lyricAnimate: true,
   lyricOffsetMs: 0,
-  playerBackgroundAnimation: true
+  playerBackgroundAnimation: true,
+  audioCacheEnabled: true,
+  audioCacheMaxBytes: 1024 * 1024 * 1024,
+  audioCacheMaxQuality: 'flac'
 }
 
 function load(): AppSettings {

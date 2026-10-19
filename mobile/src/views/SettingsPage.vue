@@ -183,6 +183,71 @@
       </ion-list>
 
       <ion-list class="group">
+        <div class="group-title">音频缓存</div>
+        <ion-item>
+          <ion-icon slot="start" :icon="layersOutline" color="primary" />
+          <ion-label>
+            <h2>离线播放缓存</h2>
+            <p>{{ cacheStats.supported ? '播放过的歌曲可重复快速加载' : '当前 WebView 不支持' }}</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.audioCacheEnabled"
+            :disabled="!cacheStats.supported"
+            @ionChange="settings.settings.audioCacheEnabled = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="downloadOutline" color="primary" />
+          <ion-label>
+            <h2>缓存容量上限</h2>
+            <p>超出后自动按频率与最近使用清理</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.audioCacheMaxBytes"
+            :disabled="!cacheStats.supported"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="changeAudioCacheLimit(Number($event.detail.value))"
+          >
+            <ion-select-option :value="268435456">256 MB</ion-select-option>
+            <ion-select-option :value="536870912">512 MB</ion-select-option>
+            <ion-select-option :value="1073741824">1 GB</ion-select-option>
+            <ion-select-option :value="2147483648">2 GB</ion-select-option>
+            <ion-select-option :value="4294967296">4 GB</ion-select-option>
+            <ion-select-option :value="8589934592">8 GB</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="pricetagOutline" color="primary" />
+          <ion-label>
+            <h2>缓存音质上限</h2>
+            <p>高于上限的音质不缓存</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.audioCacheMaxQuality"
+            :disabled="!cacheStats.supported"
+            interface="action-sheet"
+            cancel-text="取消"
+          >
+            <ion-select-option value="">不限制</ion-select-option>
+            <ion-select-option value="128k">128k</ion-select-option>
+            <ion-select-option value="320k">320k</ion-select-option>
+            <ion-select-option value="flac">FLAC</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="informationCircleOutline" color="primary" />
+          <ion-label>
+            <h2>已用空间</h2>
+            <p>{{ cacheStats.supported ? formatCacheSize(cacheStats.sizeBytes) + ' · ' + cacheStats.entries + ' 项' : '不支持' }}</p>
+          </ion-label>
+          <ion-button fill="outline" size="small" :disabled="clearingCache || !cacheStats.entries" @click="clearAudioCache">
+            清理
+          </ion-button>
+        </ion-item>
+      </ion-list>
+
+      <ion-list class="group">
         <div class="group-title">歌词</div>
         <ion-item>
           <ion-icon slot="start" :icon="textOutline" color="primary" />
@@ -532,6 +597,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
 import { findPluginUpdates, installPluginUpdate } from '@/services/pluginUpdates'
+import {
+  clearMediaCache,
+  enforceMediaCacheLimit,
+  getMediaCacheStats,
+  type MediaCacheStats
+} from '@/services/mediaCache'
 import { importSafFolder, pickSafDirectory, safImportSupported } from '@/services/safImport'
 
 const settings = useSettingsStore()
@@ -545,6 +616,8 @@ const notifications = useNotificationsStore()
 const safAvailable = safImportSupported()
 const safImporting = ref(false)
 const safProgress = ref('')
+const cacheStats = ref<MediaCacheStats>({ supported: false, entries: 0, sizeBytes: 0 })
+const clearingCache = ref(false)
 const choosingSafDownload = ref(false)
 
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
@@ -744,6 +817,48 @@ async function scanLocal() {
   }
 }
 
+function formatCacheSize(value: number): string {
+  const bytes = Math.max(0, Number(value) || 0)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+async function refreshCacheStats() {
+  try {
+    cacheStats.value = await getMediaCacheStats()
+  } catch {
+    cacheStats.value = { supported: false, entries: 0, sizeBytes: 0 }
+  }
+}
+
+async function changeAudioCacheLimit(value: number) {
+  const limit = Math.max(0, Number(value) || 0)
+  settings.settings.audioCacheMaxBytes = limit
+  try {
+    await enforceMediaCacheLimit(limit)
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '清理缓存失败', 'danger')
+  } finally {
+    await refreshCacheStats()
+  }
+}
+
+async function clearAudioCache() {
+  if (clearingCache.value) return
+  clearingCache.value = true
+  try {
+    const result = await clearMediaCache()
+    await toast(`已清理 ${result.deleted} 项缓存`)
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '清理缓存失败', 'danger')
+  } finally {
+    await refreshCacheStats()
+    clearingCache.value = false
+  }
+}
+
 async function importSaf() {
   if (safImporting.value || library.importingLocal) return
   safImporting.value = true
@@ -862,6 +977,8 @@ async function showLegal() {
   })
   await alert.present()
 }
+
+void refreshCacheStats()
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 1800, color })

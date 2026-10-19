@@ -8,6 +8,7 @@ import type { PlaybackStatus, Track } from '@/types/music'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
+import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
 
 function rawEntityToTrack(entity: any, pluginKey?: string): Track {
   const ref = entity?.ref ?? {}
@@ -305,9 +306,44 @@ export const usePlayerStore = defineStore('player', () => {
     if (resolvedUrl && resolvedExpiresAt > now && queue.value[currentIndex.value]?.key === track.key) {
       return resolvedUrl
     }
+    const cacheQuality =
+      settings.settings.preferredQuality ||
+      track.qualities[track.qualities.length - 1] ||
+      ''
+    if (settings.settings.audioCacheEnabled && isTrackCacheable(track)) {
+      try {
+        const cached = await getCachedAudio(track, cacheQuality, track.qualities)
+        if (cached) {
+          cleanupObjectUrl()
+          objectUrl = cached.url
+          return cached.url
+        }
+      } catch (cause) {
+        console.warn('读取音频缓存失败', cause)
+      }
+    }
     const resolved = await pluginStore.resolve(track, settings.settings.preferredQuality || undefined)
     resolvedUrl = resolved.url
     resolvedExpiresAt = resolved.expiresAt ?? now + 5 * 60 * 1000
+    if (settings.settings.audioCacheEnabled && isTrackCacheable(track)) {
+      try {
+        const cached = await cacheAudio({
+          track,
+          requestedQuality: cacheQuality,
+          url: resolved.url,
+          headers: resolved.requestHeaders,
+          maxBytes: settings.settings.audioCacheMaxBytes,
+          maxQuality: settings.settings.audioCacheMaxQuality
+        })
+        if (cached) {
+          cleanupObjectUrl()
+          objectUrl = cached.url
+          return cached.url
+        }
+      } catch (cause) {
+        console.warn('写入音频缓存失败', cause)
+      }
+    }
     if (resolved.requestHeaders && Object.keys(resolved.requestHeaders).length) {
       try {
         if (Capacitor.isNativePlatform()) {
