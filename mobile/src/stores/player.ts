@@ -12,11 +12,19 @@ import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCa
 import {
   bindAudioPipelineElement,
   isAudioEffectsActive,
+  peekEnvelopeAnalyser,
   setAudioVisualizerEnabled
 } from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
 import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
 import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
+import { timeDomainRms } from '@/services/crossfadeCurve'
+import {
+  type CrossfadeElement,
+  cancelCrossfade,
+  initCrossfade,
+  notifyCrossfadeTimeUpdate
+} from '@/services/crossfade'
 
 function rawEntityToTrack(entity: any, pluginKey?: string): Track {
   const ref = entity?.ref ?? {}
@@ -91,6 +99,10 @@ export const usePlayerStore = defineStore('player', () => {
   let restorePositionMs = 0
   let lastPersistAt = 0
   let transitionToken = 0
+  /** 无感过渡保留的旧歌音源（blob URL），过渡收尾时才回收。 */
+  let outgoingRetained: string | null = null
+  /** RMS 观察复用的时域帧缓冲。 */
+  let rmsFrame = new Uint8Array(new ArrayBuffer(0))
 
   audio.volume = volume.value
   audio.playbackRate = playbackRate.value
@@ -138,10 +150,11 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function cleanupObjectUrl() {
-    if (objectUrl) {
+    // 无感过渡期间旧歌的 blob 由尾巴元素继续使用，不能在这里撤销。
+    if (objectUrl && objectUrl !== outgoingRetained) {
       URL.revokeObjectURL(objectUrl)
-      objectUrl = null
     }
+    objectUrl = null
   }
 
   function setStatus(value: PlaybackStatus) {
@@ -277,6 +290,7 @@ export const usePlayerStore = defineStore('player', () => {
   audio.addEventListener('playing', () => setStatus('playing'))
   audio.addEventListener('timeupdate', () => {
     positionMs.value = Math.round(audio.currentTime * 1000)
+    notifyCrossfadeTimeUpdate()
     const now = Date.now()
     if (now - lastPersistAt > 2000) {
       lastPersistAt = now
@@ -411,8 +425,12 @@ export const usePlayerStore = defineStore('player', () => {
     return resolved.url
   }
 
-  async function loadTrack(track: Track, autoplay = true): Promise<void> {
-    if (resolving) return
+  async function loadTrack(
+    track: Track,
+    autoplay = true,
+    options?: { skipFadeIn?: boolean }
+  ): Promise<boolean> {
+    if (resolving) return false
     resolving = true
     error.value = null
     setStatus('loading')
@@ -426,6 +444,8 @@ export const usePlayerStore = defineStore('player', () => {
       positionMs.value = 0
       await applyMetadata(track)
       if (autoplay) {
+        // 无感过渡由包络负责整段淡入，这里不能先满音量起播。
+        if (options?.skipFadeIn) audio.volume = 0
         await audio.play()
         setStatus('playing')
       } else {
@@ -433,6 +453,7 @@ export const usePlayerStore = defineStore('player', () => {
       }
       void library.recordHistory(track)
     persistState()
+      return true
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause)
       setStatus('error')
@@ -443,6 +464,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function playTrack(track: Track, nextQueue?: Track[]): Promise<void> {
+    cancelCrossfade()
     library.upsertTrack(track)
     if (nextQueue?.length) {
       const index = nextQueue.findIndex((item) => item.key === track.key)
@@ -490,6 +512,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function startWithTransition(): Promise<void> {
     const token = ++transitionToken
     cancelVolumeTransition()
+    cancelCrossfade()
     const target = volume.value
     if (!settings.settings.pauseTransition || isListenTogetherPlaybackActive()) {
       audio.volume = target
@@ -511,6 +534,8 @@ export const usePlayerStore = defineStore('player', () => {
   async function stopWithTransition(): Promise<void> {
     const token = ++transitionToken
     cancelVolumeTransition()
+    // 取消过渡时保留当前音量，交给下面的暂停淡出接着做，避免先跳回满值。
+    cancelCrossfade({ keepVolume: true })
     if (!settings.settings.pauseTransition || isListenTogetherPlaybackActive()) {
       audio.pause()
       audio.volume = volume.value
@@ -554,6 +579,101 @@ export const usePlayerStore = defineStore('player', () => {
     void updateNativePosition()
   }
 
+  /**
+   * 无感过渡的宿主实现：时序与判定都在 `services/crossfade.ts`，
+   * 这里只提供“读写当前播放链路”的能力，store 仍是播放状态的唯一权威。
+   */
+  function crossfadeNextTrack(): Track | null {
+    // 单曲循环与列表末尾都不做过渡（桌面同样返回 null）。
+    if (repeat.value === 'one') return null
+    const index = nextIndex()
+    return index >= 0 ? queue.value[index] ?? null : null
+  }
+
+  /** 保留旧歌音源给尾巴元素：blob URL 在过渡收尾前不能撤销。 */
+  function retainOutgoingSource(): { source: string; positionSec: number } | null {
+    const source = audio.currentSrc || audio.src
+    if (!source) return null
+    if (objectUrl && source === objectUrl) outgoingRetained = objectUrl
+    return {
+      source,
+      positionSec: Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    }
+  }
+
+  function releaseOutgoingSource(): void {
+    if (!outgoingRetained) return
+    // 交接已经发生，旧歌只在尾巴元素上，可以安全回收。
+    try {
+      URL.revokeObjectURL(outgoingRetained)
+    } catch {
+      // 已被回收时忽略。
+    }
+    outgoingRetained = null
+  }
+
+  /**
+   * 过渡回滚：主元素通常仍在播放这个音源，因此默认不能撤销。
+   * 只有当主元素已经改指别处（装载失败但已换过 src）时才回收，避免泄漏。
+   */
+  function restoreOutgoingSource(): void {
+    const retained = outgoingRetained
+    outgoingRetained = null
+    if (!retained) return
+    const currentSource = audio.currentSrc || audio.src
+    if (currentSource && currentSource === retained) return
+    try {
+      URL.revokeObjectURL(retained)
+    } catch {
+      // 已被回收时忽略。
+    }
+  }
+
+  /** 过渡触发时装载下一首；成功返回 true，失败由上层的回退逻辑收尾。 */
+  async function advanceForCrossfade(track: Track): Promise<boolean> {
+    const index = queue.value.findIndex((item) => item.key === track.key)
+    if (index < 0) return false
+    currentIndex.value = index
+    publishQueue()
+    try {
+      // 过渡路径不需要淡入，音量完全交给包络控制。
+      return await loadTrack(track, true, { skipFadeIn: true })
+    } catch {
+      // loadTrack 已经把错误写进 error/status，这里只需报告失败以便回退。
+      return false
+    }
+  }
+
+  function readCrossfadeRms(): number {
+    const analyser = peekEnvelopeAnalyser()
+    if (!analyser) return Number.POSITIVE_INFINITY
+    if (rmsFrame.length !== analyser.fftSize) {
+      rmsFrame = new Uint8Array(new ArrayBuffer(analyser.fftSize))
+    }
+    analyser.getByteTimeDomainData(rmsFrame)
+    return timeDomainRms(rmsFrame)
+  }
+
+  initCrossfade({
+    getElement: () => audio as unknown as CrossfadeElement,
+    getVolume: () => (muted.value ? 0 : volume.value),
+    getPlaybackRate: () => playbackRate.value,
+    isEnabled: () =>
+      settings.settings.seamlessTransition && !isListenTogetherPlaybackActive(),
+    peekNext: crossfadeNextTrack,
+    advanceToNext: advanceForCrossfade,
+    retainOutgoing: retainOutgoingSource,
+    releaseOutgoing: releaseOutgoingSource,
+    restoreOutgoing: restoreOutgoingSource,
+    readAverageRms: readCrossfadeRms,
+    createTailElement: () => {
+      const tail = new Audio()
+      tail.preload = 'auto'
+      tail.setAttribute('playsinline', 'true')
+      return tail as unknown as CrossfadeElement
+    }
+  })
+
   function nextIndex(): number {
     if (!queue.value.length) return -1
     if (shuffle.value && queue.value.length > 1) {
@@ -570,12 +690,14 @@ export const usePlayerStore = defineStore('player', () => {
   async function next(): Promise<void> {
     const index = nextIndex()
     if (index < 0) return
+    cancelCrossfade()
     currentIndex.value = index
     publishQueue()
     await loadTrack(queue.value[index], true)
   }
 
   async function previous(): Promise<void> {
+    cancelCrossfade()
     if (positionMs.value > 3000) {
       seek(0)
       return
@@ -593,6 +715,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function handleEnded(): Promise<void> {
+    cancelCrossfade()
     if (repeat.value === 'one' && currentTrack.value) {
       seek(0)
       await loadTrack(currentTrack.value, true)
@@ -728,6 +851,13 @@ export const usePlayerStore = defineStore('player', () => {
     { immediate: true }
   )
 
+  watch(
+    () => settings.settings.seamlessTransition,
+    (enabled) => {
+      if (!enabled) cancelCrossfade()
+    }
+  )
+
   function hostState() {
     return {
       status: status.value === 'ended' ? 'ended' : status.value,
@@ -821,6 +951,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function resetAudio(): void {
+    cancelCrossfade()
     audio.pause()
     audio.removeAttribute('src')
     audio.load()

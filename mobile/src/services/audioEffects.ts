@@ -269,6 +269,15 @@ class AudioEffectChain {
     return this.analyser && this.context && this.context.state !== 'closed' ? this.analyser : null
   }
 
+  /**
+   * 交叉淡化的 RMS 观察只做“只读借用”：优先用可视化分析节点，其次用鼓点节点。
+   * 不新建节点，因此开启无感过渡不会额外把音频推上同源代理路径。
+   */
+  getEnvelopeAnalyser(): AnalyserNode | null {
+    const node = this.analyser ?? this.beatAnalyser
+    return node && this.context && this.context.state !== 'closed' ? node : null
+  }
+
   detachAnalyser(): void {
     if (!this.analyser) return
     try {
@@ -407,6 +416,15 @@ export function ensureVisualizerAnalyser(fftSize: number): AnalyserNode | null {
   if (!source.startsWith('blob:') && !source.startsWith('data:')) return null
   if (!audioEffectChain.ensure(visualizerElement)) return null
   return audioEffectChain.attachAnalyser(fftSize)
+}
+
+/**
+ * 交叉淡化的 RMS 观察接口：只借用可视化/鼓点已有的分析节点，拿不到就返回 null。
+ * 这样开启无感过渡不会为音频额外建立效果链。
+ */
+export function peekEnvelopeAnalyser(): AnalyserNode | null {
+  if (!audioEffectChain.active) return null
+  return audioEffectChain.getEnvelopeAnalyser()
 }
 
 /**

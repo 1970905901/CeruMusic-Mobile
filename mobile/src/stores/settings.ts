@@ -44,6 +44,7 @@ export interface AppSettings {
   lyricImmersiveColor: boolean
   lyricBlur: boolean
   audioVisualizer: boolean
+  seamlessTransition: boolean
   autoHideControls: boolean
   playerLayout: 'cd' | 'cover'
   smtcHiresCover: boolean
@@ -98,6 +99,7 @@ const defaults: AppSettings = {
   lyricImmersiveColor: true,
   lyricBlur: false,
   audioVisualizer: true,
+  seamlessTransition: false,
   autoHideControls: true,
   playerLayout: 'cd',
   smtcHiresCover: false,

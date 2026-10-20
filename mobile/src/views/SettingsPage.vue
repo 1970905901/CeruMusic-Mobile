@@ -210,6 +210,14 @@
           <ion-toggle :checked="settings.settings.pauseTransition" @ionChange="settings.settings.pauseTransition = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="syncOutline" color="primary" />
+          <ion-label>
+            <h2>无感过渡</h2>
+            <p>尾段安静时刻提前淡化到下一首，剩余 12 秒保底触发；一起听房间内自动关闭</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.seamlessTransition" @ionChange="settings.settings.seamlessTransition = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="pulseOutline" color="primary" />
           <ion-label>
             <h2>音频可视化</h2>
