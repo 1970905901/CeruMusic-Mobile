@@ -13,7 +13,15 @@ async function toast(message: string, color = 'medium') {
   await element.present()
 }
 
-export async function openTrackActions(track: Track): Promise<void> {
+export interface TrackActionOptions {
+  extraButtons?: Array<{
+    text: string
+    role?: 'cancel' | 'destructive' | 'selected'
+    handler?: () => boolean | void | Promise<boolean | void>
+  }>
+}
+
+export async function openTrackActions(track: Track, options?: TrackActionOptions): Promise<void> {
   const player = usePlayerStore()
   const library = useLibraryStore()
   const downloads = useDownloadStore()
@@ -88,6 +96,7 @@ export async function openTrackActions(track: Track): Promise<void> {
           }).then(() => toast('已复制'))
         }
       },
+      ...(options?.extraButtons ?? []),
       { text: '取消', role: 'cancel' }
     ]
   })

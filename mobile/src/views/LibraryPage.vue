@@ -69,6 +69,16 @@
       </ion-segment>
 
       <div v-if="activeSegment === 'favorites'" class="section">
+        <div v-if="library.favorites.length" class="section-actions ceru-pad">
+          <ion-button size="small" @click="playFavoriteAll(false)">
+            <ion-icon slot="start" :icon="playIcon" />
+            播放全部 ({{ library.favorites.length }})
+          </ion-button>
+          <ion-button size="small" fill="outline" @click="playFavoriteAll(true)">
+            <ion-icon slot="start" :icon="shuffle" />
+            随机
+          </ion-button>
+        </div>
         <div v-if="library.favorites.length" class="list-block">
           <TrackRow
             v-for="entry in library.favorites"
@@ -138,6 +148,16 @@
           </ion-button>
           <span>也可以把音频放入“文件”App 的本应用目录</span>
         </div>
+        <div v-if="library.localRecords.length" class="section-actions ceru-pad">
+          <ion-button size="small" @click="playLocalAll(false)">
+            <ion-icon slot="start" :icon="playIcon" />
+            播放全部 ({{ library.localRecords.length }})
+          </ion-button>
+          <ion-button size="small" fill="outline" @click="playLocalAll(true)">
+            <ion-icon slot="start" :icon="shuffle" />
+            随机
+          </ion-button>
+        </div>
         <div v-if="library.localRecords.length" class="list-block">
           <TrackRow
             v-for="track in library.localTracks"
@@ -164,6 +184,19 @@
       </div>
 
       <div v-else class="section">
+        <div v-if="library.recentTracks.length" class="section-actions ceru-pad">
+          <ion-button size="small" @click="playRecentAll(false)">
+            <ion-icon slot="start" :icon="playIcon" />
+            播放全部 ({{ library.recentTracks.length }})
+          </ion-button>
+          <ion-button size="small" fill="outline" @click="playRecentAll(true)">
+            <ion-icon slot="start" :icon="shuffle" />
+            随机
+          </ion-button>
+          <button class="clear-history-btn" type="button" @click="confirmClearHistory">
+            清空记录
+          </button>
+        </div>
         <div v-if="library.recentTracks.length" class="list-block">
           <TrackRow
             v-for="track in library.recentTracks"
@@ -171,7 +204,7 @@
             :track="track"
             :favorite="library.isFavorite(track)"
             @play="play"
-            @more="openMore"
+            @more="openRecentActions(track)"
           />
         </div>
         <EmptyState
@@ -218,6 +251,8 @@ import {
   folderOpenOutline,
   heartOutline,
   linkOutline,
+  play as playIcon,
+  shuffle,
   timeOutline
 } from 'ionicons/icons'
 import TrackRow from '@/components/TrackRow.vue'
@@ -258,7 +293,15 @@ function playlistCover(id: string): string | undefined {
 
 async function play(track: Track) {
   try {
-    await player.playTrack(track)
+    let contextQueue: Track[] | undefined
+    if (activeSegment.value === 'favorites') {
+      contextQueue = library.favorites.map((e) => e.track)
+    } else if (activeSegment.value === 'local') {
+      contextQueue = library.localTracks
+    } else if (activeSegment.value === 'recent') {
+      contextQueue = library.recentTracks
+    }
+    await player.playTrack(track, contextQueue)
   } catch (error) {
     const toast = await toastController.create({
       message: error instanceof Error ? error.message : String(error),
@@ -271,6 +314,64 @@ async function play(track: Track) {
 
 function openMore(track: Track) {
   void openTrackActions(track)
+}
+
+async function playTrackList(tracks: Track[], shuffleMode = false) {
+  if (!tracks.length) return
+  try {
+    const targetTracks = shuffleMode ? [...tracks].sort(() => Math.random() - 0.5) : tracks
+    if (shuffleMode) player.setMode({ shuffle: true })
+    await player.playTrack(targetTracks[0], tracks)
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+function playFavoriteAll(shuffleMode = false) {
+  playTrackList(
+    library.favorites.map((entry) => entry.track),
+    shuffleMode
+  )
+}
+
+function playLocalAll(shuffleMode = false) {
+  playTrackList(library.localTracks, shuffleMode)
+}
+
+function playRecentAll(shuffleMode = false) {
+  playTrackList(library.recentTracks, shuffleMode)
+}
+
+async function confirmClearHistory() {
+  const alert = await alertController.create({
+    header: '清空播放记录？',
+    message: '所有最近播放的历史记录会被清除。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '清空',
+        role: 'destructive',
+        handler: () => {
+          void library.clearHistory().then(() => showToast('已清空播放记录'))
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
+function openRecentActions(track: Track) {
+  void openTrackActions(track, {
+    extraButtons: [
+      {
+        text: '从记录中移除',
+        role: 'destructive',
+        handler: () => {
+          void library.removeFromHistory(track.key).then(() => showToast('已从播放记录中移除'))
+        }
+      }
+    ]
+  })
 }
 
 function pickLocal() {
@@ -767,6 +868,26 @@ async function openLocalActions(track: Track) {
 .local-tools span {
   font-size: 11px;
   color: var(--ceru-text-secondary);
+}
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 16px 10px;
+}
+.clear-history-btn {
+  margin-left: auto;
+  border: 1px solid var(--ceru-border);
+  background: var(--ceru-bg-elevated);
+  color: var(--ceru-text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.clear-history-btn:active {
+  color: var(--ceru-danger);
+  border-color: var(--ceru-danger);
 }
 .importing {
   display: flex;

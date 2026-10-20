@@ -223,6 +223,22 @@ export const useLibraryStore = defineStore('library', () => {
     history.value = [entry, ...history.value.filter((item) => item.track.key !== track.key)].slice(0, 300)
   }
 
+  async function clearHistory(): Promise<void> {
+    const db = await getDb()
+    await db.clear('history')
+    history.value = []
+  }
+
+  async function removeFromHistory(keyOrId: string): Promise<void> {
+    const db = await getDb()
+    const existing = await db.getAll('history')
+    const matches = existing.filter((item) => item.id === keyOrId || item.track.key === keyOrId)
+    for (const item of matches) await db.delete('history', item.id)
+    history.value = history.value.filter(
+      (item) => item.id !== keyOrId && item.track.key !== keyOrId
+    )
+  }
+
   const AUDIO_EXTENSIONS = new Set([
     'mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'oga', 'opus', 'webm', 'wma', 'aiff', 'aif', 'alac'
   ])
@@ -778,6 +794,8 @@ export const useLibraryStore = defineStore('library', () => {
     reorderPlaylist,
     playlistTracks,
     recordHistory,
+    clearHistory,
+    removeFromHistory,
     pickLocalFiles,
     importLocalFile,
     importLocalFiles,
