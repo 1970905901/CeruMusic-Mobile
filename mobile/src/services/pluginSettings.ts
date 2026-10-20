@@ -10,6 +10,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricAnimate',
   'lyricJump',
   'lyricSeekStagger',
+  'lyricAppleStyle',
   'lyricImmersiveColor',
   'lyricBlur',
   'audioVisualizer',

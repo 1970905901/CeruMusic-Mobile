@@ -343,6 +343,14 @@
           <ion-toggle :checked="settings.settings.lyricSeekStagger" @ionChange="settings.settings.lyricSeekStagger = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="musicalNotesOutline" color="primary" />
+          <ion-label>
+            <h2>使用 Apple 风格歌词</h2>
+            <p>当前句按行时间推进逐字扫过效果</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricAppleStyle" @ionChange="settings.settings.lyricAppleStyle = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
           <ion-label>
             <h2>沉浸色歌词</h2>
@@ -728,6 +736,7 @@ import {
   logoGithub,
   micOutline,
   moonOutline,
+  musicalNotesOutline,
   pricetagOutline,
   pulseOutline,
   shieldCheckmarkOutline,

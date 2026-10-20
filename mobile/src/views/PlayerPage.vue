@@ -179,7 +179,8 @@
               class="lyrics-lines"
               :class="{
                 'lyric-animate': settings.settings.lyricAnimate,
-                'lyric-jump': settings.settings.lyricJump
+                'lyric-jump': settings.settings.lyricJump,
+                'lyric-apple': settings.settings.lyricAppleStyle
               }"
               :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px', '--lyric-accent': lyricAccent }"
             >
@@ -321,6 +322,7 @@ import {
   seekStaggerDelayMs
 } from '@/services/lyricSeekStagger'
 import { collectLyricConverters } from '@/services/lyricConverters'
+import { karaokeMaskStyle } from '@/services/lyricKaraoke'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -405,13 +407,22 @@ function lyricLineStyle(index: number) {
     index === currentLineIndex.value
       ? lyricJumpStyle(displayLyrics.value.lines[index], settings.settings.lyricJump)
       : undefined
+  // Apple 风格歌词只作用于当前句：按行时间推进遮罩，形成从左到右的扫过。
+  const karaoke =
+    index === currentLineIndex.value
+      ? karaokeMaskStyle(
+          displayLyrics.value.lines[index],
+          lyricPositionMs.value,
+          settings.settings.lyricAppleStyle
+        )
+      : undefined
   const delay = lyricSeekStaggering.value
     ? seekStaggerDelayMs(index, currentLineIndex.value, settings.settings.lyricSeekStagger)
     : 0
   const stagger = delay > 0 ? { transitionDelay: `${delay}ms` } : undefined
-  if (!settings.settings.lyricBlur) return jump ? { ...jump, ...stagger } : stagger
+  if (!settings.settings.lyricBlur) return { ...jump, ...karaoke, ...stagger }
   const distance = Math.abs(currentLineIndex.value - index)
-  if (distance === 0) return { filter: 'blur(0)', ...jump, ...stagger }
+  if (distance === 0) return { filter: 'blur(0)', ...jump, ...karaoke, ...stagger }
   const blurPx = Math.min(1.2 + Math.pow(distance, 0.7) * 1.5, 8)
   return { filter: `blur(${blurPx.toFixed(2)}px)`, ...stagger }
 }
@@ -1253,6 +1264,31 @@ onBeforeUnmount(() => {
 }
 .lyric-text {
   display: block;
+}
+/*
+ * Apple 风格歌词：当前句用亮暗渐变遮罩按行时间推进，未唱部分变暗、已唱部分变亮，
+ * 形成从左到右的扫过效果；遮罩参数与桌面版 LyricAdapter 的 YRC 完全一致。
+ */
+.lyric-apple .lyric-line.active .lyric-text {
+  display: inline-block;
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 1) 45.4545%,
+    rgba(0, 0, 0, 0.3) 54.5455%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 1) 45.4545%,
+    rgba(0, 0, 0, 0.3) 54.5455%
+  );
+  mask-size: 220% 100%;
+  -webkit-mask-size: 220% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: var(--karaoke-mask-x, 0%) 0;
+  -webkit-mask-position: var(--karaoke-mask-x, 0%) 0;
+  transition: mask-position 0.25s linear;
+  -webkit-transition: -webkit-mask-position 0.25s linear;
 }
 .lyric-translation {
   display: block;
