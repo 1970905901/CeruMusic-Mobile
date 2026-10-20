@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39372835338`（功能提交 `97b4286`），Android/iOS 均成功
+- 最新 CI：`39374727761`（功能提交 `7c3579f`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -53,6 +53,7 @@
 
 ### 文件与导入
 - 本地音乐导入。
+- 本地音乐扫描过滤：支持按文件大小（默认 100KB）与时长（默认 30s）两层过滤短音频与系统提示音，设置页提供自定义阈值与“不过滤”选项，扫描与 SAF 文件夹导入自动反馈导入与过滤数量。
 - Android SAF 导入音频。
 - Android SAF 下载目录。
 - 下载管理与批量操作：支持下载全部暂停、全部开始、清空队列（含部分已下载临时文件清理）与清空失败/取消记录，配套二次确认弹窗。
@@ -114,7 +115,7 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：29 个测试文件，104 个测试全部通过
+- `npm run test`：31 个测试文件，111 个测试全部通过
 - `npm run build`：通过
 - GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均成功
 
