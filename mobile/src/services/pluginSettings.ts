@@ -11,6 +11,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricImmersiveColor',
   'lyricBlur',
   'audioVisualizer',
+  'autoHideControls',
   'lyricOffsetMs',
   'lyricFilterInfo',
   'lyricStrictFilter',

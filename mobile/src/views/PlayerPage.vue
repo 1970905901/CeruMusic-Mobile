@@ -1,6 +1,6 @@
 ﻿<template>
   <ion-page class="player-page" :class="{ 'background-animated': settings.settings.playerBackgroundAnimation }">
-    <ion-content :fullscreen="true" class="player-content">
+    <ion-content :fullscreen="true" class="player-content" @click.capture="controlsIdle.poke()" @scroll="controlsIdle.poke()">
       <div v-if="track" class="bg-layer" :style="bgStyle" />
       <div class="bg-shade" />
       <div class="player-shell ceru-safe-top">
@@ -70,7 +70,7 @@
             </div>
           </div>
 
-          <div class="controls">
+          <div class="controls" :class="{ 'chrome-idle': chromeHidden }">
             <button class="side-btn" :class="{ active: player.shuffle }" type="button" aria-label="随机播放" @click="player.toggleShuffle()">
               <ion-icon :icon="shuffle" />
             </button>
@@ -89,7 +89,7 @@
             </button>
           </div>
 
-          <div class="bottom-actions">
+          <div class="bottom-actions" :class="{ 'chrome-idle': chromeHidden }">
             <button type="button" class="action-pill" :class="{ active: showLyrics }" @click="toggleLyrics">
               <ion-icon :icon="textOutline" />
               歌词
@@ -288,6 +288,7 @@ import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { extractLightMainColor } from '@/services/coverColor'
+import { createIdleControls } from '@/services/idleControls'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -375,6 +376,35 @@ function lyricLineStyle(index: number) {
   const blurPx = Math.min(1.2 + Math.pow(distance, 0.7) * 1.5, 8)
   return { filter: `blur(${blurPx.toFixed(2)}px)` }
 }
+
+const chromeHidden = ref(false)
+const chromeSuspended = computed(() => queueOpen.value || commentsOpen.value || lyricOffsetOpen.value || lyricShareOpen.value || lyricConverterOpen.value || !player.isPlaying)
+const controlsIdle = createIdleControls({
+  get enabled() {
+    return settings.settings.autoHideControls
+  },
+  get suspended() {
+    return chromeSuspended.value
+  },
+  onIdle: () => {
+    chromeHidden.value = true
+  },
+  onActive: () => {
+    chromeHidden.value = false
+  }
+})
+
+watch(
+  () => [settings.settings.autoHideControls, chromeSuspended.value] as const,
+  ([enabled, suspended]) => {
+    if (!enabled || suspended) {
+      chromeHidden.value = false
+      controlsIdle.deactivate()
+      return
+    }
+    controlsIdle.poke()
+  }
+)
 
 function closePlayer() {
   if (window.history.length > 1) {
@@ -650,9 +680,11 @@ watch(currentLineIndex, () => {
 onMounted(() => {
   window.addEventListener('resize', updateArtSize)
   if (showLyrics.value) void loadLyrics()
+  controlsIdle.poke()
 })
 
 onBeforeUnmount(() => {
+  controlsIdle.deactivate()
   window.removeEventListener('resize', updateArtSize)
 })
 </script>
@@ -879,6 +911,15 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 28px;
+}
+.controls,
+.bottom-actions {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.chrome-idle {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
 }
 .action-pill {
   display: flex;

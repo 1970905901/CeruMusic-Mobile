@@ -203,6 +203,14 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.audioVisualizer" @ionChange="settings.settings.audioVisualizer = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="eyeOffOutline" color="primary" />
+          <ion-label>
+            <h2>自动隐藏控制栏</h2>
+            <p>播放中 3 秒无操作后淡出播放控制与底部操作栏</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.autoHideControls" @ionChange="settings.settings.autoHideControls = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
