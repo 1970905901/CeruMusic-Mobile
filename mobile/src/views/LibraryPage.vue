@@ -2,11 +2,27 @@
   <ion-page>
     <ion-header :translucent="true">
       <ion-toolbar>
-        <ion-title>音乐库</ion-title>
+        <ion-buttons slot="start">
+          <ion-button v-if="batchMode" fill="clear" @click="exitBatchMode">取消</ion-button>
+        </ion-buttons>
+        <ion-title>{{ batchMode ? `已选择 ${selectedCount} 首` : '音乐库' }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button fill="clear" @click="openCreatePlaylist">
-            <ion-icon slot="icon-only" :icon="addOutline" />
+          <ion-button v-if="batchMode" fill="clear" @click="toggleSelectAll">
+            {{ isAllSelected ? '取消全选' : '全选' }}
           </ion-button>
+          <template v-else>
+            <ion-button
+              v-if="activeTracks.length"
+              fill="clear"
+              title="批量选择"
+              @click="enterBatchMode"
+            >
+              <ion-icon slot="icon-only" :icon="checkmarkDoneOutline" />
+            </ion-button>
+            <ion-button fill="clear" @click="openCreatePlaylist">
+              <ion-icon slot="icon-only" :icon="addOutline" />
+            </ion-button>
+          </template>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
@@ -79,15 +95,15 @@
           />
         </div>
         <div v-if="library.favorites.length" class="section-actions ceru-pad">
-          <ion-button size="small" @click="playFavoriteAll(false)">
+          <ion-button size="small" :disabled="batchMode" @click="playFavoriteAll(false)">
             <ion-icon slot="start" :icon="playIcon" />
             播放全部 ({{ filteredFavorites.length }})
           </ion-button>
-          <ion-button size="small" fill="outline" @click="playFavoriteAll(true)">
+          <ion-button size="small" fill="outline" :disabled="batchMode" @click="playFavoriteAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
             随机
           </ion-button>
-          <ion-button size="small" fill="outline" @click="openFavoriteSortSheet">
+          <ion-button size="small" fill="outline" :disabled="batchMode" @click="openFavoriteSortSheet">
             <ion-icon slot="start" :icon="swapVerticalOutline" />
             {{ favoriteSortLabel }}
           </ion-button>
@@ -98,9 +114,12 @@
             :key="entry.key"
             :track="entry.track"
             favorite
+            :selectable="batchMode"
+            :selected="selection.isSelected(entry.track)"
             :active="player.currentTrack?.key === entry.track.key"
             @play="play"
             @more="openMore"
+            @toggleSelect="selection.toggleSelect"
           />
           <p v-if="trackFilter && !filteredFavorites.length" class="empty-search-hint ceru-pad">
             未找到包含 “{{ trackFilter }}” 的收藏歌曲
@@ -175,15 +194,15 @@
           />
         </div>
         <div v-if="library.localRecords.length" class="section-actions ceru-pad">
-          <ion-button size="small" @click="playLocalAll(false)">
+          <ion-button size="small" :disabled="batchMode" @click="playLocalAll(false)">
             <ion-icon slot="start" :icon="playIcon" />
             播放全部 ({{ filteredLocalTracks.length }})
           </ion-button>
-          <ion-button size="small" fill="outline" @click="playLocalAll(true)">
+          <ion-button size="small" fill="outline" :disabled="batchMode" @click="playLocalAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
             随机
           </ion-button>
-          <ion-button size="small" fill="outline" @click="openLocalSortSheet">
+          <ion-button size="small" fill="outline" :disabled="batchMode" @click="openLocalSortSheet">
             <ion-icon slot="start" :icon="swapVerticalOutline" />
             {{ localSortLabel }}
           </ion-button>
@@ -193,9 +212,12 @@
             v-for="track in filteredLocalTracks"
             :key="track.key"
             :track="track"
+            :selectable="batchMode"
+            :selected="selection.isSelected(track)"
             :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openLocalActions(track)"
+            @toggleSelect="selection.toggleSelect"
           />
           <p v-if="trackFilter && !filteredLocalTracks.length" class="empty-search-hint ceru-pad">
             未找到包含 “{{ trackFilter }}” 的本地歌曲
@@ -219,15 +241,15 @@
 
       <div v-else class="section">
         <div v-if="library.recentTracks.length" class="section-actions ceru-pad">
-          <ion-button size="small" @click="playRecentAll(false)">
+          <ion-button size="small" :disabled="batchMode" @click="playRecentAll(false)">
             <ion-icon slot="start" :icon="playIcon" />
             播放全部 ({{ library.recentTracks.length }})
           </ion-button>
-          <ion-button size="small" fill="outline" @click="playRecentAll(true)">
+          <ion-button size="small" fill="outline" :disabled="batchMode" @click="playRecentAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
             随机
           </ion-button>
-          <button class="clear-history-btn" type="button" @click="confirmClearHistory">
+          <button class="clear-history-btn" type="button" :disabled="batchMode" @click="confirmClearHistory">
             清空记录
           </button>
         </div>
@@ -237,9 +259,12 @@
             :key="track.key"
             :track="track"
             :favorite="library.isFavorite(track)"
+            :selectable="batchMode"
+            :selected="selection.isSelected(track)"
             :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openRecentActions(track)"
+            @toggleSelect="selection.toggleSelect"
           />
         </div>
         <EmptyState
@@ -253,13 +278,25 @@
       <div class="bottom-space" />
     </ion-content>
 
+    <TrackBatchBar
+      :open="batchMode"
+      :selected-count="selectedCount"
+      :destructive-label="batchDestructiveLabel"
+      :destructive-icon="batchDestructiveIcon"
+      @play="playSelected"
+      @play-next="playNextSelected"
+      @add-to-playlist="addToPlaylistSelected"
+      @download="downloadSelected"
+      @destructive="removeSelected"
+    />
+
     <PlaylistImportSheet :open="importOpen" @close="importOpen = false" />
     <SharedPlaylistImportSheet :open="sharedImportOpen" @close="sharedImportOpen = false" />
   </ion-page>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   IonButton,
   IonButtons,
@@ -281,18 +318,22 @@ import {
 import {
   addOutline,
   albumsOutline,
+  checkmarkDoneOutline,
   cloudDownloadOutline,
   documentOutline,
   ellipsisHorizontal,
   folderOpenOutline,
+  heartDislikeOutline,
   heartOutline,
   linkOutline,
   play as playIcon,
+  trashOutline,
   shuffle,
   swapVerticalOutline,
   timeOutline
 } from 'ionicons/icons'
 import TrackRow from '@/components/TrackRow.vue'
+import TrackBatchBar from '@/components/TrackBatchBar.vue'
 import CoverImage from '@/components/CoverImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import type { Track } from '@/types/music'
@@ -300,16 +341,19 @@ import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/t
 import type { Playlist } from '@/types/music'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
+import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
 import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
-import { openTrackActions } from '@/services/trackActions'
+import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
+import { useTrackBatchSelection } from '@/services/trackBatch'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
+const downloads = useDownloadStore()
 const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 
@@ -367,6 +411,147 @@ const filteredLocalTracks = computed(() => {
   }
   return sortTracks(list, localSortType.value)
 })
+
+/** Tracks visible in the current library segment, used for select-all and context. */
+const activeTracks = computed<Track[]>(() => {
+  if (activeSegment.value === 'favorites') return filteredFavorites.value.map((e) => e.track)
+  if (activeSegment.value === 'local') return filteredLocalTracks.value
+  if (activeSegment.value === 'recent') return library.recentTracks
+  return []
+})
+
+const selection = useTrackBatchSelection({ source: () => activeTracks.value })
+const batchMode = selection.active
+const selectedCount = selection.selectedCount
+const isAllSelected = selection.allSelected
+
+const batchDestructiveLabel = computed(() => {
+  if (activeSegment.value === 'favorites') return '取消收藏'
+  if (activeSegment.value === 'local') return '删除'
+  if (activeSegment.value === 'recent') return '移除'
+  return ''
+})
+const batchDestructiveIcon = computed(() =>
+  activeSegment.value === 'favorites' ? heartDislikeOutline : trashOutline
+)
+
+watch(activeSegment, () => {
+  if (batchMode.value) exitBatchMode()
+})
+
+watch(trackFilter, () => {
+  if (batchMode.value) exitBatchMode()
+})
+
+function enterBatchMode(): void {
+  selection.enter()
+}
+
+function exitBatchMode(): void {
+  selection.exit()
+}
+
+function toggleSelectAll(): void {
+  selection.toggleSelectAll()
+}
+
+async function playSelected(): Promise<void> {
+  const tracks = selection.selectedTracks.value
+  if (!tracks.length) return
+  await playTrackList(tracks)
+  exitBatchMode()
+}
+
+function playNextSelected(): void {
+  const tracks = selection.selectedTracks.value
+  if (!tracks.length) return
+  player.insertTracksNext(tracks)
+  void showToast(`已将 ${tracks.length} 首歌曲加入下一首播放`)
+  exitBatchMode()
+}
+
+async function addToPlaylistSelected(): Promise<void> {
+  const tracks = selection.selectedTracks.value
+  if (!tracks.length) return
+  await addTracksToPlaylistDialog(tracks)
+  exitBatchMode()
+}
+
+async function downloadSelected(): Promise<void> {
+  const tracks = selection.selectedTracks.value
+  if (!tracks.length) return
+  try {
+    const enqueued = await downloads.createBatchDownloads(tracks)
+    await showToast(
+      enqueued > 0 ? `已添加 ${enqueued} 首歌曲到下载队列` : '所选歌曲已在下载或已是本地歌曲'
+    )
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '批量下载失败', 'danger')
+  }
+  exitBatchMode()
+}
+
+async function removeSelected(): Promise<void> {
+  const tracks = selection.selectedTracks.value
+  const segment = activeSegment.value
+  if (!tracks.length || segment === 'playlists') return
+  const labels: Record<string, { header: string; message: string; confirm: string }> = {
+    favorites: {
+      header: '取消收藏',
+      message: `确定要取消收藏选中的 ${tracks.length} 首歌曲吗？`,
+      confirm: '取消收藏'
+    },
+    local: {
+      header: '删除本地文件',
+      message: `将从设备删除选中的 ${tracks.length} 个音频文件，此操作不可恢复。`,
+      confirm: '删除'
+    },
+    recent: {
+      header: '移除播放记录',
+      message: `确定要从播放记录中移除选中的 ${tracks.length} 首歌曲吗？`,
+      confirm: '移除'
+    }
+  }
+  const label = labels[segment]
+  if (!label) return
+  const alert = await alertController.create({
+    header: label.header,
+    message: label.message,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: label.confirm,
+        role: 'destructive',
+        handler: () => {
+          void applyBatchRemoval(tracks, segment)
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
+async function applyBatchRemoval(
+  tracks: Track[],
+  segment: 'favorites' | 'local' | 'recent'
+): Promise<void> {
+  try {
+    if (segment === 'favorites') {
+      for (const track of tracks) await library.removeFavorite(track)
+      await showToast(`已取消收藏 ${tracks.length} 首歌曲`)
+    } else if (segment === 'local') {
+      for (const track of tracks) await library.deleteLocalTrack(track.key)
+      await showToast(`已删除 ${tracks.length} 个本地文件`)
+    } else {
+      for (const track of tracks) await library.removeFromHistory(track.key)
+      await showToast(`已从播放记录移除 ${tracks.length} 首歌曲`)
+    }
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '操作失败', 'danger')
+  } finally {
+    exitBatchMode()
+  }
+}
 
 const localInput = ref<HTMLInputElement | null>(null)
 const playlistFileInput = ref<HTMLInputElement | null>(null)
@@ -1032,6 +1217,10 @@ async function openLocalActions(track: Track) {
 .clear-history-btn:active {
   color: var(--ceru-danger);
   border-color: var(--ceru-danger);
+}
+.clear-history-btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 .importing {
   display: flex;

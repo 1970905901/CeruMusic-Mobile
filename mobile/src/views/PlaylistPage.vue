@@ -202,57 +202,16 @@
       <div class="bottom-space" />
     </ion-content>
 
-    <!-- 底部批量操作栏 -->
-    <div v-if="batchMode" class="batch-bar-backdrop">
-      <div class="batch-bar-container ceru-card">
-        <button
-          type="button"
-          class="batch-action-btn ceru-press"
-          :disabled="selectedCount === 0"
-          @click="playSelected"
-        >
-          <ion-icon :icon="playIcon" />
-          <span>播放</span>
-        </button>
-        <button
-          type="button"
-          class="batch-action-btn ceru-press"
-          :disabled="selectedCount === 0"
-          @click="playNextSelected"
-        >
-          <ion-icon :icon="playSkipForwardOutline" />
-          <span>下一首</span>
-        </button>
-        <button
-          type="button"
-          class="batch-action-btn ceru-press"
-          :disabled="selectedCount === 0"
-          @click="addToPlaylistSelected"
-        >
-          <ion-icon :icon="addCircleOutline" />
-          <span>加歌单</span>
-        </button>
-        <button
-          type="button"
-          class="batch-action-btn ceru-press"
-          :disabled="selectedCount === 0"
-          @click="downloadSelected"
-        >
-          <ion-icon :icon="cloudDownloadOutline" />
-          <span>下载</span>
-        </button>
-        <button
-          v-if="isLocal"
-          type="button"
-          class="batch-action-btn danger ceru-press"
-          :disabled="selectedCount === 0"
-          @click="removeSelected"
-        >
-          <ion-icon :icon="trashOutline" />
-          <span>移除</span>
-        </button>
-      </div>
-    </div>
+    <TrackBatchBar
+      :open="batchMode"
+      :selected-count="selectedCount"
+      :destructive-label="isLocal ? '移除' : ''"
+      @play="playSelected"
+      @play-next="playNextSelected"
+      @add-to-playlist="addToPlaylistSelected"
+      @download="downloadSelected"
+      @destructive="removeSelected"
+    />
 
     <!-- 定位到当前播放歌曲悬浮按钮 -->
     <transition name="locate-btn-fade">
@@ -307,10 +266,6 @@ import {
   searchOutline,
   ellipsisHorizontal,
   play as playIcon,
-  playSkipForwardOutline,
-  addCircleOutline,
-  cloudDownloadOutline,
-  trashOutline,
   shuffle,
   swapVerticalOutline,
   locateOutline
@@ -318,6 +273,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
+import TrackBatchBar from '@/components/TrackBatchBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
@@ -335,6 +291,7 @@ import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/ser
 import { saveAndShareFile } from '@/services/fileExport'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
+import { useTrackBatchSelection } from '@/services/trackBatch'
 
 const route = useRoute()
 const router = useRouter()
@@ -354,7 +311,6 @@ const playlistActionTrack = ref<Track | null>(null)
 const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const shareOpen = ref(false)
 const reorderMode = ref(false)
-const batchMode = ref(false)
 
 const searchQuery = ref('')
 const searchActive = ref(false)
@@ -386,44 +342,22 @@ const displayTracks = computed(() => {
   return sortTracks(list, sortType.value)
 })
 
-const selectedKeys = ref<Set<string>>(new Set())
-
-const selectedTracks = computed(() =>
-  tracks.value.filter((track) => selectedKeys.value.has(track.key))
-)
-const selectedCount = computed(() => selectedKeys.value.size)
-const isAllSelected = computed(
-  () => displayTracks.value.length > 0 && selectedKeys.value.size >= displayTracks.value.length
-)
-
-function toggleSelectTrack(track: Track) {
-  const next = new Set(selectedKeys.value)
-  if (next.has(track.key)) {
-    next.delete(track.key)
-  } else {
-    next.add(track.key)
-  }
-  selectedKeys.value = next
-}
-
-function toggleSelectAll() {
-  if (isAllSelected.value) {
-    selectedKeys.value = new Set()
-  } else {
-    selectedKeys.value = new Set(displayTracks.value.map((t) => t.key))
-  }
-}
+const selection = useTrackBatchSelection({
+  source: () => displayTracks.value,
+  order: () => tracks.value
+})
+const batchMode = selection.active
+const selectedKeys = selection.selectedKeys
+const selectedTracks = selection.selectedTracks
+const selectedCount = selection.selectedCount
+const isAllSelected = selection.allSelected
+const toggleSelectTrack = selection.toggleSelect
+const toggleSelectAll = selection.toggleSelectAll
+const exitBatchMode = selection.exit
 
 function enterBatchMode(): void {
-  if (!tracks.value.length) return
   reorderMode.value = false
-  batchMode.value = true
-  selectedKeys.value = new Set()
-}
-
-function exitBatchMode(): void {
-  batchMode.value = false
-  selectedKeys.value = new Set()
+  selection.enter()
 }
 
 async function playSelected() {
@@ -1263,70 +1197,6 @@ onMounted(() => {
 .playlist-plugin-row small {
   color: var(--ceru-text-secondary);
   font-size: 10px;
-}
-.batch-bar-backdrop {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--ceru-mini-player-height, 64px) + var(--ion-safe-area-bottom, 16px) + 12px);
-  display: flex;
-  justify-content: center;
-  padding: 0 16px;
-  z-index: 99;
-  pointer-events: none;
-  animation: batchSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes batchSlideUp {
-  from {
-    transform: translateY(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-.batch-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: var(--ceru-card-bg, rgba(30, 30, 35, 0.92));
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--ceru-border, rgba(255, 255, 255, 0.12));
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  pointer-events: auto;
-  max-width: 440px;
-  width: 100%;
-  justify-content: space-around;
-}
-.batch-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  border: 0;
-  background: transparent;
-  color: var(--ceru-text);
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 12px;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  min-width: 52px;
-}
-.batch-action-btn ion-icon {
-  font-size: 20px;
-  color: var(--ceru-brand);
-}
-.batch-action-btn.danger ion-icon {
-  color: var(--ion-color-danger, #eb445a);
-}
-.batch-action-btn:disabled {
-  opacity: 0.38;
-  pointer-events: none;
 }
 .locate-fab-btn {
   position: fixed;
