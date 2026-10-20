@@ -191,6 +191,7 @@ import {
 } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
 import { usePluginStore } from '@/stores/plugins'
+import { createRequestGuard } from '@/services/requestGuard'
 import {
   COMMENT_PAGE_SIZE,
   commentKindLabel,
@@ -226,8 +227,8 @@ const tabs: Array<{ kind: CommentKind; label: string }> = [
 ]
 const expandedReplies = ref(new Set<string>())
 const viewer = reactive({ open: false, images: [] as string[], index: 0 })
-let generation = 0
-let disposed = false
+/** 换歌或关闭面板都会作废在途评论请求，避免旧响应覆盖新歌曲的列表。 */
+const commentRequests = createRequestGuard()
 
 function emptyState(): CommentTabState {
   return {
@@ -306,7 +307,7 @@ function moveViewer(step: number) {
 }
 
 function resetStates() {
-  generation += 1
+  commentRequests.invalidate()
   states.hot = emptyState()
   states.latest = emptyState()
   expandedReplies.value = new Set()
@@ -315,7 +316,7 @@ function resetStates() {
 
 async function load(targetKind: CommentKind, reset = false) {
   const item = props.track
-  if (!item || disposed) return
+  if (!item || commentRequests.disposed) return
   const state = states[targetKind]
   if (state.loading || state.loadingMore) return
   if (!reset && state.initialized && !commentPageHasMore(
@@ -332,16 +333,14 @@ async function load(targetKind: CommentKind, reset = false) {
     state.initialized = false
   }
   const page = reset ? 1 : state.page + 1
-  const requestGeneration = generation
-  const requestIdentity = trackIdentity.value
+  // 两个分类各自分页，因此用 capture 并存而不是 beginLatest。
+  const token = commentRequests.capture(trackIdentity.value)
   state.error = ''
   if (page === 1) state.loading = true
   else state.loadingMore = true
   try {
     const result = await pluginStore.comments(item, targetKind, page, COMMENT_PAGE_SIZE)
-    if (disposed || requestGeneration !== generation || requestIdentity !== trackIdentity.value) {
-      return
-    }
+    if (!commentRequests.isCurrent(token, trackIdentity.value)) return
     state.items =
       page === 1 ? result.comments : mergeCommentPages(state.items, result.comments)
     state.page = result.page || page
@@ -349,12 +348,10 @@ async function load(targetKind: CommentKind, reset = false) {
     state.total = result.total
     state.initialized = true
   } catch (cause) {
-    if (disposed || requestGeneration !== generation || requestIdentity !== trackIdentity.value) {
-      return
-    }
+    if (!commentRequests.isCurrent(token, trackIdentity.value)) return
     state.error = cause instanceof Error ? cause.message : String(cause)
   } finally {
-    if (requestGeneration === generation && requestIdentity === trackIdentity.value) {
+    if (commentRequests.isCurrent(token, trackIdentity.value)) {
       state.loading = false
       state.loadingMore = false
     }
@@ -401,8 +398,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  disposed = true
-  generation += 1
+  commentRequests.dispose()
 })
 </script>
 

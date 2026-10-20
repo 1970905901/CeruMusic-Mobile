@@ -359,6 +359,7 @@ import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/s
 import { startLowFreqSampler } from '@/services/audioVisualizer'
 import { crossfadeState } from '@/services/crossfade'
 import { getQualityDisplayName } from '@/services/qualityNames'
+import { createRequestGuard } from '@/services/requestGuard'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -429,6 +430,11 @@ const queueOpen = ref(false)
 const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
+/**
+ * 歌词请求守卫：换歌后旧响应可能晚于新请求返回，若直接写入会覆盖当前歌曲的歌词。
+ * 命中缓存或本地歌词是同步分支，不参与竞态。
+ */
+const lyricRequests = createRequestGuard()
 
 const displayLyrics = computed(() =>
   filterLyricDocument(lyricsDoc.value, {
@@ -639,16 +645,21 @@ async function loadLyrics() {
     lyricsDoc.value = cached
     return
   }
+  // 同一首歌的重复加载只认最后一次结果；换歌会作废在途请求。
+  const token = lyricRequests.beginLatest(item.key)
   lyricsLoading.value = true
   try {
     const raw = await pluginStore.lyrics(item)
     const parsed = parseLyrics(raw)
     lyricCache.set(item.key, parsed)
+    if (!lyricRequests.isCurrent(token, track.value?.key)) return
     lyricsDoc.value = parsed
   } catch {
+    if (!lyricRequests.isCurrent(token, track.value?.key)) return
     lyricsDoc.value = { lines: [], plainText: '暂无歌词', format: 'plain' }
   } finally {
-    lyricsLoading.value = false
+    // 过期请求不得关闭新请求的加载态。
+    if (lyricRequests.isCurrent(token, track.value?.key)) lyricsLoading.value = false
   }
 }
 
@@ -866,6 +877,9 @@ function updateArtSize() {
 watch(
   () => track.value?.key,
   () => {
+    // 换歌即作废旧请求，避免旧响应写回并覆盖新歌歌词或残留加载态。
+    lyricRequests.invalidate()
+    lyricsLoading.value = false
     lyricsDoc.value = { lines: [], format: 'plain' }
     if (showLyrics.value) void loadLyrics()
   }
@@ -895,6 +909,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   controlsIdle.deactivate()
+  lyricRequests.dispose()
   if (lyricSeekStaggerTimer) clearTimeout(lyricSeekStaggerTimer)
   if (stopBeatSampler) {
     stopBeatSampler()
