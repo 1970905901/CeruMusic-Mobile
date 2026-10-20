@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39409124208`（功能提交 `575b4ac`），Android/iOS 均成功
+- 最新 CI：`39420144723`（功能提交 `a708a92`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -132,7 +132,7 @@ npm run build
 - `npm run typecheck`：通过
 - `npm run test`：51 个测试文件，250 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39409124208，产物 ceru-music-android 5.16 MB / ceru-music-ios 3 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39420144723，产物 ceru-music-android 5.17 MB / ceru-music-ios 3.01 MB）
 
 ## 当前未完成
 
