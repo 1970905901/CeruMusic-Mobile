@@ -88,6 +88,7 @@
       :track="playlistActionTrack"
       @close="closePlaylistAction"
     />
+    <SharePlaylistSheet :open="shareOpen" :playlist-id="remoteId" @close="shareOpen = false" />
   </ion-page>
 </template>
 
@@ -118,6 +119,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
 import PlaylistItemActionSheet from '@/components/PlaylistItemActionSheet.vue'
+import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
@@ -140,6 +142,7 @@ const remoteKind = String(route.query.kind || 'playlist')
 const tracks = ref<Track[]>([])
 const playlistActionTrack = ref<Track | null>(null)
 const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
+const shareOpen = ref(false)
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -303,6 +306,12 @@ async function openPlaylistMenu() {
             )
         }
       })),
+      {
+        text: '分享歌单',
+        handler: () => {
+          shareOpen.value = true
+        }
+      },
       {
         text: '重命名',
         handler: () => {

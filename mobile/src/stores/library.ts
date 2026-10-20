@@ -9,6 +9,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
+import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -691,6 +692,47 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
 
+  async function uploadPlaylistToCloud(playlistId: string): Promise<string> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist) throw new Error('歌单不存在')
+    const tracks = playlistTracks(playlistId)
+    const songlist = playlistTracksToCloud(tracks)
+    if (!songlist.length) throw new Error('歌单中没有可分享的在线歌曲')
+    const created = await cloudSongListApi.createUserSongList({
+      localId: playlist.id,
+      name: playlist.name,
+      describe: playlist.description || '',
+      cover: playlist.cover || tracks.find((track) => track.artworkUrl)?.artworkUrl,
+      songlist
+    })
+    if (!created?.id) throw new Error('云端没有返回歌单 ID')
+    playlist.cloudId = created.id
+    playlist.updatedAt = Date.now()
+    const db = await getDb()
+    await db.put('playlists', toPlain(playlist))
+    return created.id
+  }
+
+  async function syncPlaylistToCloud(playlistId: string): Promise<string> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist) throw new Error('歌单不存在')
+    if (!playlist.cloudId) return uploadPlaylistToCloud(playlistId)
+    const tracks = playlistTracks(playlistId)
+    const songlist = playlistTracksToCloud(tracks)
+    if (!songlist.length) throw new Error('歌单中没有可分享的在线歌曲')
+    const updated = await cloudSongListApi.updateUserSongList({
+      listId: playlist.cloudId,
+      name: playlist.name,
+      describe: playlist.description || '',
+      cover: playlist.cover || tracks.find((track) => track.artworkUrl)?.artworkUrl,
+      songlist
+    })
+    playlist.updatedAt = Date.now()
+    const db = await getDb()
+    await db.put('playlists', toPlain(playlist))
+    return updated?.id || playlist.cloudId
+  }
+
   return {
     favorites,
     playlists,
@@ -735,6 +777,8 @@ export const useLibraryStore = defineStore('library', () => {
     addHostFavorite,
     removeHostFavorite,
     importPlaylistFromPlugin,
-    importSharedPlaylist
+    importSharedPlaylist,
+    uploadPlaylistToCloud,
+    syncPlaylistToCloud
   }
 })

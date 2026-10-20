@@ -38,6 +38,7 @@ export interface Playlist {
   pluginKey?: string
   providerId?: string
   remoteId?: string
+  cloudId?: string
   createdAt: number
   updatedAt: number
 }
