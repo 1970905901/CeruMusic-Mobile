@@ -335,6 +335,14 @@
           <ion-toggle :checked="settings.settings.lyricJump" @ionChange="settings.settings.lyricJump = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="optionsOutline" color="primary" />
+          <ion-label>
+            <h2>跳转时逐行错开</h2>
+            <p>跳转后各行错开过渡，关闭则同时过渡</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricSeekStagger" @ionChange="settings.settings.lyricSeekStagger = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
           <ion-label>
             <h2>沉浸色歌词</h2>

@@ -315,6 +315,11 @@ import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { extractLightMainColor } from '@/services/coverColor'
 import { createIdleControls } from '@/services/idleControls'
 import { lyricJumpStyle } from '@/services/lyricJump'
+import {
+  SEEK_STAGGER_WINDOW_MS,
+  isSeekJump,
+  seekStaggerDelayMs
+} from '@/services/lyricSeekStagger'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -400,14 +405,22 @@ function lyricLineStyle(index: number) {
     index === currentLineIndex.value
       ? lyricJumpStyle(displayLyrics.value.lines[index], settings.settings.lyricJump)
       : undefined
-  if (!settings.settings.lyricBlur) return jump
+  const delay = lyricSeekStaggering.value
+    ? seekStaggerDelayMs(index, currentLineIndex.value, settings.settings.lyricSeekStagger)
+    : 0
+  const stagger = delay > 0 ? { transitionDelay: `${delay}ms` } : undefined
+  if (!settings.settings.lyricBlur) return jump ? { ...jump, ...stagger } : stagger
   const distance = Math.abs(currentLineIndex.value - index)
-  if (distance === 0) return { filter: 'blur(0)', ...jump }
+  if (distance === 0) return { filter: 'blur(0)', ...jump, ...stagger }
   const blurPx = Math.min(1.2 + Math.pow(distance, 0.7) * 1.5, 8)
-  return { filter: `blur(${blurPx.toFixed(2)}px)` }
+  return { filter: `blur(${blurPx.toFixed(2)}px)`, ...stagger }
 }
 
 const chromeHidden = ref(false)
+// 跳转后的一小段时间里启用逐行错开，其余时间歌词同步过渡，避免拖动进度条时持续拖影。
+const lyricSeekStaggering = ref(false)
+let lyricSeekStaggerTimer: ReturnType<typeof setTimeout> | null = null
+
 const chromeSuspended = computed(() => queueOpen.value || commentsOpen.value || lyricOffsetOpen.value || lyricShareOpen.value || lyricConverterOpen.value || !player.isPlaying)
 const controlsIdle = createIdleControls({
   get enabled() {
@@ -700,7 +713,15 @@ watch(
 )
 let currentTrackCacheKey = ''
 
-watch(currentLineIndex, () => {
+watch(currentLineIndex, (next, previous) => {
+  if (isSeekJump(previous, next)) {
+    lyricSeekStaggering.value = true
+    if (lyricSeekStaggerTimer) clearTimeout(lyricSeekStaggerTimer)
+    lyricSeekStaggerTimer = setTimeout(() => {
+      lyricSeekStaggering.value = false
+      lyricSeekStaggerTimer = null
+    }, SEEK_STAGGER_WINDOW_MS)
+  }
   void nextTick(() => {
     const active = lyricsContainer.value?.querySelector('.lyric-line.active')
     active?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -715,6 +736,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   controlsIdle.deactivate()
+  if (lyricSeekStaggerTimer) clearTimeout(lyricSeekStaggerTimer)
   window.removeEventListener('resize', updateArtSize)
 })
 </script>
