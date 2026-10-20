@@ -71,6 +71,15 @@
               v-if="!batchMode && !reorderMode"
               fill="outline"
               :disabled="!tracks.length"
+              @click="openSortSheet"
+            >
+              <ion-icon slot="start" :icon="swapVerticalOutline" />
+              {{ sortType === "default" ? "排序" : currentSortLabel }}
+            </ion-button>
+            <ion-button
+              v-if="!batchMode && !reorderMode"
+              fill="outline"
+              :disabled="!tracks.length"
               @click="enterBatchMode"
             >
               <ion-icon slot="start" :icon="checkmarkDoneOutline" />
@@ -93,6 +102,29 @@
         />
       </div>
 
+      <div
+        v-if="sortType !== 'default' && !reorderMode"
+        class="sort-status-bar ceru-pad"
+      >
+        <div class="sort-status-info">
+          <ion-icon :icon="swapVerticalOutline" />
+          <span>已按 <strong>{{ currentSortLabel }}</strong> 排序</span>
+        </div>
+        <div class="sort-status-actions">
+          <button type="button" class="sort-text-btn" @click="sortType = 'default'">
+            恢复默认
+          </button>
+          <button
+            v-if="isLocal"
+            type="button"
+            class="sort-persist-btn ceru-press"
+            @click="persistCurrentSort"
+          >
+            保存为歌单顺序
+          </button>
+        </div>
+      </div>
+
       <div v-if="loading && !tracks.length" class="loading-row">
         <ion-spinner name="crescent" />
         <span>正在加载歌曲…</span>
@@ -102,6 +134,9 @@
       <p v-if="reorderMode" class="reorder-hint ceru-pad">拖动右侧手柄调整歌曲顺序，完成后自动保存。</p>
 
       <div v-if="tracks.length && !reorderMode" class="list-block">
+        <p v-if="searchQuery && !displayTracks.length" class="empty-search-hint ceru-pad">
+          未找到包含 “{{ searchQuery }}” 的歌曲
+        </p>
         <div v-for="track in displayTracks" :key="track.key" class="track-list-item">
           <TrackRow
             :track="track"
@@ -257,7 +292,8 @@ import {
   addCircleOutline,
   cloudDownloadOutline,
   trashOutline,
-  shuffle
+  shuffle,
+  swapVerticalOutline
 } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
@@ -278,6 +314,7 @@ import { Clipboard } from '@capacitor/clipboard'
 import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/services/playlistFiles'
 import { saveAndShareFile } from '@/services/fileExport'
 import type { Track } from '@/types/music'
+import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 
 const route = useRoute()
 const router = useRouter()
@@ -302,6 +339,10 @@ const batchMode = ref(false)
 const searchQuery = ref('')
 const searchActive = ref(false)
 const searchBarRef = ref<any>(null)
+const sortType = ref<TrackSortType>('default')
+const currentSortLabel = computed(() => {
+  return TRACK_SORT_OPTIONS.find((opt) => opt.type === sortType.value)?.label || '默认顺序'
+})
 
 function toggleSearch() {
   searchActive.value = !searchActive.value
@@ -311,15 +352,18 @@ function toggleSearch() {
 }
 
 const displayTracks = computed(() => {
+  let list = tracks.value
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return tracks.value
-  return tracks.value.filter((track) => {
-    const titleMatch = track.title?.toLowerCase().includes(q)
-    const subtitleMatch = track.subtitle?.toLowerCase().includes(q)
-    const albumMatch = track.album?.toLowerCase().includes(q)
-    const artistMatch = track.artists?.some((artist) => artist.toLowerCase().includes(q))
-    return titleMatch || subtitleMatch || albumMatch || artistMatch
-  })
+  if (q) {
+    list = list.filter((track) => {
+      const titleMatch = track.title?.toLowerCase().includes(q)
+      const subtitleMatch = track.subtitle?.toLowerCase().includes(q)
+      const albumMatch = track.album?.toLowerCase().includes(q)
+      const artistMatch = track.artists?.some((artist) => artist.toLowerCase().includes(q))
+      return titleMatch || subtitleMatch || albumMatch || artistMatch
+    })
+  }
+  return sortTracks(list, sortType.value)
 })
 
 const selectedKeys = ref<Set<string>>(new Set())
@@ -532,7 +576,7 @@ async function loadRemote(reset = false) {
 
 async function play(track: Track, customQueue?: Track[]) {
   try {
-    await player.playTrack(track, customQueue || tracks.value)
+    await player.playTrack(track, customQueue || displayTracks.value)
   } catch (cause) {
     const element = await toastController.create({
       message: cause instanceof Error ? cause.message : String(cause),
@@ -544,13 +588,15 @@ async function play(track: Track, customQueue?: Track[]) {
 }
 
 async function playAll() {
-  if (!tracks.value.length) return
-  await play(tracks.value[0])
+  const currentList = displayTracks.value.length ? displayTracks.value : tracks.value
+  if (!currentList.length) return
+  await play(currentList[0], currentList)
 }
 
 async function shuffleAll() {
-  if (!tracks.value.length) return
-  const shuffled = [...tracks.value].sort(() => Math.random() - 0.5)
+  const currentList = displayTracks.value.length ? displayTracks.value : tracks.value
+  if (!currentList.length) return
+  const shuffled = [...currentList].sort(() => Math.random() - 0.5)
   player.setMode({ shuffle: true })
   await play(shuffled[0], shuffled)
 }
@@ -626,6 +672,38 @@ async function onCoverFilePicked(event: Event) {
   }
 }
 
+async function openSortSheet() {
+  const sheet = await actionSheetController.create({
+    header: '歌曲排序',
+    subHeader: isLocal && sortType.value !== 'default' ? '已选择排序，可固化为歌单默认顺序' : undefined,
+    buttons: [
+      ...TRACK_SORT_OPTIONS.map((opt) => ({
+        text: opt.label + (sortType.value === opt.type ? ' ✓' : ''),
+        role: sortType.value === opt.type ? 'selected' : undefined,
+        handler: () => {
+          sortType.value = opt.type
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
+async function persistCurrentSort() {
+  if (!isLocal || !localPlaylist.value) return
+  try {
+    const fullSorted = sortTracks(tracks.value, sortType.value)
+    tracks.value = fullSorted
+    await library.reorderPlaylist(remoteId, fullSorted.map((t) => t.key))
+    sortType.value = 'default'
+    await toast('已保存为歌单默认顺序')
+  } catch (cause) {
+    console.error('保存歌单顺序失败:', cause)
+    await toast(cause instanceof Error ? cause.message : '保存歌单顺序失败', 'danger')
+  }
+}
+
 async function editPlaylistInfo() {
   if (!localPlaylist.value) return
   const alert = await alertController.create({
@@ -672,6 +750,12 @@ async function openPlaylistMenu() {
         text: '编辑歌单信息',
         handler: () => {
           void editPlaylistInfo()
+        }
+      },
+      {
+        text: `排序方式（当前: ${currentSortLabel.value}）`,
+        handler: () => {
+          void openSortSheet()
         }
       },
       {
@@ -752,6 +836,9 @@ function startReorder(): void {
   if (tracks.value.length < 2) {
     void toast('至少需要两首歌曲才能排序')
     return
+  }
+  if (sortType.value !== 'default') {
+    sortType.value = 'default'
   }
   exitBatchMode()
   reorderMode.value = true
@@ -885,6 +972,56 @@ onMounted(() => {
 .search-wrap {
   margin-top: 10px;
   margin-bottom: 4px;
+}
+.sort-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  padding: 8px 14px;
+  background: var(--ceru-card-bg, rgba(255, 255, 255, 0.05));
+  border-radius: 12px;
+  border: 1px solid var(--ceru-border, rgba(255, 255, 255, 0.08));
+  font-size: 13px;
+}
+.sort-status-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+}
+.sort-status-info ion-icon {
+  font-size: 16px;
+  color: var(--ceru-brand);
+}
+.sort-status-info strong {
+  color: var(--ceru-text);
+}
+.sort-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sort-text-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.sort-persist-btn {
+  background: var(--ceru-brand);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
 }
 .empty-search-hint {
   text-align: center;

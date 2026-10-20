@@ -87,6 +87,10 @@
             <ion-icon slot="start" :icon="shuffle" />
             随机
           </ion-button>
+          <ion-button size="small" fill="outline" @click="openFavoriteSortSheet">
+            <ion-icon slot="start" :icon="swapVerticalOutline" />
+            {{ favoriteSortLabel }}
+          </ion-button>
         </div>
         <div v-if="library.favorites.length" class="list-block">
           <TrackRow
@@ -177,6 +181,10 @@
           <ion-button size="small" fill="outline" @click="playLocalAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
             随机
+          </ion-button>
+          <ion-button size="small" fill="outline" @click="openLocalSortSheet">
+            <ion-icon slot="start" :icon="swapVerticalOutline" />
+            {{ localSortLabel }}
           </ion-button>
         </div>
         <div v-if="library.localRecords.length" class="list-block">
@@ -278,12 +286,14 @@ import {
   linkOutline,
   play as playIcon,
   shuffle,
+  swapVerticalOutline,
   timeOutline
 } from 'ionicons/icons'
 import TrackRow from '@/components/TrackRow.vue'
 import CoverImage from '@/components/CoverImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import type { Track } from '@/types/music'
+import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import type { Playlist } from '@/types/music'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -301,32 +311,58 @@ const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 
 const trackFilter = ref('')
+const favoriteSortType = ref<TrackSortType>('default')
+const localSortType = ref<TrackSortType>('default')
+
+const favoriteSortLabel = computed(() => {
+  const opt = TRACK_SORT_OPTIONS.find((o) => o.type === favoriteSortType.value)
+  return opt?.type === 'default' ? '排序' : opt?.label || '排序'
+})
+
+const localSortLabel = computed(() => {
+  const opt = TRACK_SORT_OPTIONS.find((o) => o.type === localSortType.value)
+  return opt?.type === 'default' ? '排序' : opt?.label || '排序'
+})
 
 const filteredFavorites = computed(() => {
   const q = trackFilter.value.trim().toLowerCase()
-  if (!q) return library.favorites
-  return library.favorites.filter((entry) => {
-    const t = entry.track
-    return (
-      t.title?.toLowerCase().includes(q) ||
-      t.subtitle?.toLowerCase().includes(q) ||
-      t.album?.toLowerCase().includes(q) ||
-      t.artists?.some((a) => a.toLowerCase().includes(q))
-    )
-  })
+  let list = library.favorites
+  if (q) {
+    list = list.filter((entry) => {
+      const t = entry.track
+      return (
+        t.title?.toLowerCase().includes(q) ||
+        t.subtitle?.toLowerCase().includes(q) ||
+        t.album?.toLowerCase().includes(q) ||
+        t.artists?.some((a) => a.toLowerCase().includes(q))
+      )
+    })
+  }
+  if (favoriteSortType.value === 'default') {
+    return list
+  }
+  const sortedTracks = sortTracks(
+    list.map((e) => e.track),
+    favoriteSortType.value
+  )
+  const entryMap = new Map(list.map((e) => [e.track.key, e]))
+  return sortedTracks.map((t) => entryMap.get(t.key)!).filter(Boolean)
 })
 
 const filteredLocalTracks = computed(() => {
   const q = trackFilter.value.trim().toLowerCase()
-  if (!q) return library.localTracks
-  return library.localTracks.filter((t) => {
-    return (
-      t.title?.toLowerCase().includes(q) ||
-      t.subtitle?.toLowerCase().includes(q) ||
-      t.album?.toLowerCase().includes(q) ||
-      t.artists?.some((a) => a.toLowerCase().includes(q))
-    )
-  })
+  let list = library.localTracks
+  if (q) {
+    list = list.filter((t) => {
+      return (
+        t.title?.toLowerCase().includes(q) ||
+        t.subtitle?.toLowerCase().includes(q) ||
+        t.album?.toLowerCase().includes(q) ||
+        t.artists?.some((a) => a.toLowerCase().includes(q))
+      )
+    })
+  }
+  return sortTracks(list, localSortType.value)
 })
 
 const localInput = ref<HTMLInputElement | null>(null)
@@ -349,9 +385,9 @@ async function play(track: Track) {
   try {
     let contextQueue: Track[] | undefined
     if (activeSegment.value === 'favorites') {
-      contextQueue = library.favorites.map((e) => e.track)
+      contextQueue = filteredFavorites.value.map((e) => e.track)
     } else if (activeSegment.value === 'local') {
-      contextQueue = library.localTracks
+      contextQueue = filteredLocalTracks.value
     } else if (activeSegment.value === 'recent') {
       contextQueue = library.recentTracks
     }
@@ -364,6 +400,40 @@ async function play(track: Track) {
     })
     await toast.present()
   }
+}
+
+async function openFavoriteSortSheet() {
+  const sheet = await actionSheetController.create({
+    header: '收藏歌曲排序',
+    buttons: [
+      ...TRACK_SORT_OPTIONS.map((opt) => ({
+        text: opt.label + (favoriteSortType.value === opt.type ? ' ✓' : ''),
+        role: favoriteSortType.value === opt.type ? 'selected' : undefined,
+        handler: () => {
+          favoriteSortType.value = opt.type
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
+async function openLocalSortSheet() {
+  const sheet = await actionSheetController.create({
+    header: '本地音乐排序',
+    buttons: [
+      ...TRACK_SORT_OPTIONS.map((opt) => ({
+        text: opt.label + (localSortType.value === opt.type ? ' ✓' : ''),
+        role: localSortType.value === opt.type ? 'selected' : undefined,
+        handler: () => {
+          localSortType.value = opt.type
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
 }
 
 function openMore(track: Track) {
