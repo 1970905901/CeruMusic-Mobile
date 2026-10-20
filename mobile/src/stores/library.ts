@@ -54,7 +54,12 @@ function localTrackToTrack(record: LocalTrackRecord): Track {
     artworkUrl: record.cover,
     qualities: [],
     playable: true,
-    raw: { local: true, lrc: record.lyrics || null },
+    raw: {
+      local: true,
+      lrc: record.lyrics || null,
+      year: record.year,
+      genre: record.genre
+    },
     localUri: Capacitor.convertFileSrc(record.path),
     localPath: record.path,
     localRelativePath: record.relativePath,
@@ -269,6 +274,8 @@ export const useLibraryStore = defineStore('library', () => {
     let title = file.name.replace(/\.[^.]+$/, '')
     let artist = '未知艺术家'
     let album: string | undefined
+    let year: number | undefined
+    let genre: string | undefined
     let durationMs: number | undefined
     let cover: string | undefined
     try {
@@ -277,6 +284,8 @@ export const useLibraryStore = defineStore('library', () => {
       title = metadata.common.title || title
       artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
       album = metadata.common.album || undefined
+      year = metadata.common.year || undefined
+      genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
       durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
       const picture = metadata.common.picture?.[0]
       if (picture) {
@@ -293,6 +302,8 @@ export const useLibraryStore = defineStore('library', () => {
       title,
       artist,
       album,
+      year,
+      genre,
       durationMs,
       fileName: file.name,
       path: uri.uri,
@@ -561,7 +572,13 @@ export const useLibraryStore = defineStore('library', () => {
       record.artist = tags.artists.map(String).filter(Boolean).join(' / ') || '未知艺术家'
     }
     if (tags?.album != null) record.album = String(tags.album).trim() || undefined
+    if (tags?.year !== undefined) {
+      const year = Number(tags.year)
+      record.year = Number.isFinite(year) && year > 0 ? Math.trunc(year) : undefined
+    }
+    if (tags?.genre !== undefined) record.genre = String(tags.genre).trim() || undefined
     if (tags?.lyrics != null) record.lyrics = String(tags.lyrics)
+    if (tags?.cover !== undefined) record.cover = String(tags.cover).trim() || undefined
 
     let fileTagWritten = false
     let fileTagWarning: string | undefined
@@ -578,20 +595,22 @@ export const useLibraryStore = defineStore('library', () => {
         })
         const base64 = typeof file.data === 'string' ? file.data : ''
         if (!base64) throw new Error('读取音频文件失败')
-        const tags = {
+        const fileTags = {
           title: record.title,
           artists: record.artist.split(/\s*\/\s*/).filter(Boolean),
           album: record.album,
+          year: record.year,
+          genres: record.genre ? [record.genre] : undefined,
           lyrics: record.lyrics,
           coverDataUrl: record.cover
         }
         const isMp3 = isMp3File(record.fileName, record.mime)
         const isFlac = isFlacFile(record.fileName, record.mime)
         const tagged = isMp3
-          ? writeMp3TagsToBase64(base64, tags)
+          ? writeMp3TagsToBase64(base64, fileTags)
           : isFlac
-            ? writeFlacTagsToBase64(base64, tags)
-            : writeM4aTagsToBase64(base64, tags)
+            ? writeFlacTagsToBase64(base64, fileTags)
+            : writeM4aTagsToBase64(base64, fileTags)
         await Filesystem.writeFile({
           path: record.relativePath,
           data: tagged,

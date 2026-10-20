@@ -27,6 +27,13 @@
         accept=".cpl,.cmpl"
         @change="onPlaylistFile"
       />
+      <input
+        ref="coverInput"
+        class="file-input"
+        type="file"
+        accept="image/*"
+        @change="onCoverFile"
+      />
       <div class="library-head ceru-pad">
         <p class="eyebrow">YOUR LIBRARY</p>
         <h1 class="ceru-title">收藏与本地</h1>
@@ -234,6 +241,8 @@ const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 const localInput = ref<HTMLInputElement | null>(null)
 const playlistFileInput = ref<HTMLInputElement | null>(null)
+const coverInput = ref<HTMLInputElement | null>(null)
+let coverTarget: Track | null = null
 const importOpen = ref(false)
 const sharedImportOpen = ref(false)
 const showPlaylistImport = computed(() =>
@@ -383,12 +392,28 @@ async function scanLocal() {
 }
 
 async function editLocalTags(track: Track) {
+  const record = library.localTags(track)
   const alert = await alertController.create({
     header: '编辑本地信息',
     inputs: [
       { name: 'title', type: 'text', placeholder: '标题', value: track.title },
       { name: 'artist', type: 'text', placeholder: '艺术家', value: track.artists.join(' / ') },
-      { name: 'album', type: 'text', placeholder: '专辑', value: track.album || '' }
+      { name: 'album', type: 'text', placeholder: '专辑', value: track.album || '' },
+      {
+        name: 'year',
+        type: 'number',
+        placeholder: '年份',
+        value: record?.year ? String(record.year) : '',
+        attributes: { min: 0, max: 9999 }
+      },
+      { name: 'genre', type: 'text', placeholder: '流派', value: record?.genre || '' },
+      {
+        name: 'lyrics',
+        type: 'textarea',
+        placeholder: '歌词（支持 LRC 或纯文本）',
+        value: record?.lyrics || '',
+        attributes: { rows: 6 }
+      }
     ],
     buttons: [
       { text: '取消', role: 'cancel' },
@@ -406,10 +431,21 @@ async function editLocalTags(track: Track) {
   try {
     const artist = String(data?.values?.artist ?? '').trim()
     const album = String(data?.values?.album ?? '').trim()
+    const yearText = String(data?.values?.year ?? '').trim()
+    const year = yearText ? Number(yearText) : null
+    if (yearText && (!Number.isFinite(year) || Number(year) <= 0)) {
+      await showToast('年份格式不正确', 'danger')
+      return
+    }
+    const genre = String(data?.values?.genre ?? '').trim()
+    const lyrics = String(data?.values?.lyrics ?? '')
     const result = await library.writeLocalTags(track, {
       title,
       artists: artist ? [artist] : [],
-      album: album || undefined
+      album,
+      year,
+      genre,
+      lyrics
     })
     if (result.fileTagWarning) {
       await showToast('应用内信息已保存；音频文件标签写入失败', 'warning')
@@ -418,6 +454,80 @@ async function editLocalTags(track: Track) {
     }
   } catch (error) {
     await showToast(error instanceof Error ? error.message : String(error), 'danger')
+  }
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('读取图片失败'))
+    image.src = source
+  })
+}
+
+async function fileToCoverDataUrl(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.readAsDataURL(file)
+  })
+  if (file.size <= 512 * 1024) return dataUrl
+  try {
+    const image = await loadImage(dataUrl)
+    const scale = Math.min(1, 1024 / Math.max(image.width, image.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.width * scale))
+    canvas.height = Math.max(1, Math.round(image.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) return dataUrl
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', 0.85)
+  } catch {
+    return dataUrl
+  }
+}
+
+function chooseCover(track: Track) {
+  coverTarget = track
+  coverInput.value?.click()
+}
+
+async function onCoverFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const target = coverTarget
+  coverTarget = null
+  if (!file || !target) return
+  if (!file.type.startsWith('image/')) {
+    await showToast('请选择图片文件', 'danger')
+    return
+  }
+  try {
+    const cover = await fileToCoverDataUrl(file)
+    const result = await library.writeLocalTags(target, { cover })
+    if (result.fileTagWarning) {
+      await showToast('封面已保存到应用内；音频文件写入失败', 'warning')
+    } else {
+      await showToast(result.fileTagWritten ? '封面已保存并写入音频标签' : '封面已保存')
+    }
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '设置封面失败', 'danger')
+  }
+}
+
+async function removeCover(track: Track) {
+  try {
+    const result = await library.writeLocalTags(track, { cover: '' })
+    if (result.fileTagWarning) {
+      await showToast('应用内封面已移除；音频文件写入失败', 'warning')
+    } else {
+      await showToast('已移除封面')
+    }
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '移除封面失败', 'danger')
   }
 }
 
@@ -507,6 +617,10 @@ async function openLocalActions(track: Track) {
     buttons: [
       { text: '播放', handler: () => void play(track) },
       { text: '编辑信息', handler: () => void editLocalTags(track) },
+      { text: track.artworkUrl ? '更换封面' : '添加封面', handler: () => chooseCover(track) },
+      ...(track.artworkUrl
+        ? [{ text: '移除封面', handler: () => void removeCover(track) }]
+        : []),
       { text: '在线匹配封面与歌词', handler: () => void matchLocalTrack(track) },
       { text: '歌曲信息', handler: () => void openTrackActions(track) },
       {

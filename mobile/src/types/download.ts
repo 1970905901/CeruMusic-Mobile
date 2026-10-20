@@ -27,6 +27,8 @@ export interface LocalTrackRecord {
   title: string
   artist: string
   album?: string
+  year?: number
+  genre?: string
   durationMs?: number
   fileName: string
   path: string

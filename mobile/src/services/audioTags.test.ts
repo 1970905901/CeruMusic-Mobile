@@ -27,6 +27,8 @@ describe('audio tag helpers', () => {
         title: 'FLAC Title',
         artists: ['Artist A', 'Artist B'],
         album: 'Album',
+        year: 2024,
+        genres: ['Pop', 'Rock'],
         lyrics: 'line one\nline two'
       })
     )
@@ -34,6 +36,8 @@ describe('audio tag helpers', () => {
     const text = new TextDecoder().decode(tagged)
     expect(text).toContain('TITLE=FLAC Title')
     expect(text).toContain('ARTIST=Artist A / Artist B')
+    expect(text).toContain('DATE=2024')
+    expect(text).toContain('GENRE=Pop / Rock')
     expect(text).toContain('LYRICS=line one')
     expect(Array.from(tagged.slice(tagged.length - audio.length))).toEqual(Array.from(audio))
   })
