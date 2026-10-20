@@ -119,7 +119,7 @@ npm run build
 - `npm run typecheck`：通过
 - `npm run test`：33 个测试文件，122 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39381585945，产物 ceru-music-android 5.40 MB / ceru-music-ios 3.13 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39384619738，产物 ceru-music-android 5.40 MB / ceru-music-ios 3.14 MB）
 
 ## 当前未完成
 
