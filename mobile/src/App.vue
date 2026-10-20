@@ -1,5 +1,6 @@
 <template>
   <ion-app>
+    <GlobalBackground />
     <ion-router-outlet />
     <PluginProgressOverlay />
     <ShareSongSheet />
@@ -9,6 +10,7 @@
 
 <script setup lang="ts">
 import { IonApp, IonRouterOutlet } from '@ionic/vue'
+import GlobalBackground from '@/components/GlobalBackground.vue'
 import PluginProgressOverlay from '@/components/PluginProgressOverlay.vue'
 import ShareSongSheet from '@/components/ShareSongSheet.vue'
 import PluginStyleHost from '@/components/PluginStyleHost.vue'

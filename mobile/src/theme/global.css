@@ -274,6 +274,54 @@ ion-toast {
   --border-radius: 14px;
 }
 
+/* Wallpaper mode (desktop GlobalBackground.vue parity): the page shell becomes
+   translucent so the fixed wallpaper layer shows through, while dialogs and
+   text keep their own solid colors. */
+html.has-global-background {
+  --ceru-bg: rgba(245, 247, 248, 0.72);
+  --ceru-bg-elevated: rgba(255, 255, 255, 0.78);
+  --ceru-bg-soft: rgba(255, 255, 255, 0.62);
+  --ion-tab-bar-background: rgba(255, 255, 255, 0.78);
+}
+
+html.has-global-background.dark {
+  --ceru-bg: rgba(11, 15, 20, 0.72);
+  --ceru-bg-elevated: rgba(18, 25, 34, 0.8);
+  --ceru-bg-soft: rgba(18, 25, 34, 0.62);
+  --ion-tab-bar-background: rgba(11, 15, 20, 0.8);
+}
+
+html.has-global-background,
+html.has-global-background body,
+html.has-global-background ion-app {
+  background: transparent;
+}
+
+/* Keep the negative-z wallpaper inside the app shell instead of behind it. */
+html.has-global-background ion-app {
+  isolation: isolate;
+}
+
+/* The full-screen player owns a dark artwork backdrop; keep its palette solid. */
+html.has-global-background .player-page {
+  --ceru-bg: #0b0f14;
+  --ceru-bg-elevated: #121922;
+  --ceru-bg-soft: rgba(18, 25, 34, 0.74);
+  --ion-tab-bar-background: rgba(11, 15, 20, 0.88);
+}
+
+html.has-global-background ion-tab-bar {
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+
+html.has-global-background ion-modal ion-content,
+html.has-global-background ion-alert,
+html.has-global-background ion-action-sheet,
+html.has-global-background ion-toast {
+  --background: var(--ceru-bg-elevated);
+}
+
 
 /* Safari 14.0 ships grid gap but not flex gap. Keep the key rows spaced. */
 html.no-flex-gap .ceru-row > * + *,

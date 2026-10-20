@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getBackgroundRenderer, type BackgroundRendererType } from '@/services/backgroundRenderers'
+import {
+  normalizeGlobalBackground,
+  type GlobalBackgroundSettings
+} from '@/services/globalBackground'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -54,6 +58,7 @@ export interface AppSettings {
   playerBackgroundAnimation: boolean
   playerBackgroundRenderer: BackgroundRendererType
   playerBackgroundBeat: boolean
+  globalBackground: GlobalBackgroundSettings
   audioCacheEnabled: boolean
   audioCacheMaxBytes: number
   audioCacheMaxQuality: string
@@ -109,6 +114,7 @@ const defaults: AppSettings = {
   playerBackgroundAnimation: true,
   playerBackgroundRenderer: 'pixi',
   playerBackgroundBeat: false,
+  globalBackground: { ...normalizeGlobalBackground(null) },
   audioCacheEnabled: true,
   audioCacheMaxBytes: 1024 * 1024 * 1024,
   audioCacheMaxQuality: 'flac',
@@ -137,6 +143,7 @@ function load(): AppSettings {
         typeof parsed.localScanFilterMinDurationSec === 'number' && !isNaN(parsed.localScanFilterMinDurationSec)
           ? parsed.localScanFilterMinDurationSec
           : defaults.localScanFilterMinDurationSec,
+      globalBackground: normalizeGlobalBackground(parsed.globalBackground),
       playerBackgroundRenderer: getBackgroundRenderer(
         String(parsed.playerBackgroundRenderer ?? defaults.playerBackgroundRenderer)
       ).value

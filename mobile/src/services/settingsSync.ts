@@ -13,7 +13,9 @@ const SENSITIVE_KEYS: Array<keyof AppSettings> = [
   'grantedPermissions',
   'deniedPermissions',
   'onboardingDone',
-  'searchHistory'
+  'searchHistory',
+  // The wallpaper points at a device-local file, so it must not travel.
+  'globalBackground'
 ]
 
 interface PlaySettings {
@@ -122,7 +124,8 @@ async function applyCloud(cloud: CloudSettings) {
       grantedPermissions: current.grantedPermissions,
       deniedPermissions: current.deniedPermissions,
       onboardingDone: current.onboardingDone,
-      searchHistory: current.searchHistory
+      searchHistory: current.searchHistory,
+      globalBackground: current.globalBackground
     }
     settings.settings = merged
     if (cloud.playSettings) {

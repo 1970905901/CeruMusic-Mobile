@@ -676,6 +676,8 @@
         </div>
       </ion-list>
 
+      <GlobalBackgroundSettings />
+
       <ion-list class="group">
         <div class="group-title">工具</div>
         <ion-item button detail @click="$router.push('/ai')">
@@ -810,6 +812,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
+import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { useLibraryStore } from '@/stores/library'
