@@ -64,6 +64,7 @@
             v-for="track in tracks"
             :key="track.key"
             :track="track"
+            :active="player.currentTrack?.key === track.key"
             @play="playTrack(track)"
             @more="openTrackActions(track)"
           />

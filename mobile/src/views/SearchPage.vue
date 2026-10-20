@@ -95,6 +95,7 @@
             :key="track.key"
             :track="track"
             :favorite="library.isFavorite(track)"
+            :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openMore"
           />

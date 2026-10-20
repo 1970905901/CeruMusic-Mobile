@@ -11,9 +11,16 @@
         :class="{ checked: selected }"
       />
     </div>
-    <CoverImage :src="track.artworkUrl" :size="52" :radius="12" :alt="track.title" />
+    <div class="cover-box">
+      <CoverImage :src="track.artworkUrl" :size="52" :radius="12" :alt="track.title" />
+      <div v-if="active" class="playing-indicator" title="正在播放">
+        <span class="bar bar-1" />
+        <span class="bar bar-2" />
+        <span class="bar bar-3" />
+      </div>
+    </div>
     <div class="meta">
-      <div class="title ceru-truncate">{{ track.title }}</div>
+      <div class="title ceru-truncate" :class="{ 'is-active': active }">{{ track.title }}</div>
       <div class="sub ceru-truncate">
         {{ track.artists.join(' / ') || track.subtitle || '未知艺术家' }}
         <span v-if="track.album"> · {{ track.album }}</span>
@@ -48,6 +55,7 @@ const props = defineProps<{
   index?: number
   selectable?: boolean
   selected?: boolean
+  active?: boolean
 }>()
 defineEmits<{
   play: [track: Track]
@@ -77,10 +85,60 @@ const duration = computed(() => {
   min-width: 0;
   flex: 1;
 }
+.cover-box {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+.playing-indicator {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.playing-indicator .bar {
+  width: 3px;
+  height: 14px;
+  background: #fff;
+  border-radius: 2px;
+  animation: equalize 0.8s ease-in-out infinite alternate;
+}
+.playing-indicator .bar-1 {
+  animation-delay: 0.1s;
+}
+.playing-indicator .bar-2 {
+  animation-delay: 0.35s;
+  height: 18px;
+}
+.playing-indicator .bar-3 {
+  animation-delay: 0.2s;
+  height: 11px;
+}
+@keyframes equalize {
+  0% {
+    transform: scaleY(0.3);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
 .title {
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
+  transition: color 0.15s ease;
+}
+.title.is-active {
+  color: var(--ceru-brand);
+  font-weight: 750;
 }
 .sub {
   margin-top: 3px;

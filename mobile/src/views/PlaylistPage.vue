@@ -137,12 +137,18 @@
         <p v-if="searchQuery && !displayTracks.length" class="empty-search-hint ceru-pad">
           未找到包含 “{{ searchQuery }}” 的歌曲
         </p>
-        <div v-for="track in displayTracks" :key="track.key" class="track-list-item">
+        <div
+          v-for="track in displayTracks"
+          :id="'track-item-' + track.key"
+          :key="track.key"
+          class="track-list-item"
+        >
           <TrackRow
             :track="track"
             :favorite="library.isFavorite(track)"
             :selectable="batchMode"
             :selected="selectedKeys.has(track.key)"
+            :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openMore"
             @toggleSelect="toggleSelectTrack"
@@ -248,6 +254,19 @@
       </div>
     </div>
 
+    <!-- 定位到当前播放歌曲悬浮按钮 -->
+    <transition name="locate-btn-fade">
+      <button
+        v-if="hasCurrentPlayingTrack && !batchMode && !reorderMode"
+        type="button"
+        class="locate-fab-btn ceru-press"
+        title="定位到当前播放歌曲"
+        @click="locateCurrentSong"
+      >
+        <ion-icon :icon="locateOutline" />
+      </button>
+    </transition>
+
     <PlaylistItemActionSheet
       :open="playlistActionOpen"
       :track="playlistActionTrack"
@@ -293,7 +312,8 @@ import {
   cloudDownloadOutline,
   trashOutline,
   shuffle,
-  swapVerticalOutline
+  swapVerticalOutline,
+  locateOutline
 } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
@@ -601,8 +621,106 @@ async function shuffleAll() {
   await play(shuffled[0], shuffled)
 }
 
+const hasCurrentPlayingTrack = computed(() => {
+  if (!player.currentTrack) return false
+  return tracks.value.some((t) => t.key === player.currentTrack?.key)
+})
+
+function locateCurrentSong(): void {
+  if (!player.currentTrack) return
+  const el = document.getElementById('track-item-' + player.currentTrack.key)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } else {
+    void toast('当前播放歌曲未在当前显示列表中')
+  }
+}
+
 function openMore(track: Track) {
-  void openTrackActions(track)
+  const extraButtons: any[] = []
+  if (isLocal) {
+    extraButtons.push(
+      {
+        text: '移动到指定位置…',
+        handler: () => {
+          void promptMoveTrackToPosition(track)
+        }
+      },
+      {
+        text: '从本歌单移除',
+        role: 'destructive',
+        handler: () => {
+          void removeTrackFromPlaylist(track)
+        }
+      }
+    )
+  }
+  void openTrackActions(track, { extraButtons })
+}
+
+async function promptMoveTrackToPosition(track: Track) {
+  if (!isLocal || !localPlaylist.value) return
+  const currentIdx = tracks.value.findIndex((t) => t.key === track.key)
+  if (currentIdx < 0) return
+  const total = tracks.value.length
+
+  const alert = await alertController.create({
+    header: '移动到指定位置',
+    subHeader: `当前位置：第 ${currentIdx + 1} 首 / 共 ${total} 首`,
+    inputs: [
+      {
+        name: 'position',
+        type: 'number',
+        placeholder: `输入目标位置 (1 - ${total})`,
+        value: String(currentIdx + 1),
+        min: 1,
+        max: total
+      }
+    ],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '移动',
+        role: 'confirm'
+      }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role === 'confirm') {
+    const targetPos = parseInt(data?.values?.position, 10)
+    if (isNaN(targetPos) || targetPos < 1 || targetPos > total) {
+      await toast(`请输入有效的序号 (1 ~ ${total})`, 'warning')
+      return
+    }
+    const targetIdx = targetPos - 1
+    if (targetIdx === currentIdx) return
+
+    const next = [...tracks.value]
+    const [moved] = next.splice(currentIdx, 1)
+    next.splice(targetIdx, 0, moved)
+    tracks.value = next
+    try {
+      await library.reorderPlaylist(remoteId, next.map((t) => t.key))
+      await toast(`已移动到第 ${targetPos} 首`)
+    } catch (err) {
+      console.error('移动歌曲失败:', err)
+      await toast(err instanceof Error ? err.message : '移动歌曲失败', 'danger')
+      loadLocal()
+    }
+  }
+}
+
+async function removeTrackFromPlaylist(track: Track) {
+  if (!isLocal || !localPlaylist.value) return
+  try {
+    await library.removeTrackFromPlaylist(remoteId, track.key)
+    tracks.value = tracks.value.filter((t) => t.key !== track.key)
+    await toast(`已从歌单移除「${track.title}」`)
+  } catch (err) {
+    console.error('移除歌曲失败:', err)
+    await toast(err instanceof Error ? err.message : '移除歌曲失败', 'danger')
+  }
 }
 
 async function loadMore(event: any) {
@@ -1209,6 +1327,39 @@ onMounted(() => {
 .batch-action-btn:disabled {
   opacity: 0.38;
   pointer-events: none;
+}
+.locate-fab-btn {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--ceru-mini-player-height, 64px) + var(--ion-safe-area-bottom, 16px) + 20px);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--ceru-card-bg, rgba(30, 30, 35, 0.9));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--ceru-border, rgba(255, 255, 255, 0.15));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  color: var(--ceru-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  z-index: 90;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.locate-fab-btn:active {
+  transform: scale(0.92);
+}
+.locate-btn-fade-enter-active,
+.locate-btn-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.locate-btn-fade-enter-from,
+.locate-btn-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
 }
 .bottom-space {
   height: 140px;

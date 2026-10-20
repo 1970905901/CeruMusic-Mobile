@@ -98,6 +98,7 @@
             :key="entry.key"
             :track="entry.track"
             favorite
+            :active="player.currentTrack?.key === entry.track.key"
             @play="play"
             @more="openMore"
           />
@@ -192,6 +193,7 @@
             v-for="track in filteredLocalTracks"
             :key="track.key"
             :track="track"
+            :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openLocalActions(track)"
           />
@@ -235,6 +237,7 @@
             :key="track.key"
             :track="track"
             :favorite="library.isFavorite(track)"
+            :active="player.currentTrack?.key === track.key"
             @play="play"
             @more="openRecentActions(track)"
           />
