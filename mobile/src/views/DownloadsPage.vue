@@ -21,6 +21,21 @@
         <p class="head-sub">下载文件保存在所选目录；授权文件夹可通过系统分享导出。</p>
       </div>
 
+      <div v-if="downloads.tasks.length" class="batch-row ceru-pad">
+        <button class="batch-btn" type="button" :disabled="!hasPaused" @click="downloads.resumeAll()">
+          全部开始
+        </button>
+        <button class="batch-btn" type="button" :disabled="!hasActive" @click="downloads.pauseAll()">
+          全部暂停
+        </button>
+        <button class="batch-btn" type="button" :disabled="!hasQueue" @click="confirmClearQueue">
+          清空队列
+        </button>
+        <button v-if="hasFailed" class="batch-btn danger" type="button" @click="confirmClearFailed">
+          清空失败
+        </button>
+      </div>
+
       <div v-if="downloads.tasks.length" class="task-list">
         <div v-for="task in downloads.tasks" :key="task.id" class="task-card ceru-card">
           <div class="task-top">
@@ -62,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -86,6 +102,19 @@ import type { DownloadTask } from '@/types/download'
 
 const downloads = useDownloadStore()
 const player = usePlayerStore()
+
+const hasPaused = computed(() => downloads.tasks.some((task) => task.status === 'paused'))
+const hasActive = computed(() =>
+  downloads.tasks.some((task) => task.status === 'running' || task.status === 'queued')
+)
+const hasQueue = computed(() =>
+  downloads.tasks.some(
+    (task) => task.status === 'running' || task.status === 'queued' || task.status === 'paused'
+  )
+)
+const hasFailed = computed(() =>
+  downloads.tasks.some((task) => task.status === 'failed' || task.status === 'cancelled')
+)
 
 function statusLabel(status: DownloadTask['status']): string {
   switch (status) {
@@ -191,6 +220,34 @@ async function clearCompleted() {
   if (role === 'destructive') await downloads.clearCompleted()
 }
 
+async function confirmClearQueue() {
+  const alert = await alertController.create({
+    header: '清空下载队列？',
+    message: '未完成的下载会被取消并删除，已下载的部分文件也会清理。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '清空', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role === 'destructive') await downloads.clearQueue()
+}
+
+async function confirmClearFailed() {
+  const alert = await alertController.create({
+    header: '清空失败记录？',
+    message: '失败与已取消的下载记录会被删除。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '清空', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role === 'destructive') await downloads.clearFailed()
+}
+
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })
   await element.present()
@@ -213,6 +270,26 @@ async function toast(message: string, color = 'medium') {
   color: var(--ceru-text-secondary);
   font-size: 13px;
   line-height: 1.55;
+}
+.batch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+}
+.batch-btn {
+  border: 1px solid var(--ceru-border);
+  background: var(--ceru-bg-elevated);
+  color: var(--ceru-text);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+}
+.batch-btn:disabled {
+  opacity: 0.4;
+}
+.batch-btn.danger {
+  color: var(--ceru-danger);
 }
 .task-list {
   display: grid;

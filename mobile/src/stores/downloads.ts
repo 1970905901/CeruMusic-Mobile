@@ -508,6 +508,32 @@ export const useDownloadStore = defineStore('downloads', () => {
     for (const id of ids) await remove(id, true)
   }
 
+  function pauseAll(): void {
+    const ids = tasks.value
+      .filter((task) => task.status === 'running' || task.status === 'queued')
+      .map((task) => task.id)
+    if (ids.length) pause(ids)
+  }
+
+  function resumeAll(): void {
+    const ids = tasks.value.filter((task) => task.status === 'paused').map((task) => task.id)
+    if (ids.length) resume(ids)
+  }
+
+  async function clearQueue(): Promise<void> {
+    const ids = tasks.value
+      .filter((task) => task.status === 'running' || task.status === 'queued' || task.status === 'paused')
+      .map((task) => task.id)
+    for (const id of ids) await remove(id, true)
+  }
+
+  async function clearFailed(): Promise<void> {
+    const ids = tasks.value
+      .filter((task) => task.status === 'failed' || task.status === 'cancelled')
+      .map((task) => task.id)
+    for (const id of ids) await remove(id, true)
+  }
+
   return {
     tasks,
     initialized,
@@ -524,6 +550,10 @@ export const useDownloadStore = defineStore('downloads', () => {
     play,
     asHostTasks,
     createHostDownloads,
-    clearCompleted
+    clearCompleted,
+    pauseAll,
+    resumeAll,
+    clearQueue,
+    clearFailed
   }
 })
