@@ -25,9 +25,31 @@
         </div>
 
         <template v-else>
-          <div class="art-wrap" :class="{ compact: showLyrics }">
+          <div
+            class="art-wrap"
+            :class="{ compact: showLyrics, vinyl: settings.settings.playerLayout === 'cd' }"
+            :style="{ '--art-size': artSize + 'px' }"
+          >
             <div class="art-shadow" :style="bgStyle" />
-            <CoverImage :src="track.artworkUrl" :size="artSize" :radius="26" :alt="track.title" class="main-art" />
+            <template v-if="settings.settings.playerLayout === 'cd'">
+              <div class="tonearm" :class="{ playing: player.isPlaying }" />
+              <div class="vinyl-disc" :class="{ spinning: player.isPlaying }">
+                <div class="vinyl-grooves" />
+                <div class="vinyl-label">
+                  <CoverImage :src="track.artworkUrl" :size="Math.round(artSize * 0.44)" round :alt="track.title" />
+                  <div class="label-shine" />
+                </div>
+                <div class="vinyl-hole" />
+              </div>
+            </template>
+            <CoverImage
+              v-else
+              :src="track.artworkUrl"
+              :size="artSize"
+              :radius="26"
+              :alt="track.title"
+              class="main-art"
+            />
           </div>
 
           <div class="track-head">
@@ -784,6 +806,121 @@ onBeforeUnmount(() => {
 .main-art {
   position: relative;
   box-shadow: 0 32px 70px rgba(0, 0, 0, 0.48);
+}
+.art-wrap.vinyl {
+  width: var(--art-size);
+  height: var(--art-size);
+}
+.vinyl-disc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #0d0d0d 100%);
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.vinyl-disc.spinning {
+  animation: vinyl-spin 33s linear infinite;
+}
+.vinyl-grooves {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(255, 255, 255, 0.022) 0.5deg,
+      transparent 1deg,
+      rgba(255, 255, 255, 0.012) 1.5deg,
+      transparent 2deg
+    ),
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      transparent 0px,
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 2px,
+      transparent 8px
+    );
+}
+.vinyl-label {
+  position: relative;
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 50%, rgba(40, 40, 40, 0.95), rgba(15, 15, 15, 1));
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 2;
+}
+.vinyl-label :deep(.cover) {
+  width: 96% !important;
+  height: 96% !important;
+}
+.vinyl-label :deep(img) {
+  filter: brightness(0.88) contrast(1.12) saturate(1.08);
+}
+.label-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 25% 25%, rgba(255, 255, 255, 0.1), transparent 50%);
+  pointer-events: none;
+}
+.vinyl-hole {
+  position: absolute;
+  width: 8%;
+  height: 8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #000 0%, #111 30%, #222 70%, #333 100%);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.9);
+  z-index: 3;
+}
+.tonearm {
+  position: absolute;
+  top: -6%;
+  right: 6%;
+  width: 4px;
+  height: 42%;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #dfe6ee, #8f9aa6 60%, #5d6873);
+  transform-origin: top center;
+  transform: rotate(-24deg);
+  transition: transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 4;
+}
+.tonearm::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f4f8fb, #7c8794);
+}
+.tonearm::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: -2px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: #cbd5df;
+}
+.tonearm.playing {
+  transform: rotate(-6deg);
+}
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .track-head {
   display: flex;

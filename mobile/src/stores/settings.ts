@@ -41,6 +41,7 @@ export interface AppSettings {
   lyricBlur: boolean
   audioVisualizer: boolean
   autoHideControls: boolean
+  playerLayout: 'cd' | 'cover'
   lyricOffsetMs: number
   lyricFilterInfo: boolean
   lyricStrictFilter: boolean
@@ -88,6 +89,7 @@ const defaults: AppSettings = {
   lyricBlur: false,
   audioVisualizer: true,
   autoHideControls: true,
+  playerLayout: 'cd',
   lyricOffsetMs: 0,
   lyricFilterInfo: false,
   lyricStrictFilter: false,

@@ -115,6 +115,20 @@
       <ion-list class="group">
         <div class="group-title">播放</div>
         <ion-item>
+          <ion-icon slot="start" :icon="albumsOutline" color="primary" />
+          <ion-label>
+            <h2>播放器样式</h2>
+            <p>{{ settings.settings.playerLayout === 'cd' ? '经典黑胶：旋转唱片与唱针' : '沉浸封面：大封面搭配封面光晕' }}</p>
+          </ion-label>
+          <ion-segment
+            :value="settings.settings.playerLayout"
+            @ionChange="setPlayerLayout($event.detail.value)"
+          >
+            <ion-segment-button value="cd">经典黑胶</ion-segment-button>
+            <ion-segment-button value="cover">沉浸封面</ion-segment-button>
+          </ion-segment>
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
           <ion-label>
             <h2>首选音质</h2>
@@ -831,6 +845,10 @@ const sleepLabel = computed(() => {
 
 function setTheme(value: any) {
   if (value === 'system' || value === 'light' || value === 'dark') settings.setTheme(value)
+}
+
+function setPlayerLayout(value: unknown) {
+  if (value === 'cd' || value === 'cover') settings.settings.playerLayout = value
 }
 
 function setSleep(value: any) {

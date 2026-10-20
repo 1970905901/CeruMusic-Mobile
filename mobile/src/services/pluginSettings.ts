@@ -12,6 +12,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricBlur',
   'audioVisualizer',
   'autoHideControls',
+  'playerLayout',
   'lyricOffsetMs',
   'lyricFilterInfo',
   'lyricStrictFilter',
