@@ -39,6 +39,7 @@ export interface AppSettings {
   lyricAnimate: boolean
   lyricImmersiveColor: boolean
   lyricBlur: boolean
+  audioVisualizer: boolean
   lyricOffsetMs: number
   lyricFilterInfo: boolean
   lyricStrictFilter: boolean
@@ -84,6 +85,7 @@ const defaults: AppSettings = {
   lyricAnimate: true,
   lyricImmersiveColor: true,
   lyricBlur: false,
+  audioVisualizer: true,
   lyricOffsetMs: 0,
   lyricFilterInfo: false,
   lyricStrictFilter: false,

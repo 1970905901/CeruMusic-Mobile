@@ -139,6 +139,7 @@ class AudioEffectChain {
   private compressor: DynamicsCompressorNode | null = null
   private makeup: GainNode | null = null
   private surroundMode: SurroundMode = 'off'
+  private analyser: AnalyserNode | null = null
   private listenersBound = false
   private readonly resumeHandler = () => this.resumeContext()
 
@@ -248,6 +249,35 @@ class AudioEffectChain {
     this.applyLoudness(effectiveLoudness(state))
   }
 
+  /** Taps the post-processing node so the visualizer sees the audible signal. */
+  attachAnalyser(fftSize: number): AnalyserNode | null {
+    const context = this.context
+    const tap = this.balanceNode
+    if (!context || !tap || context.state === 'closed') return null
+    this.resumeContext()
+    if (!this.analyser) {
+      this.analyser = context.createAnalyser()
+      this.analyser.smoothingTimeConstant = 0.6
+      tap.connect(this.analyser)
+    }
+    this.analyser.fftSize = fftSize
+    return this.analyser
+  }
+
+  getAnalyser(): AnalyserNode | null {
+    return this.analyser && this.context && this.context.state !== 'closed' ? this.analyser : null
+  }
+
+  detachAnalyser(): void {
+    if (!this.analyser) return
+    try {
+      this.analyser.disconnect()
+    } catch {
+      // The node may already be detached by a closed context.
+    }
+    this.analyser = null
+  }
+
   private resumeContext(): void {
     if (this.context && this.context.state === 'suspended') {
       void this.context.resume().catch(() => undefined)
@@ -315,4 +345,34 @@ export const audioEffectChain = new AudioEffectChain()
 
 export function isAudioEffectsActive(): boolean {
   return audioEffectChain.active
+}
+
+let visualizerElement: HTMLAudioElement | null = null
+let visualizerEnabled = false
+
+export function supportsWebAudio(): boolean {
+  return !!audioContextConstructor()
+}
+
+/** The player owns the single <audio> element; the visualizer taps that pipeline. */
+export function bindAudioPipelineElement(element: HTMLAudioElement): void {
+  visualizerElement = element
+}
+
+export function setAudioVisualizerEnabled(enabled: boolean): void {
+  visualizerEnabled = enabled && supportsWebAudio()
+  if (!visualizerEnabled) audioEffectChain.detachAnalyser()
+}
+
+export function isAudioVisualizerEnabled(): boolean {
+  return visualizerEnabled
+}
+
+export function ensureVisualizerAnalyser(fftSize: number): AnalyserNode | null {
+  if (!visualizerEnabled || !visualizerElement) return null
+  // Tapping a cross-origin element would silence playback, so wait for the blob proxy.
+  const source = visualizerElement.currentSrc || visualizerElement.src
+  if (!source.startsWith('blob:') && !source.startsWith('data:')) return null
+  if (!audioEffectChain.ensure(visualizerElement)) return null
+  return audioEffectChain.attachAnalyser(fftSize)
 }

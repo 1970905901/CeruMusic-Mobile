@@ -43,6 +43,14 @@
             </button>
           </div>
 
+          <AudioVisualizer
+            v-if="settings.settings.audioVisualizer && player.isPlaying"
+            class="player-visualizer"
+            :height="52"
+            :bar-count="48"
+            :color="lyricAccent"
+          />
+
           <div v-if="player.error" class="play-error">{{ player.error }}</div>
 
           <div class="timeline">
@@ -265,6 +273,7 @@ import {
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
+import AudioVisualizer from '@/components/AudioVisualizer.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
 import LyricConverterSheet from '@/components/LyricConverterSheet.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
@@ -772,6 +781,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.player-visualizer {
+  margin-top: 10px;
+  opacity: 0.75;
 }
 .heart-btn {
   width: 46px;

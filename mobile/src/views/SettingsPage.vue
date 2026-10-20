@@ -195,6 +195,14 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.pauseTransition" @ionChange="settings.settings.pauseTransition = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="pulseOutline" color="primary" />
+          <ion-label>
+            <h2>音频可视化</h2>
+            <p>播放页以封面主色显示实时频谱；需要音频走同源代理，关闭可省电</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.audioVisualizer" @ionChange="settings.settings.audioVisualizer = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
@@ -683,6 +691,7 @@ import {
   micOutline,
   moonOutline,
   pricetagOutline,
+  pulseOutline,
   shieldCheckmarkOutline,
   speedometerOutline,
   sparklesOutline,

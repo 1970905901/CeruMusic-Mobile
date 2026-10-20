@@ -9,7 +9,11 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
-import { isAudioEffectsActive } from '@/services/audioEffects'
+import {
+  bindAudioPipelineElement,
+  isAudioEffectsActive,
+  setAudioVisualizerEnabled
+} from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
 import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
 
@@ -49,6 +53,7 @@ export const usePlayerStore = defineStore('player', () => {
   const audio = new Audio()
   audio.preload = 'metadata'
   audio.setAttribute('playsinline', 'true')
+  bindAudioPipelineElement(audio)
 
   const queue = ref<Track[]>([])
   const currentIndex = ref(-1)
@@ -689,6 +694,12 @@ export const usePlayerStore = defineStore('player', () => {
     () => [queue.value, currentIndex.value, repeat.value, shuffle.value, volume.value, muted.value, playbackRate.value],
     () => persistState(),
     { deep: true }
+  )
+
+  watch(
+    () => settings.settings.audioVisualizer,
+    (enabled) => setAudioVisualizerEnabled(enabled),
+    { immediate: true }
   )
 
   function hostState() {
