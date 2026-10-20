@@ -3,12 +3,15 @@ import {
   type CrossfadeElement,
   type CrossfadeHost,
   cancelCrossfade,
+  crossfadeState,
   initCrossfade,
   isCrossfadeBusy,
   notifyCrossfadeTimeUpdate
 } from './crossfade'
 import {
+  fadeDuration,
   FORCED_REMAINING_SEC,
+  MIN_SONG_DURATION_SEC,
   OBSERVATION_WINDOW_SEC,
   QUIET_REMAINING_SEC
 } from './crossfadeCurve'
@@ -341,5 +344,70 @@ describe('crossfade orchestration', () => {
     const volumeAfterCancel = element.volume
     await vi.advanceTimersByTimeAsync(20_000)
     expect(element.volume).toBe(volumeAfterCancel)
+  })
+
+  it('exposes the progress-bar preview range and clears it when crossing over', async () => {
+    const { host, element } = makeHarness()
+    initCrossfade(host)
+    notifyCrossfadeTimeUpdate()
+    expect(crossfadeState.markStart).toBe(element.duration - OBSERVATION_WINDOW_SEC)
+    expect(crossfadeState.markEnd).toBe(element.duration - FORCED_REMAINING_SEC)
+
+    enterWindow(element, QUIET_REMAINING_SEC)
+    notifyCrossfadeTimeUpdate()
+    expect(crossfadeState.scheduled).toBe(true)
+    await vi.advanceTimersByTimeAsync(150)
+
+    // 交接后主元素已是新歌，预告区间按新歌时长重算，开头出现淡入区间。
+    expect(crossfadeState.active).toBe(true)
+    expect(crossfadeState.scheduled).toBe(false)
+    expect(crossfadeState.markStart).toBe(210 - OBSERVATION_WINDOW_SEC)
+    expect(crossfadeState.fadeInMarkEnd).toBeGreaterThan(0)
+  })
+
+  it('keeps the preview range empty for tracks too short to crossfade', () => {
+    const { host, element } = makeHarness()
+    initCrossfade(host)
+    element.duration = MIN_SONG_DURATION_SEC - 1
+    notifyCrossfadeTimeUpdate()
+    expect(crossfadeState.markStart).toBe(0)
+    expect(crossfadeState.markEnd).toBe(0)
+  })
+
+  it('hides the preview range while the setting is off', () => {
+    const { host } = makeHarness({ enabled: false })
+    initCrossfade(host)
+    notifyCrossfadeTimeUpdate()
+    expect(crossfadeState.markStart).toBe(0)
+    expect(crossfadeState.markEnd).toBe(0)
+  })
+
+  it('auto-clears the fade-in mark after the hold window', async () => {
+    const { host, element } = makeHarness()
+    initCrossfade(host)
+    enterWindow(element, 12)
+    notifyCrossfadeTimeUpdate()
+    await vi.advanceTimersByTimeAsync(150)
+
+    // 标记覆盖真实的淡化时长（剩余 12s 减去安全边距），并在其后 8 秒清除。
+    const fadeTime = crossfadeState.fadeInMarkEnd
+    expect(fadeTime).toBeCloseTo(fadeDuration(12), 5)
+    await vi.advanceTimersByTimeAsync((fadeTime + 8) * 1000)
+    expect(crossfadeState.fadeInMarkEnd).toBe(0)
+  })
+
+  it('drops every progress-bar mark when the fade is cancelled', async () => {
+    const { host, element } = makeHarness()
+    initCrossfade(host)
+    enterWindow(element, 12)
+    notifyCrossfadeTimeUpdate()
+    await vi.advanceTimersByTimeAsync(150)
+    expect(crossfadeState.fadeInMarkEnd).toBeGreaterThan(0)
+
+    cancelCrossfade()
+    expect(crossfadeState.active).toBe(false)
+    expect(crossfadeState.fadeInMarkEnd).toBe(0)
+    expect(crossfadeState.markStart).toBe(0)
+    expect(crossfadeState.markEnd).toBe(0)
   })
 })

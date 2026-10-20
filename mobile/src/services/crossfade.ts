@@ -19,12 +19,14 @@
  * 已知取舍：尾巴元素不接 Web Audio 效果链（可视化、均衡器只挂在主元素上），
  * 淡出中的旧歌尾段不带音效；该段音量本身在归零，听感影响有限。
  */
+import { reactive } from 'vue'
 import type { Track } from '@/types/music'
 import {
   OBSERVATION_WINDOW_SEC,
   canCrossfade,
   crossfadeCurves,
   fadeDuration,
+  markRange,
   pushRmsSample,
   shouldTrigger
 } from './crossfadeCurve'
@@ -35,6 +37,8 @@ const ENVELOPE_STEP_MS = 50
 const RMS_STEP_MS = 100
 /** 兜底收尾：包络定时器被后台节流时，也不会让旧歌一直响下去。 */
 const ENVELOPE_SLACK_MS = 250
+/** 桌面版在淡入结束后仍保留 8 秒的淡入区间标记。 */
+const FADE_IN_MARK_HOLD_SEC = 8
 
 /**
  * 编排层只用到这几个成员，因此测试可传普通对象；
@@ -95,15 +99,63 @@ let handedOver = false
 let rmsTimer: ReturnType<typeof setInterval> | null = null
 let envelopeTimer: ReturnType<typeof setInterval> | null = null
 let finishTimer: ReturnType<typeof setTimeout> | null = null
+/** 淡入区间标记的自动清除定时器。 */
+let fadeInMarkTimer: ReturnType<typeof setTimeout> | null = null
 let rmsWindow: number[] = []
 /** 进入观察窗口时选定的下一首；交接时按它装载，保证前后一致。 */
 let pendingNext: Track | null = null
+
+/**
+ * 供进度条订阅的标记状态（对应桌面版 `crossfadeState`）。
+ * - `scheduled`：已进入观察窗口，预告区间在进度条末尾以斜纹块显示；
+ * - `active`：交集淡化进行中；
+ * - `fadeInMarkEnd`：淡入完成后新歌开头 0 ~ 该秒数标为淡入段，8 秒后清除。
+ * 桌面版在早期翻转槽位后 `fadeStart/fadeDuration` 不再有意义（老歌不再可见），
+ * 这里保持一致，不再暴露“当前正在淡化的区段”。
+ */
+export const crossfadeState = reactive({
+  active: false,
+  scheduled: false,
+  markStart: 0,
+  markEnd: 0,
+  fadeInMarkEnd: 0
+})
 
 function liveRemainingSec(element: CrossfadeElement): number {
   const duration = element.duration
   if (!Number.isFinite(duration) || duration <= 0) return -1
   const current = Number.isFinite(element.currentTime) ? element.currentTime : 0
   return duration - current
+}
+
+/**
+ * 刷新进度条上的过渡预告区间。
+ * 与桌面版一致：只看曲目时长，因此整首歌期间都能看到“这里可能发生过渡”的提示；
+ * 关闭设置、一起听房间内、曲目过短则清空标记。
+ */
+function updateMarkRange(): void {
+  const current = host
+  const duration = current ? current.getElement().duration : 0
+  const range = current && current.isEnabled() ? markRange(duration) : null
+  crossfadeState.markStart = range ? range.start : 0
+  crossfadeState.markEnd = range ? range.end : 0
+}
+
+function stopFadeInMarkTimer(): void {
+  if (fadeInMarkTimer !== null) {
+    clearTimeout(fadeInMarkTimer)
+    fadeInMarkTimer = null
+  }
+}
+
+/** 过渡完成后在新歌开头标记淡入段，并在一段时间后自动清除。 */
+function markFadeIn(fadeTime: number): void {
+  stopFadeInMarkTimer()
+  crossfadeState.fadeInMarkEnd = fadeTime
+  fadeInMarkTimer = setTimeout(() => {
+    crossfadeState.fadeInMarkEnd = 0
+    fadeInMarkTimer = null
+  }, (fadeTime + FADE_IN_MARK_HOLD_SEC) * 1000)
 }
 
 function stopRmsWatch(): void {
@@ -170,6 +222,10 @@ function finishCrossfade(): void {
   starting = false
   if (host) host.getElement().volume = host.getVolume()
   settleOutgoing()
+  crossfadeState.active = false
+  crossfadeState.scheduled = false
+  // 主元素已经是新歌，预告区间改按新歌时长重新计算。
+  updateMarkRange()
 }
 
 /**
@@ -191,6 +247,13 @@ export function cancelCrossfade(options?: { keepVolume?: boolean }): void {
   pendingNext = null
   settleOutgoing()
   if (wasBusy && element && !options?.keepVolume) element.volume = target
+  // 与桌面版 resetState 一致：取消时同时清掉进度条标记，等下一次 timeupdate 再重算。
+  stopFadeInMarkTimer()
+  crossfadeState.active = false
+  crossfadeState.scheduled = false
+  crossfadeState.fadeInMarkEnd = 0
+  crossfadeState.markStart = 0
+  crossfadeState.markEnd = 0
 }
 
 /** 进入观察窗口：提前把旧歌交给尾巴预载，让交接几乎零延迟。 */
@@ -289,6 +352,11 @@ async function beginCrossfade(): Promise<void> {
   active = true
   starting = false
   handedOver = true
+  crossfadeState.scheduled = false
+  crossfadeState.active = true
+  // 槽位已翻到新歌，进度条标记改按新歌时长重算；开头标出淡入段。
+  updateMarkRange()
+  markFadeIn(fadeTime)
   startEnvelope(element, tailElement, fadeTime)
 }
 
@@ -320,7 +388,10 @@ function startRmsWatch(): void {
  * 离开窗口（例如用户向后拖动进度条、关闭开关、列表末尾）会自动取消。
  */
 export function notifyCrossfadeTimeUpdate(): void {
-  if (!host || active || starting) return
+  if (!host) return
+  // 与桌面版一致：每次 timeupdate 都低成本刷新预告区间（曲目时长可能刚就绪）。
+  updateMarkRange()
+  if (active || starting) return
   const element = host.getElement()
   const remaining = liveRemainingSec(element)
   const eligible =
@@ -342,6 +413,7 @@ export function notifyCrossfadeTimeUpdate(): void {
   if (!armTail()) return
   pendingNext = next
   scheduled = true
+  crossfadeState.scheduled = true
   startRmsWatch()
 }
 

@@ -82,16 +82,31 @@
           <div v-if="player.error" class="play-error">{{ player.error }}</div>
 
           <div class="timeline">
-            <ion-range
-              :value="position"
-              :min="0"
-              :max="duration || 1"
-              :step="0.5"
-              :disabled="!duration"
-              class="seek"
-              aria-label="播放进度"
-              @ionChange="seekTo($event.detail.value)"
-            />
+            <div class="seek-host">
+              <ion-range
+                :value="position"
+                :min="0"
+                :max="duration || 1"
+                :step="0.5"
+                :disabled="!duration"
+                class="seek"
+                aria-label="播放进度"
+                @ionChange="seekTo($event.detail.value)"
+              />
+              <!-- 无感过渡：预告区间与淡入区间标记（桌面 PlayMusic.vue 的进度条标记） -->
+              <div class="seek-marks" aria-hidden="true">
+                <div
+                  v-if="crossfadeMarkVisible"
+                  class="crossfade-mark"
+                  :style="{ left: crossfadeMarkLeft + '%', width: crossfadeMarkWidth + '%' }"
+                />
+                <div
+                  v-if="crossfadeFadeInMarkVisible"
+                  class="crossfade-fadein-mark"
+                  :style="{ width: crossfadeFadeInMarkWidth + '%' }"
+                />
+              </div>
+            </div>
             <div class="times">
               <span>{{ formatTime(position) }}</span>
               <span>-{{ formatTime(Math.max(0, duration - position)) }}</span>
@@ -241,6 +256,15 @@
     </ion-modal>
 
     <TrackCommentsSheet :open="commentsOpen" :track="track" @close="commentsOpen = false" />
+    <!-- 无感过渡进行中的提示（桌面 CrossfadeHint.vue） -->
+    <transition name="crossfade-hint">
+      <div v-if="crossfadeState.active" class="crossfade-hint">
+        <div class="cf-wave">
+          <span v-for="bar in 4" :key="bar" :style="{ animationDelay: `${(bar - 1) * 0.12}s` }" />
+        </div>
+        <span class="cf-text">正在平滑过渡</span>
+      </div>
+    </transition>
     <LyricConverterSheet
       :open="lyricConverterOpen"
       :track="track"
@@ -333,6 +357,7 @@ import { backgroundBeatStyle, createBackgroundBeatSmoother } from '@/services/ba
 import { fourColorGradientBackground } from '@/services/backgroundGradient'
 import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/services/coverColor'
 import { startLowFreqSampler } from '@/services/audioVisualizer'
+import { crossfadeState } from '@/services/crossfade'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -426,6 +451,31 @@ const gradientBackground = computed(() =>
 
 const lyricAccent = computed(() =>
   settings.settings.lyricImmersiveColor ? coverAccent.value : 'rgba(255, 255, 255, 1)'
+)
+
+/**
+ * 无感过渡的进度条标记（对齐桌面 PlayMusic.vue）：
+ * 预告区间标出“可能发生过渡”的尾段，淡入区间标出交接后新歌开头的淡化段。
+ * 桌面端在 DLNA 播放时不显示，移动端没有该路径，因此仅需时长可用。
+ */
+const crossfadeMarkVisible = computed(
+  () => crossfadeState.markEnd > crossfadeState.markStart && duration.value > 0
+)
+const crossfadeMarkLeft = computed(() =>
+  crossfadeMarkVisible.value ? (crossfadeState.markStart / duration.value) * 100 : 0
+)
+const crossfadeMarkWidth = computed(() =>
+  crossfadeMarkVisible.value
+    ? ((crossfadeState.markEnd - crossfadeState.markStart) / duration.value) * 100
+    : 0
+)
+const crossfadeFadeInMarkVisible = computed(
+  () => crossfadeState.fadeInMarkEnd > 0 && duration.value > 0
+)
+const crossfadeFadeInMarkWidth = computed(() =>
+  crossfadeFadeInMarkVisible.value
+    ? (crossfadeState.fadeInMarkEnd / duration.value) * 100
+    : 0
 )
 
 const beatLevel = ref(0)
@@ -1118,6 +1168,73 @@ onBeforeUnmount(() => {
 .timeline {
   margin-top: 24px;
 }
+.seek-host {
+  position: relative;
+}
+/*
+ * 过渡标记覆盖在 ion-range 轨道上：轨道本身横跨整个 host，
+ * 且 bar 垂直居中（(height - bar-height)/2 + bar-height/2 = height/2），
+ * 因此这里按百分比定位 + 垂直居中即可与轨道对齐。
+ * 层级低于 ion-range（host 为 z-index: 2），与桌面端一致：
+ * 标记透过半透明的未播放轨道可见，已播放部分则由进度填充色自然盖住。
+ */
+.seek-marks {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.crossfade-mark,
+.crossfade-fadein-mark {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 5px;
+  border-radius: 999px;
+}
+/* 预告区间：尾段以斜纹块提示“可能在此发生过渡” */
+.crossfade-mark {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0.5) 3px,
+    rgba(255, 255, 255, 0.16) 3px,
+    rgba(255, 255, 255, 0.16) 6px
+  );
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+  opacity: 0.8;
+  transition:
+    left 0.2s linear,
+    width 0.2s linear;
+}
+/* 新歌开头的淡入段：从左向右渐弱的条带 */
+.crossfade-fadein-mark {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.72),
+    rgba(255, 255, 255, 0.26) 70%,
+    rgba(255, 255, 255, 0)
+  );
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  opacity: 0.9;
+  animation: crossfade-fadein-glow 1.6s ease-out;
+}
+@keyframes crossfade-fadein-glow {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) scaleX(0.6);
+    transform-origin: left center;
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-50%) scaleX(1);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateY(-50%) scaleX(1);
+  }
+}
 .seek {
   padding: 0;
   --bar-background: rgba(255, 255, 255, 0.16);
@@ -1133,6 +1250,69 @@ onBeforeUnmount(() => {
   color: rgba(245, 248, 251, 0.48);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+/* 无感过渡进行中的浮层提示（对齐桌面 CrossfadeHint.vue） */
+.crossfade-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  user-select: none;
+}
+.cf-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+.cf-wave span {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: center;
+  animation: crossfade-wave 1s ease-in-out infinite;
+}
+.cf-text {
+  letter-spacing: 0.3px;
+}
+@keyframes crossfade-wave {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.crossfade-hint-enter-active,
+.crossfade-hint-leave-active {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.crossfade-hint-enter-from,
+.crossfade-hint-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 6px);
+}
+.crossfade-hint-enter-to,
+.crossfade-hint-leave-from {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 .controls {
   display: flex;
