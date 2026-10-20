@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_DOMINANT_COLOR, dominantColorFromPixels, lightMainColor } from './coverColor'
+import {
+  DEFAULT_DOMINANT_COLOR,
+  dominantColorFromPixels,
+  dominantColorsFromPixels,
+  lightMainColor
+} from './coverColor'
 
 function pixels(colors: Array<[number, number, number, number]>): Uint8ClampedArray {
   const data = new Uint8ClampedArray(colors.length * 4)
@@ -37,5 +42,31 @@ describe('cover color extraction', () => {
       [20, 60, 180, 255]
     ])
     expect(dominantColorFromPixels(data)).toEqual(dominantColorFromPixels(data))
+  })
+
+  it('returns the requested number of gradient colors', () => {
+    const data = pixels([
+      [200, 40, 40, 255],
+      [40, 200, 40, 255],
+      [40, 40, 200, 255],
+      [200, 200, 40, 255]
+    ])
+    expect(dominantColorsFromPixels(data, 4)).toHaveLength(4)
+    expect(dominantColorsFromPixels(data, 2)).toHaveLength(2)
+  })
+
+  it('falls back to the desktop default when every gradient pixel is transparent', () => {
+    const colors = dominantColorsFromPixels(pixels([[255, 0, 0, 0]]), 4)
+    expect(colors).toHaveLength(4)
+    for (const color of colors) expect(color).toEqual(DEFAULT_DOMINANT_COLOR)
+  })
+
+  it('keeps the gradient deterministic for identical pixel data', () => {
+    const data = pixels([
+      [40, 90, 200, 255],
+      [60, 110, 210, 255],
+      [190, 60, 40, 255]
+    ])
+    expect(dominantColorsFromPixels(data, 4)).toEqual(dominantColorsFromPixels(data, 4))
   })
 })

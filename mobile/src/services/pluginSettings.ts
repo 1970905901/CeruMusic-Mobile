@@ -22,6 +22,8 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricStrictFilter',
   'pauseTransition',
   'playerBackgroundAnimation',
+  'playerBackgroundRenderer',
+  'playerBackgroundBeat',
   'audioCacheEnabled',
   'audioCacheMaxBytes',
   'audioCacheMaxQuality',

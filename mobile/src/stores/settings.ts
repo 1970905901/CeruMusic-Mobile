@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { getBackgroundRenderer, type BackgroundRendererType } from '@/services/backgroundRenderers'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -50,6 +51,8 @@ export interface AppSettings {
   lyricFilterInfo: boolean
   lyricStrictFilter: boolean
   playerBackgroundAnimation: boolean
+  playerBackgroundRenderer: BackgroundRendererType
+  playerBackgroundBeat: boolean
   audioCacheEnabled: boolean
   audioCacheMaxBytes: number
   audioCacheMaxQuality: string
@@ -102,6 +105,8 @@ const defaults: AppSettings = {
   lyricFilterInfo: false,
   lyricStrictFilter: false,
   playerBackgroundAnimation: true,
+  playerBackgroundRenderer: 'pixi',
+  playerBackgroundBeat: false,
   audioCacheEnabled: true,
   audioCacheMaxBytes: 1024 * 1024 * 1024,
   audioCacheMaxQuality: 'flac',
@@ -129,7 +134,10 @@ function load(): AppSettings {
       localScanFilterMinDurationSec:
         typeof parsed.localScanFilterMinDurationSec === 'number' && !isNaN(parsed.localScanFilterMinDurationSec)
           ? parsed.localScanFilterMinDurationSec
-          : defaults.localScanFilterMinDurationSec
+          : defaults.localScanFilterMinDurationSec,
+      playerBackgroundRenderer: getBackgroundRenderer(
+        String(parsed.playerBackgroundRenderer ?? defaults.playerBackgroundRenderer)
+      ).value
     }
   } catch {
     return { ...defaults }
@@ -170,6 +178,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setTheme(theme: ThemeMode) {
     settings.value.theme = theme
+  }
+
+  function setBackgroundRenderer(renderer: string) {
+    settings.value.playerBackgroundRenderer = getBackgroundRenderer(renderer).value
   }
 
   function setProviderOwner(providerId: string, pluginKey: string) {
@@ -245,6 +257,7 @@ export const useSettingsStore = defineStore('settings', () => {
     settings,
     isDark,
     setTheme,
+    setBackgroundRenderer,
     setProviderOwner,
     providerOwner,
     setCapabilityOwner,

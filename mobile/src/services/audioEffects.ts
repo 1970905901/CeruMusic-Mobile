@@ -140,6 +140,7 @@ class AudioEffectChain {
   private makeup: GainNode | null = null
   private surroundMode: SurroundMode = 'off'
   private analyser: AnalyserNode | null = null
+  private beatAnalyser: AnalyserNode | null = null
   private listenersBound = false
   private readonly resumeHandler = () => this.resumeContext()
 
@@ -278,6 +279,34 @@ class AudioEffectChain {
     this.analyser = null
   }
 
+  /**
+   * Desktop parity: the background beat uses its own 4096-point analyser with a
+   * faster smoothing constant, because a small FFT cannot resolve 80–120 Hz.
+   */
+  attachBeatAnalyser(): AnalyserNode | null {
+    const context = this.context
+    const tap = this.balanceNode
+    if (!context || !tap || context.state === 'closed') return null
+    this.resumeContext()
+    if (!this.beatAnalyser) {
+      this.beatAnalyser = context.createAnalyser()
+      this.beatAnalyser.smoothingTimeConstant = 0.2
+      this.beatAnalyser.fftSize = 4096
+      tap.connect(this.beatAnalyser)
+    }
+    return this.beatAnalyser
+  }
+
+  detachBeatAnalyser(): void {
+    if (!this.beatAnalyser) return
+    try {
+      this.beatAnalyser.disconnect()
+    } catch {
+      // The node may already be detached by a closed context.
+    }
+    this.beatAnalyser = null
+  }
+
   private resumeContext(): void {
     if (this.context && this.context.state === 'suspended') {
       void this.context.resume().catch(() => undefined)
@@ -361,7 +390,10 @@ export function bindAudioPipelineElement(element: HTMLAudioElement): void {
 
 export function setAudioVisualizerEnabled(enabled: boolean): void {
   visualizerEnabled = enabled && supportsWebAudio()
-  if (!visualizerEnabled) audioEffectChain.detachAnalyser()
+  if (!visualizerEnabled) {
+    audioEffectChain.detachAnalyser()
+    audioEffectChain.detachBeatAnalyser()
+  }
 }
 
 export function isAudioVisualizerEnabled(): boolean {
@@ -375,4 +407,16 @@ export function ensureVisualizerAnalyser(fftSize: number): AnalyserNode | null {
   if (!source.startsWith('blob:') && !source.startsWith('data:')) return null
   if (!audioEffectChain.ensure(visualizerElement)) return null
   return audioEffectChain.attachAnalyser(fftSize)
+}
+
+/**
+ * Desktop parity for the background beat: its own analyser so the effect works
+ * even when the bar visualizer is off and keeps a 4096-point FFT.
+ */
+export function ensureBeatAnalyser(): AnalyserNode | null {
+  if (!visualizerEnabled || !visualizerElement) return null
+  const source = visualizerElement.currentSrc || visualizerElement.src
+  if (!source.startsWith('blob:') && !source.startsWith('data:')) return null
+  if (!audioEffectChain.ensure(visualizerElement)) return null
+  return audioEffectChain.attachBeatAnalyser()
 }

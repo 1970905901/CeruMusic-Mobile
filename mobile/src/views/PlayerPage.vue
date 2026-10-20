@@ -1,7 +1,13 @@
 ﻿<template>
-  <ion-page class="player-page" :class="{ 'background-animated': settings.settings.playerBackgroundAnimation }">
+  <ion-page
+    class="player-page"
+    :class="[`bg-renderer-${backgroundRenderer}`, { 'background-animated': settings.settings.playerBackgroundAnimation }]"
+  >
     <ion-content :fullscreen="true" class="player-content" @click.capture="controlsIdle.poke()" @scroll="controlsIdle.poke()">
-      <div v-if="track" class="bg-layer" :style="bgStyle" />
+      <div ref="backgroundHost" class="bg-beat-host">
+        <div v-if="track" class="bg-layer" :style="bgStyle" />
+        <div v-if="track && gradientBackground" class="bg-gradient" :style="{ backgroundImage: gradientBackground }" />
+      </div>
       <div class="bg-shade" />
       <div class="player-shell ceru-safe-top">
         <header class="top-bar">
@@ -313,7 +319,6 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
-import { extractLightMainColor } from '@/services/coverColor'
 import { createIdleControls } from '@/services/idleControls'
 import { lyricJumpStyle } from '@/services/lyricJump'
 import {
@@ -323,6 +328,11 @@ import {
 } from '@/services/lyricSeekStagger'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import { karaokeMaskStyle } from '@/services/lyricKaraoke'
+import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
+import { backgroundBeatStyle, createBackgroundBeatSmoother } from '@/services/backgroundBeat'
+import { fourColorGradientBackground } from '@/services/backgroundGradient'
+import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/services/coverColor'
+import { startLowFreqSampler } from '@/services/audioVisualizer'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -344,6 +354,11 @@ const bgStyle = computed(() => {
   const url = track.value?.artworkUrl || ''
   return { backgroundImage: 'url("' + url + '")' }
 })
+const backgroundRenderer = computed(() => settings.settings.playerBackgroundRenderer)
+/** Desktop parity: only 网格渐变 consumes the low-frequency beat. */
+const beatEnabled = computed(
+  () => settings.settings.playerBackgroundBeat && backgroundSupportsBeat(backgroundRenderer.value)
+)
 const sourceLabel = computed(() => {
   if (!track.value) return ''
   if (track.value.localUri) return '本地文件'
@@ -383,23 +398,73 @@ const currentLineIndex = computed(() => currentLyricIndex(displayLyrics.value.li
 const DEFAULT_LYRIC_ACCENT = 'rgba(255, 255, 255, 0.9)'
 const coverAccent = ref(DEFAULT_LYRIC_ACCENT)
 const coverAccentSource = ref('')
+const gradientColors = ref<RgbColor[]>([])
+const gradientSource = ref('')
 
 watch(
   () => track.value?.artworkUrl || '',
   async (src) => {
     coverAccentSource.value = src
-    if (!src) {
-      coverAccent.value = DEFAULT_LYRIC_ACCENT
-      return
-    }
-    const accent = await extractLightMainColor(src)
+    gradientSource.value = src
+    // 四色渐变 needs the same artwork sample as the accent, so one pass fills both.
+    const [accent, colors] = await Promise.all([
+      src ? extractLightMainColor(src) : Promise.resolve(DEFAULT_LYRIC_ACCENT),
+      src ? extractDominantColors(src, 4) : Promise.resolve([])
+    ])
     if (coverAccentSource.value === src) coverAccent.value = accent
+    if (gradientSource.value === src) gradientColors.value = colors
   },
   { immediate: true }
 )
 
+/** Desktop 四色渐变 renderer: only the gradient layer is used, no cover pattern. */
+const gradientBackground = computed(() =>
+  backgroundRenderer.value === 'isolation'
+    ? fourColorGradientBackground(gradientColors.value)
+    : ''
+)
+
 const lyricAccent = computed(() =>
   settings.settings.lyricImmersiveColor ? coverAccent.value : 'rgba(255, 255, 255, 1)'
+)
+
+const beatLevel = ref(0)
+const beatSmoother = createBackgroundBeatSmoother()
+let stopBeatSampler: (() => void) | null = null
+const backgroundHost = ref<HTMLElement | null>(null)
+
+/**
+ * The sampler runs at 30 fps, so the smoothed level is written straight to the
+ * background host's CSS variables instead of a reactive ref: a 30 fps render of
+ * the whole player page would be wasted work for two numbers.
+ */
+function applyBeat(value: number): void {
+  const host = backgroundHost.value
+  if (!host) return
+  beatLevel.value = beatSmoother.push(value, performance.now())
+  const style = backgroundBeatStyle(beatLevel.value, true)
+  for (const [name, assigned] of Object.entries(style)) host.style.setProperty(name, assigned)
+}
+
+watch(
+  [beatEnabled, () => player.isPlaying],
+  ([enabled, playing]) => {
+    if (stopBeatSampler) {
+      stopBeatSampler()
+      stopBeatSampler = null
+    }
+    beatSmoother.reset()
+    beatLevel.value = 0
+    // Clearing the variables restores the resting scale and brightness.
+    const host = backgroundHost.value
+    if (host) {
+      host.style.removeProperty('--bg-beat-scale')
+      host.style.removeProperty('--bg-beat-brightness')
+    }
+    if (!enabled || !playing) return
+    stopBeatSampler = startLowFreqSampler(applyBeat)
+  },
+  { immediate: true }
 )
 
 function lyricLineStyle(index: number) {
@@ -748,6 +813,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   controlsIdle.deactivate()
   if (lyricSeekStaggerTimer) clearTimeout(lyricSeekStaggerTimer)
+  if (stopBeatSampler) {
+    stopBeatSampler()
+    stopBeatSampler = null
+  }
   window.removeEventListener('resize', updateArtSize)
 })
 </script>
@@ -765,10 +834,37 @@ onBeforeUnmount(() => {
   inset: -40px;
   background-size: cover;
   background-position: center;
-  filter: blur(44px) saturate(140%);
-  transform: scale(1.16);
+  filter: blur(44px) saturate(140%) brightness(var(--bg-beat-brightness, 1));
+  transform: scale(calc(1.16 * var(--bg-beat-scale, 1)));
   opacity: 0.32;
   pointer-events: none;
+}
+/*
+ * Beat host only carries the CSS variables. It must stay untransformed and
+ * unfiltered, otherwise it would become the containing block of the fixed
+ * background layers and break their full-viewport positioning.
+ */
+.bg-beat-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* 四色渐变 keeps no cover pattern, so the artwork layer is dropped. */
+.bg-renderer-isolation .bg-layer {
+  display: none;
+}
+.bg-gradient {
+  position: fixed;
+  inset: -40px;
+  filter: blur(28px) saturate(150%) brightness(var(--bg-beat-brightness, 1));
+  transform: scale(calc(1.12 * var(--bg-beat-scale, 1)));
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* 网格渐变 softens the cover contours further than the classic renderer. */
+.bg-renderer-mesh .bg-layer {
+  filter: blur(58px) saturate(168%) brightness(var(--bg-beat-brightness, 1));
+  opacity: 0.38;
 }
 .bg-shade {
   position: fixed;
@@ -1419,8 +1515,16 @@ onBeforeUnmount(() => {
 .background-animated .bg-layer {
   animation: background-breathe 12s ease-in-out infinite alternate;
 }
+.background-animated .bg-gradient {
+  animation: background-breathe-gradient 15s ease-in-out infinite alternate;
+}
+/* The keyframes keep --bg-beat-scale so the beat effect survives the breathing animation. */
 @keyframes background-breathe {
-  from { transform: scale(1.05); opacity: 0.42; }
-  to { transform: scale(1.16); opacity: 0.62; }
+  from { transform: scale(calc(1.05 * var(--bg-beat-scale, 1))); opacity: 0.42; }
+  to { transform: scale(calc(1.16 * var(--bg-beat-scale, 1))); opacity: 0.62; }
+}
+@keyframes background-breathe-gradient {
+  from { transform: scale(calc(1.04 * var(--bg-beat-scale, 1))); opacity: 0.46; }
+  to { transform: scale(calc(1.14 * var(--bg-beat-scale, 1))); opacity: 0.62; }
 }
 </style>

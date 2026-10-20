@@ -16,6 +16,7 @@ import {
 } from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
 import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
+import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
 
 function rawEntityToTrack(entity: any, pluginKey?: string): Track {
   const ref = entity?.ref ?? {}
@@ -718,7 +719,11 @@ export const usePlayerStore = defineStore('player', () => {
   )
 
   watch(
-    () => settings.settings.audioVisualizer,
+    // The background beat taps the same analyser, so it keeps the pipeline on.
+    () =>
+      settings.settings.audioVisualizer ||
+      (settings.settings.playerBackgroundBeat &&
+        backgroundSupportsBeat(settings.settings.playerBackgroundRenderer)),
     (enabled) => setAudioVisualizerEnabled(enabled),
     { immediate: true }
   )

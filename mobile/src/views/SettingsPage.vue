@@ -431,6 +431,31 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.playerBackgroundAnimation" @ionChange="settings.settings.playerBackgroundAnimation = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
+          <ion-label>
+            <h2>背景渲染器</h2>
+            <p>{{ backgroundRendererDescription }}</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.playerBackgroundRenderer"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.setBackgroundRenderer($event.detail.value)"
+          >
+            <ion-select-option v-for="renderer in backgroundRenderers" :key="renderer.value" :value="renderer.value">
+              {{ renderer.label }}
+            </ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item v-if="backgroundSupportsBeat(settings.settings.playerBackgroundRenderer)">
+          <ion-icon slot="start" :icon="pulseOutline" color="primary" />
+          <ion-label>
+            <h2>背景随鼓点</h2>
+            <p>低频驱动背景缩放与明暗变化，需要音频走同源代理</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.playerBackgroundBeat" @ionChange="settings.settings.playerBackgroundBeat = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
@@ -774,6 +799,11 @@ import {
   type MediaCacheStats
 } from '@/services/mediaCache'
 import { importSafFolder, pickSafDirectory, safImportSupported } from '@/services/safImport'
+import {
+  backgroundRenderers,
+  backgroundSupportsBeat,
+  getBackgroundRenderer
+} from '@/services/backgroundRenderers'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -874,6 +904,11 @@ const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
   const minutes = Math.ceil(player.sleepRemainingMs / 60000)
   return `约 ${minutes} 分钟后暂停`
+})
+
+const backgroundRendererDescription = computed(() => {
+  const renderer = getBackgroundRenderer(settings.settings.playerBackgroundRenderer)
+  return `${renderer.label}：${renderer.description}`
 })
 
 function setTheme(value: any) {

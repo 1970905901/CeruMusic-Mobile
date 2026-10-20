@@ -130,22 +130,52 @@ function enhanceColor(color: RgbColor): RgbColor {
   return { r, g, b }
 }
 
-/** Skips transparent pixels plus near-black/near-white clusters, matching desktop. */
-export function dominantColorFromPixels(data: ArrayLike<number>): RgbColor {
+/** Collects the opaque pixels of an RGBA sample, skipping fully transparent ones. */
+function opaquePixels(data: ArrayLike<number>): RgbColor[] {
   const colors: RgbColor[] = []
   for (let index = 0; index + 3 < data.length; index += 4) {
     if (data[index + 3] < 128) continue
     colors.push({ r: data[index], g: data[index + 1], b: data[index + 2] })
   }
+  return colors
+}
+
+/** Desktop parity: near-black and near-white clusters are not usable accents. */
+function isExtreme(color: RgbColor): boolean {
+  if (color.r < 30 && color.g < 30 && color.b < 30) return true
+  if (color.r > 225 && color.g > 225 && color.b > 225) return true
+  return false
+}
+
+/** Number of clusters the single-accent path uses. */
+const ACCENT_CLUSTERS = 5
+
+/** Skips transparent pixels plus near-black/near-white clusters, matching desktop. */
+export function dominantColorFromPixels(data: ArrayLike<number>): RgbColor {
+  const colors = opaquePixels(data)
   if (!colors.length) return DEFAULT_DOMINANT_COLOR
-  const clusters = kMeansCluster(colors, 5)
-  const filtered = clusters.filter((color) => {
-    if (color.r < 30 && color.g < 30 && color.b < 30) return false
-    if (color.r > 225 && color.g > 225 && color.b > 225) return false
-    return true
-  })
+  const clusters = kMeansCluster(colors, ACCENT_CLUSTERS)
+  const filtered = clusters.filter((color) => !isExtreme(color))
   const picked = filtered.length ? mostSaturated(filtered) : clusters[0]
   return enhanceColor(picked ?? DEFAULT_DOMINANT_COLOR)
+}
+
+/**
+ * Desktop four-color gradient renderer parity: clusters the artwork into the
+ * requested number of enhanced colors. Always returns exactly `count` entries
+ * so the caller can build a stable gradient, repeating colors when the artwork
+ * does not offer enough distinct ones.
+ */
+export function dominantColorsFromPixels(data: ArrayLike<number>, count = 4): RgbColor[] {
+  const clusters = Math.max(2, Math.min(8, Math.floor(count) || 4))
+  const colors = opaquePixels(data)
+  if (!colors.length) {
+    return Array.from({ length: clusters }, () => ({ ...DEFAULT_DOMINANT_COLOR }))
+  }
+  const centroids = kMeansCluster(colors, clusters)
+  const usable = centroids.filter((color) => !isExtreme(color))
+  const source = (usable.length >= 2 ? usable : centroids).map(enhanceColor)
+  return Array.from({ length: clusters }, (_, index) => ({ ...source[index % source.length] }))
 }
 
 /** Desktop lightMainColor: 20% of the way from the dominant color toward white. */
@@ -156,11 +186,11 @@ export function lightMainColor(color: RgbColor): string {
 
 const SAMPLE_SIZE = 100
 
-/** Loads an artwork URL and resolves the desktop-equivalent light accent color. */
-export function extractLightMainColor(src: string): Promise<string> {
+/** Draws the artwork into an offscreen canvas so its pixels can be clustered. */
+function sampleArtworkPixels(src: string): Promise<Uint8ClampedArray | null> {
   return new Promise((resolve) => {
     if (!src) {
-      resolve(lightMainColor(DEFAULT_DOMINANT_COLOR))
+      resolve(null)
       return
     }
     const image = new Image()
@@ -174,12 +204,33 @@ export function extractLightMainColor(src: string): Promise<string> {
         if (!context) throw new Error('canvas unavailable')
         context.drawImage(image, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
         const { data } = context.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
-        resolve(lightMainColor(dominantColorFromPixels(data)))
+        resolve(data)
       } catch {
-        resolve(lightMainColor(DEFAULT_DOMINANT_COLOR))
+        resolve(null)
       }
     }
-    image.onerror = () => resolve(lightMainColor(DEFAULT_DOMINANT_COLOR))
+    image.onerror = () => resolve(null)
     image.src = src
   })
+}
+
+/** Loads an artwork URL and resolves the desktop-equivalent light accent color. */
+export async function extractLightMainColor(src: string): Promise<string> {
+  const data = await sampleArtworkPixels(src)
+  if (!data) return lightMainColor(DEFAULT_DOMINANT_COLOR)
+  return lightMainColor(dominantColorFromPixels(data))
+}
+
+/**
+ * Desktop 四色渐变 renderer parity: resolves the artwork's main colors. Falls
+ * back to the desktop default color when the artwork cannot be sampled, which
+ * mirrors the single-accent path instead of leaving the gradient empty.
+ */
+export async function extractDominantColors(src: string, count = 4): Promise<RgbColor[]> {
+  const data = await sampleArtworkPixels(src)
+  if (!data) {
+    const fallback = { ...DEFAULT_DOMINANT_COLOR }
+    return Array.from({ length: Math.max(2, count) }, () => ({ ...fallback }))
+  }
+  return dominantColorsFromPixels(data, count)
 }
