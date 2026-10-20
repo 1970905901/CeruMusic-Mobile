@@ -225,6 +225,14 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.autoHideControls" @ionChange="settings.settings.autoHideControls = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="headsetOutline" color="primary" />
+          <ion-label>
+            <h2>系统媒体控件高清封面</h2>
+            <p>锁屏与通知卡片改用插件高清封面协议取大图，需插件支持</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.smtcHiresCover" @ionChange="settings.settings.smtcHiresCover = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">

@@ -16,6 +16,7 @@ import {
   type CommentPage
 } from '@/services/comments'
 import { useSettingsStore } from '@/stores/settings'
+import { resolveHiresCover } from '@/services/smtcArtwork'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
   const ref = entity?.ref ?? {}
@@ -532,6 +533,25 @@ export const usePluginStore = defineStore('plugins', () => {
     return runtime.invokeProvider(provider.providerId, 'tracks.suggest', [query])
   }
 
+  /**
+   * 高清封面协议（可选 provider 方法 `tracks.artworkHires`）。
+   * 与桌面版一致：走 provider 方法而不是 action，插件未实现时由调用方回落原封面。
+   */
+  async function hiresArtwork(track: Track): Promise<string | undefined> {
+    const provider = track.pluginKey
+      ? providers.value.find(
+          (item) => item.pluginKey === track.pluginKey && item.providerId === track.ref.providerId
+        )
+      : selectedProvider(track.ref.providerId)
+    if (!provider) return undefined
+    const runtime = pluginRuntimeManager.get(provider.pluginKey)
+    if (!runtime) return undefined
+    return resolveHiresCover(track, true, {
+      invokeProvider: (providerId, method, args) =>
+        runtime.invokeProvider(providerId, method, args)
+    })
+  }
+
   async function hotSearch(source: string): Promise<any> {
     const provider = selectedProvider(source)
     if (!provider) return null
@@ -602,6 +622,7 @@ export const usePluginStore = defineStore('plugins', () => {
     resolve,
     lyrics,
     suggest,
+    hiresArtwork,
     hotSearch,
     publishPlayerState,
     publishQueue,

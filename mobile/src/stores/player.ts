@@ -179,15 +179,10 @@ export const usePlayerStore = defineStore('player', () => {
     return track.artworkUrl || track.raw?.metadata?.artworkUrl || undefined
   }
 
-  async function applyMetadata(track: Track | null) {
-    if (!track) {
-      if (Capacitor.isNativePlatform()) {
-        await MediaSession.setPlaybackState({ playbackState: 'none' }).catch(() => undefined)
-      }
-      if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
-      return
-    }
-    const artwork = buildCoverUrl(track)
+  /** 快速切歌时防止旧的高清封面结果覆盖新歌曲的元数据。 */
+  let metadataRevision = 0
+
+  async function pushMetadata(track: Track, artwork: string | undefined) {
     const artists = track.artists.join(' / ')
     if (Capacitor.isNativePlatform()) {
       await MediaSession.setMetadata({
@@ -217,6 +212,32 @@ export const usePlayerStore = defineStore('player', () => {
         // MediaMetadata is unavailable on older WebViews.
       }
     }
+  }
+
+  /**
+   * 先同步写入原封面，再按需异步换成高清封面。
+   * 桌面版同样是「同步先行，异步增强」——高清取图不能拖住整条元数据推送，
+   * 否则后台节流或取图超时会让系统卡片停留在上一首歌。
+   */
+  async function applyMetadata(track: Track | null) {
+    const revision = ++metadataRevision
+    if (!track) {
+      if (Capacitor.isNativePlatform()) {
+        await MediaSession.setPlaybackState({ playbackState: 'none' }).catch(() => undefined)
+      }
+      if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
+      return
+    }
+    await pushMetadata(track, buildCoverUrl(track))
+    if (!settings.settings.smtcHiresCover) return
+    // 高清取图不阻塞起播：拿到且仍是最新提交时再覆盖一次元数据。
+    void pluginStore
+      .hiresArtwork(track)
+      .then((hires) => {
+        if (!hires || revision !== metadataRevision) return
+        return pushMetadata(track, hires)
+      })
+      .catch(() => undefined)
   }
 
   async function updateNativePosition() {
