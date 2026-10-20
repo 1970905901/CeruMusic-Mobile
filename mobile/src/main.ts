@@ -30,6 +30,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
+import { useAudioEffectsStore } from '@/stores/audioEffects'
 import { useShareStore } from '@/stores/share'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -143,6 +144,7 @@ void (async () => {
     const player = usePlayerStore(pinia)
     player.loadPersisted()
     await player.restoreIfAvailable()
+    useAudioEffectsStore(pinia)
   } catch (error) {
     console.error('应用初始化失败', error)
   }

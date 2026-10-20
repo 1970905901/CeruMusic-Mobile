@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39365039950`，Android/iOS 均成功
+- 最新 CI：`39366003635`，Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -41,6 +41,7 @@
 ### 播放与媒体
 - 播放、暂停、上一首、下一首、拖动进度、音量、静音、倍速。
 - 播放队列、随机、循环模式。
+- 均衡器与高级音效：10 段图形均衡器、低音增强、环绕混响、声道平衡、响度均衡，基于 Web Audio 实时处理，默认关闭并按设置持久化。
 - 歌词渲染、翻译、罗马音、时间偏移。
 - 歌曲评论。
 - 音频缓存：Cache Storage + IndexedDB 元数据，支持容量、音质上限、命中统计、手动清理。
@@ -108,7 +109,7 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：28 个测试文件，99 个测试全部通过
+- `npm run test`：29 个测试文件，104 个测试全部通过
 - `npm run build`：通过
 - GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均成功
 

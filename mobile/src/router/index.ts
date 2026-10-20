@@ -46,6 +46,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PlayerPage.vue')
   },
   {
+    path: '/audio-effects',
+    name: 'audio-effects',
+    component: () => import('@/views/AudioEffectsPage.vue')
+  },
+  {
     path: '/playlist/:id',
     name: 'playlist',
     component: () => import('@/views/PlaylistPage.vue')

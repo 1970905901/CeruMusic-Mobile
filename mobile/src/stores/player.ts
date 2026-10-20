@@ -9,6 +9,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
+import { isAudioEffectsActive } from '@/services/audioEffects'
 
 function rawEntityToTrack(entity: any, pluginKey?: string): Track {
   const ref = entity?.ref ?? {}
@@ -344,13 +345,16 @@ export const usePlayerStore = defineStore('player', () => {
         console.warn('写入音频缓存失败', cause)
       }
     }
-    if (resolved.requestHeaders && Object.keys(resolved.requestHeaders).length) {
+    const needsBlob =
+      (resolved.requestHeaders && Object.keys(resolved.requestHeaders).length > 0) ||
+      isAudioEffectsActive()
+    if (needsBlob) {
       try {
         if (Capacitor.isNativePlatform()) {
           const response = await CapacitorHttp.request({
             url: resolved.url,
             method: 'GET',
-            headers: resolved.requestHeaders,
+            headers: resolved.requestHeaders || {},
             responseType: 'blob',
             connectTimeout: 30000,
             readTimeout: 120000
@@ -736,6 +740,7 @@ export const usePlayerStore = defineStore('player', () => {
   initMediaSession()
 
   return {
+    getAudioElement: () => audio,
     queue,
     currentIndex,
     status,

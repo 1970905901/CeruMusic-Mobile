@@ -180,6 +180,13 @@
             <ion-select-option :value="60">60 分钟</ion-select-option>
           </ion-select>
         </ion-item>
+        <ion-item button detail @click="openAudioEffects">
+          <ion-icon slot="start" :icon="optionsOutline" color="primary" />
+          <ion-label>
+            <h2>均衡器与音效</h2>
+            <p>10 段均衡器、低音增强、环绕与响度均衡</p>
+          </ion-label>
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
@@ -572,6 +579,7 @@ import {
   informationCircleOutline,
   layersOutline,
   notificationsOutline,
+  optionsOutline,
   peopleOutline,
   personCircleOutline,
   logoGithub,
@@ -665,6 +673,12 @@ function openPluginPage(page: { pluginKey: string; view: string }) {
         '/' +
         encodeURIComponent(page.view)
     )
+  })
+}
+
+function openAudioEffects() {
+  void import('@/router').then(({ default: router }) => {
+    void router.push('/audio-effects')
   })
 }
 
