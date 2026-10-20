@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { base64ToArrayBuffer } from '@/services/audioTags'
+import { useSettingsStore } from '@/stores/settings'
 import { useLibraryStore } from '@/stores/library'
 
 interface SafEntry {
@@ -90,33 +91,51 @@ async function collectFiles(
   }
 }
 
+export interface SafImportOptions {
+  minSizeKb?: number
+  minDurationSec?: number
+}
+
 export interface SafImportResult {
   folder: string
   imported: number
   skipped: number
   failed: number
   truncated: boolean
+  filteredSize?: number
+  filteredDuration?: number
 }
 
 export async function importSafFolder(
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  options?: SafImportOptions
 ): Promise<SafImportResult> {
   if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 文件夹导入')
+  const settingsStore = useSettingsStore()
+  const minSizeKb = options?.minSizeKb ?? settingsStore.settings.localScanFilterMinSizeKb ?? 100
+  const minDurationSec = options?.minDurationSec ?? settingsStore.settings.localScanFilterMinDurationSec ?? 30
   const folder = await Saf.pickDirectory()
   const entries: SafEntry[] = []
   onProgress?.('正在扫描文件夹…')
   await collectFiles(folder.uri, 0, entries)
   if (!entries.length) {
-    return { folder: folder.name, imported: 0, skipped: 0, failed: 0, truncated: false }
+    return { folder: folder.name, imported: 0, skipped: 0, failed: 0, truncated: false, filteredSize: 0, filteredDuration: 0 }
   }
   const library = useLibraryStore()
   let imported = 0
   let skipped = 0
   let failed = 0
   let truncated = false
+  let filteredSize = 0
+  let filteredDuration = 0
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index]
     onProgress?.(`正在导入 ${index + 1}/${entries.length}：${entry.name}`)
+    if (minSizeKb > 0 && entry.size > 0 && entry.size < minSizeKb * 1024) {
+      filteredSize++
+      skipped++
+      continue
+    }
     let copied: Awaited<ReturnType<SafPlugin['copyToApp']>> | null = null
     try {
       copied = await Saf.copyToApp({ uri: entry.uri, name: entry.name })
@@ -127,12 +146,21 @@ export async function importSafFolder(
       const base64 = typeof data.data === 'string' ? data.data : ''
       if (!base64) throw new Error('读取导入文件失败')
       const bytes = new Uint8Array(base64ToArrayBuffer(base64))
+      if (minSizeKb > 0 && bytes.byteLength < minSizeKb * 1024) {
+        filteredSize++
+        skipped++
+        continue
+      }
       const file = new File([bytes], entry.name, { type: mimeForAudio(entry.name) })
       const record = await library.importLocalFile(file, {
-        sourcePath: 'saf:' + entry.uri
+        sourcePath: 'saf:' + entry.uri,
+        minDurationSec
       })
-      if (record) imported++
-      else skipped++
+      if (record) {
+        imported++
+      } else {
+        skipped++
+      }
     } catch (error) {
       failed++
       console.warn('SAF 导入失败', entry.name, error)
@@ -145,7 +173,7 @@ export async function importSafFolder(
       }
     }
   }
-  return { folder: folder.name, imported, skipped, failed, truncated }
+  return { folder: folder.name, imported, skipped, failed, truncated, filteredSize, filteredDuration }
 }
 
 export async function pickSafDirectory(): Promise<{ uri: string; name: string }> {

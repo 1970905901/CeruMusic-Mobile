@@ -483,10 +483,15 @@ async function showToast(message: string, color = 'medium') {
 async function scanLocal() {
   try {
     const records = await library.scanLocalMusic()
-    await showToast(
-      records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件',
-      records.length ? 'success' : 'medium'
-    )
+    const filtered = (records.filteredSizeCount || 0) + (records.filteredDurationCount || 0)
+    if (records.length) {
+      const filterTip = filtered ? ` (已自动过滤 ${filtered} 个短音频)` : ''
+      await showToast(`已导入 ${records.length} 首本地歌曲${filterTip}`, 'success')
+    } else if (filtered) {
+      await showToast(`没有发现新的音频 (已自动过滤 ${filtered} 个短音频)`, 'medium')
+    } else {
+      await showToast('没有发现新的音频文件', 'medium')
+    }
   } catch (error) {
     await showToast(error instanceof Error ? error.message : String(error), 'danger')
   }

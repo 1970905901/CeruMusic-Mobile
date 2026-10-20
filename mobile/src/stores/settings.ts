@@ -41,6 +41,8 @@ export interface AppSettings {
   audioCacheEnabled: boolean
   audioCacheMaxBytes: number
   audioCacheMaxQuality: string
+  localScanFilterMinSizeKb: number
+  localScanFilterMinDurationSec: number
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -78,7 +80,9 @@ const defaults: AppSettings = {
   playerBackgroundAnimation: true,
   audioCacheEnabled: true,
   audioCacheMaxBytes: 1024 * 1024 * 1024,
-  audioCacheMaxQuality: 'flac'
+  audioCacheMaxQuality: 'flac',
+  localScanFilterMinSizeKb: 100,
+  localScanFilterMinDurationSec: 30
 }
 
 function load(): AppSettings {
@@ -93,7 +97,15 @@ function load(): AppSettings {
       capabilityOwners: { ...defaults.capabilityOwners, ...(parsed.capabilityOwners ?? {}) },
       grantedPermissions: { ...defaults.grantedPermissions, ...(parsed.grantedPermissions ?? {}) },
       deniedPermissions: { ...defaults.deniedPermissions, ...(parsed.deniedPermissions ?? {}) },
-      searchHistory: Array.isArray(parsed.searchHistory) ? parsed.searchHistory.slice(0, 30) : []
+      searchHistory: Array.isArray(parsed.searchHistory) ? parsed.searchHistory.slice(0, 30) : [],
+      localScanFilterMinSizeKb:
+        typeof parsed.localScanFilterMinSizeKb === 'number' && !isNaN(parsed.localScanFilterMinSizeKb)
+          ? parsed.localScanFilterMinSizeKb
+          : defaults.localScanFilterMinSizeKb,
+      localScanFilterMinDurationSec:
+        typeof parsed.localScanFilterMinDurationSec === 'number' && !isNaN(parsed.localScanFilterMinDurationSec)
+          ? parsed.localScanFilterMinDurationSec
+          : defaults.localScanFilterMinDurationSec
     }
   } catch {
     return { ...defaults }

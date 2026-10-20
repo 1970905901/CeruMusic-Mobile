@@ -5,6 +5,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem'
 import type { Playlist, FavoriteEntry, HistoryEntry, Track } from '@/types/music'
 import type { LocalTrackRecord } from '@/types/download'
 import { getDb, toPlain } from '@/services/db'
+import { useSettingsStore } from '@/stores/settings'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
@@ -41,6 +42,32 @@ function extFromName(name: string): string {
   return index >= 0 ? name.slice(index + 1).toLowerCase() : 'bin'
 }
 
+export interface ScanLocalOptions {
+  minSizeKb?: number
+  minDurationSec?: number
+}
+
+export interface ScanLocalResult extends Array<LocalTrackRecord> {
+  imported: LocalTrackRecord[]
+  skippedCount: number
+  filteredSizeCount: number
+  filteredDurationCount: number
+}
+
+export interface ImportLocalOptions {
+  sourcePath?: string
+  minSizeKb?: number
+  minDurationSec?: number
+  preParsed?: {
+    title?: string
+    artist?: string
+    album?: string
+    year?: number
+    genre?: string
+    durationMs?: number
+    cover?: string
+  }
+}
 
 function localTrackToTrack(record: LocalTrackRecord): Track {
   return {
@@ -70,6 +97,7 @@ function localTrackToTrack(record: LocalTrackRecord): Track {
 
 export const useLibraryStore = defineStore('library', () => {
   const pluginStore = usePluginStore()
+  const settingsStore = useSettingsStore()
   const favorites = ref<FavoriteEntry[]>([])
   const playlists = ref<Playlist[]>([])
   const history = ref<HistoryEntry[]>([])
@@ -306,12 +334,55 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function importLocalFile(
     file: File,
-    options: { sourcePath?: string } = {}
+    options: ImportLocalOptions = {}
   ): Promise<LocalTrackRecord | null> {
+    if (options.minSizeKb && options.minSizeKb > 0 && file.size > 0 && file.size < options.minSizeKb * 1024) {
+      return null
+    }
     const existing = options.sourcePath
       ? localRecords.value.find((item) => item.sourcePath === options.sourcePath)
       : undefined
-    if (existing && existing.size === file.size) return null
+    if (existing && existing.size === file.size && file.size > 0) return null
+
+    let title = options.preParsed?.title || file.name.replace(/\.[^.]+$/, '')
+    let artist = options.preParsed?.artist || '未知艺术家'
+    let album: string | undefined = options.preParsed?.album
+    let year: number | undefined = options.preParsed?.year
+    let genre: string | undefined = options.preParsed?.genre
+    let durationMs: number | undefined = options.preParsed?.durationMs
+    let cover: string | undefined = options.preParsed?.cover
+
+    if (!options.preParsed) {
+      try {
+        const { parseBlob } = await import('music-metadata-browser')
+        const metadata = await parseBlob(file, { skipCovers: false })
+        title = metadata.common.title || title
+        artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
+        album = metadata.common.album || undefined
+        year = metadata.common.year || undefined
+        genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
+        durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
+        const picture = metadata.common.picture?.[0]
+        if (picture) {
+          const blob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
+            type: picture.format
+          })
+          cover = await blobToDataUrl(blob)
+        }
+      } catch {
+        // Metadata is optional; the file remains playable with its filename.
+      }
+    }
+
+    if (
+      options.minDurationSec &&
+      options.minDurationSec > 0 &&
+      durationMs !== undefined &&
+      durationMs < options.minDurationSec * 1000
+    ) {
+      return null
+    }
+
     const key = uid('local')
     const ext = extFromName(file.name)
     const path = `local/${key}.${ext}`
@@ -323,32 +394,6 @@ export const useLibraryStore = defineStore('library', () => {
       recursive: true
     })
     const uri = await Filesystem.getUri({ path, directory: Directory.Data })
-    let title = file.name.replace(/\.[^.]+$/, '')
-    let artist = '未知艺术家'
-    let album: string | undefined
-    let year: number | undefined
-    let genre: string | undefined
-    let durationMs: number | undefined
-    let cover: string | undefined
-    try {
-      const { parseBlob } = await import('music-metadata-browser')
-      const metadata = await parseBlob(file, { skipCovers: false })
-      title = metadata.common.title || title
-      artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
-      album = metadata.common.album || undefined
-      year = metadata.common.year || undefined
-      genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
-      durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
-      const picture = metadata.common.picture?.[0]
-      if (picture) {
-        const blob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
-          type: picture.format
-        })
-        cover = await blobToDataUrl(blob)
-      }
-    } catch {
-      // Metadata is optional; the file remains playable with its filename.
-    }
     const record: LocalTrackRecord = {
       key,
       title,
@@ -423,7 +468,9 @@ export const useLibraryStore = defineStore('library', () => {
     path: string,
     directory: Directory,
     depth: number,
-    output: ScannedAudioFile[]
+    output: ScannedAudioFile[],
+    minSizeKb = 0,
+    stats?: { filteredSizeCount: number }
   ): Promise<void> {
     if (depth > 8 || output.length >= 2000) return
     let entries: any[] = []
@@ -438,51 +485,132 @@ export const useLibraryStore = defineStore('library', () => {
       if (!path && ['local', 'downloads', 'exports'].includes(String(entry.name))) continue
       const childPath = path ? `${path}/${entry.name}` : entry.name
       if (entry.type === 'directory') {
-        await collectAudioFiles(childPath, directory, depth + 1, output)
+        await collectAudioFiles(childPath, directory, depth + 1, output, minSizeKb, stats)
       } else if (isAudioFileName(entry.name)) {
+        const size = Number(entry.size) || 0
+        if (minSizeKb > 0 && size > 0 && size < minSizeKb * 1024) {
+          if (stats) stats.filteredSizeCount++
+          continue
+        }
         output.push({
           path: childPath,
           name: entry.name,
-          size: Number(entry.size) || 0,
+          size,
           directory
         })
       }
     }
   }
 
-  async function scanLocalMusic(): Promise<LocalTrackRecord[]> {
+  async function scanLocalMusic(options?: ScanLocalOptions): Promise<ScanLocalResult> {
     importingLocal.value = true
     const imported: LocalTrackRecord[] = []
+    let filteredSizeCount = 0
+    let filteredDurationCount = 0
+    let skippedExistingCount = 0
+
+    const minSizeKb = options?.minSizeKb ?? settingsStore.settings.localScanFilterMinSizeKb ?? 100
+    const minDurationSec = options?.minDurationSec ?? settingsStore.settings.localScanFilterMinDurationSec ?? 30
+
     try {
       const directories: Directory[] = [Directory.Documents]
       if (Capacitor.getPlatform() === 'android') directories.push(Directory.External)
       const files: ScannedAudioFile[] = []
+      const stats = { filteredSizeCount: 0 }
       for (const directory of directories) {
-        await collectAudioFiles('', directory, 0, files)
+        await collectAudioFiles('', directory, 0, files, minSizeKb, stats)
       }
+      filteredSizeCount += stats.filteredSizeCount
+
       for (const file of files) {
         try {
+          if (minSizeKb > 0 && file.size > 0 && file.size < minSizeKb * 1024) {
+            filteredSizeCount++
+            continue
+          }
           const sourcePath = `${file.directory}:${file.path}`
           const existing = localRecords.value.find(
             (item) =>
               item.sourcePath === sourcePath ||
-              (item.fileName === file.name && item.size === file.size)
+              (item.fileName === file.name && item.size === file.size && file.size > 0)
           )
-          if (existing && existing.size === file.size) continue
+          if (existing && existing.size === file.size && file.size > 0) {
+            skippedExistingCount++
+            continue
+          }
           const data = await Filesystem.readFile({ path: file.path, directory: file.directory })
           const base64 = typeof data.data === 'string' ? data.data : ''
           const bytes = new Uint8Array(base64ToArrayBuffer(base64))
+          if (file.size === 0 && minSizeKb > 0 && bytes.byteLength < minSizeKb * 1024) {
+            filteredSizeCount++
+            continue
+          }
+
           const blob = new Blob([bytes], { type: mimeForAudio(file.name) })
-          const record = await importLocalFile(
-            new File([blob], file.name, { type: mimeForAudio(file.name) }),
-            { sourcePath: `${file.directory}:${file.path}` }
-          )
-          if (record) imported.push(record)
+          const fileObj = new File([blob], file.name, { type: mimeForAudio(file.name) })
+
+          let title = file.name.replace(/\.[^.]+$/, '')
+          let artist = '未知艺术家'
+          let album: string | undefined
+          let year: number | undefined
+          let genre: string | undefined
+          let durationMs: number | undefined
+          let cover: string | undefined
+
+          try {
+            const { parseBlob } = await import('music-metadata-browser')
+            const metadata = await parseBlob(fileObj, { skipCovers: false })
+            title = metadata.common.title || title
+            artist = metadata.common.artist || (metadata.common.artists ?? []).join(' / ') || artist
+            album = metadata.common.album || undefined
+            year = metadata.common.year || undefined
+            genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
+            durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
+            const picture = metadata.common.picture?.[0]
+            if (picture) {
+              const picBlob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
+                type: picture.format
+              })
+              cover = await blobToDataUrl(picBlob)
+            }
+          } catch {
+            // Metadata is optional
+          }
+
+          if (minDurationSec > 0 && durationMs !== undefined && durationMs < minDurationSec * 1000) {
+            filteredDurationCount++
+            continue
+          }
+
+          const record = await importLocalFile(fileObj, {
+            sourcePath,
+            preParsed: {
+              title,
+              artist,
+              album,
+              year,
+              genre,
+              durationMs,
+              cover
+            }
+          })
+          if (record) {
+            imported.push(record)
+          } else {
+            skippedExistingCount++
+          }
         } catch (error) {
           console.warn('扫描本地歌曲失败', file.path, error)
         }
       }
-      return imported
+      const skippedCount = filteredSizeCount + filteredDurationCount + skippedExistingCount
+      const result = Object.assign(imported, {
+        imported,
+        skippedCount,
+        filteredSizeCount,
+        filteredDurationCount
+      })
+      return result as ScanLocalResult
     } finally {
       importingLocal.value = false
     }

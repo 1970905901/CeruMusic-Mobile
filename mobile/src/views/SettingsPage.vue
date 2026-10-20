@@ -432,6 +432,45 @@
           </ion-label>
           <ion-spinner v-if="safImporting" name="crescent" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="optionsOutline" color="primary" />
+          <ion-label>
+            <h2>过滤过小音频</h2>
+            <p>扫描时忽略小于设定大小的文件</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.localScanFilterMinSizeKb"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.localScanFilterMinSizeKb = Number($event.detail.value)"
+          >
+            <ion-select-option :value="0">不过滤</ion-select-option>
+            <ion-select-option :value="50">小于 50 KB</ion-select-option>
+            <ion-select-option :value="100">小于 100 KB（默认）</ion-select-option>
+            <ion-select-option :value="300">小于 300 KB</ion-select-option>
+            <ion-select-option :value="500">小于 500 KB</ion-select-option>
+            <ion-select-option :value="1024">小于 1 MB</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="timerOutline" color="primary" />
+          <ion-label>
+            <h2>过滤短音频</h2>
+            <p>扫描时忽略短于设定时长的提示音与音效</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.localScanFilterMinDurationSec"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.localScanFilterMinDurationSec = Number($event.detail.value)"
+          >
+            <ion-select-option :value="0">不过滤</ion-select-option>
+            <ion-select-option :value="15">短于 15 秒</ion-select-option>
+            <ion-select-option :value="30">短于 30 秒（默认）</ion-select-option>
+            <ion-select-option :value="60">短于 60 秒</ion-select-option>
+            <ion-select-option :value="120">短于 2 分钟</ion-select-option>
+          </ion-select>
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">
@@ -825,7 +864,15 @@ async function editFilenameTemplate() {
 async function scanLocal() {
   try {
     const records = await library.scanLocalMusic()
-    await toast(records.length ? `已导入 ${records.length} 首本地歌曲` : '没有发现新的音频文件')
+    const filtered = (records.filteredSizeCount || 0) + (records.filteredDurationCount || 0)
+    if (records.length) {
+      const filterTip = filtered ? ` (已过滤 ${filtered} 个短音频)` : ''
+      await toast(`已导入 ${records.length} 首本地歌曲${filterTip}`)
+    } else if (filtered) {
+      await toast(`没有发现新的歌曲 (已过滤 ${filtered} 个短音频)`)
+    } else {
+      await toast('没有发现新的音频文件')
+    }
   } catch (error) {
     await toast(error instanceof Error ? error.message : String(error), 'danger')
   }
@@ -883,9 +930,11 @@ async function importSaf() {
     })
     if (result.imported || result.failed) {
       const parts = [`已导入 ${result.imported} 首`]
-      if (result.skipped) parts.push(`跳过 ${result.skipped} 首`)
+      if (result.skipped) parts.push(`跳过/过滤 ${result.skipped} 首`)
       if (result.failed) parts.push(`失败 ${result.failed} 首`)
       await toast(parts.join('，'), result.failed ? 'danger' : 'medium')
+    } else if (result.skipped) {
+      await toast(`所选文件夹没有新的歌曲 (已跳过/过滤 ${result.skipped} 首)`)
     } else {
       await toast('所选文件夹没有新的音频文件')
     }
