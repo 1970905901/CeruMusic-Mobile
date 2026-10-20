@@ -22,6 +22,7 @@
     <div class="meta">
       <div class="title ceru-truncate" :class="{ 'is-active': active }">{{ track.title }}</div>
       <div class="sub ceru-truncate">
+        <span v-if="qualityTag" class="quality-tag">{{ qualityTag }}</span>
         {{ track.artists.join(' / ') || track.subtitle || '未知艺术家' }}
         <span v-if="track.album"> · {{ track.album }}</span>
       </div>
@@ -47,6 +48,7 @@ import { computed } from 'vue'
 import { IonIcon } from '@ionic/vue'
 import { checkmarkCircle, ellipseOutline, ellipsisHorizontal, heart } from 'ionicons/icons'
 import CoverImage from './CoverImage.vue'
+import { getLocalFileQualityLabel, getQualityDisplayName } from '@/services/qualityNames'
 import type { Track } from '@/types/music'
 
 const props = defineProps<{
@@ -69,6 +71,17 @@ const duration = computed(() => {
   const minutes = Math.floor(total / 60)
   const seconds = String(total % 60).padStart(2, '0')
   return `${minutes}:${seconds}`
+})
+
+/**
+ * 桌面 SongVirtualList 的音质标签等价：插件音源显示最高可用音质的显示名，
+ * 本地文件回落到扩展名/采样率推断（本地文件没有 qualities）。
+ */
+const qualityTag = computed(() => {
+  const track = props.track
+  if (track.qualities.length) return getQualityDisplayName(track.qualities[track.qualities.length - 1])
+  if (track.source !== 'local') return ''
+  return getLocalFileQualityLabel(track.localRelativePath || track.localPath)
 })
 </script>
 
@@ -144,6 +157,17 @@ const duration = computed(() => {
   margin-top: 3px;
   font-size: 12px;
   color: var(--ceru-text-secondary);
+}
+.quality-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--ceru-brand);
+  color: var(--ceru-brand);
+  font-size: 10px;
+  line-height: 1.4;
+  vertical-align: 1px;
 }
 .tail {
   display: flex;

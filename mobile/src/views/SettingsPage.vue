@@ -132,14 +132,20 @@
           <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
           <ion-label>
             <h2>首选音质</h2>
-            <p>插件支持时优先使用</p>
+            <p>{{ preferredQualityDescription }}</p>
           </ion-label>
-          <ion-select v-model="settings.settings.preferredQuality" interface="action-sheet" cancel-text="取消">
-            <ion-select-option value="">自动（最高）</ion-select-option>
-            <ion-select-option value="128k">128k</ion-select-option>
-            <ion-select-option value="320k">320k</ion-select-option>
-            <ion-select-option value="flac">FLAC</ion-select-option>
-            <ion-select-option value="hires">Hi-Res</ion-select-option>
+          <ion-select
+            v-model="settings.settings.preferredQuality"
+            interface="action-sheet"
+            cancel-text="取消"
+          >
+            <ion-select-option
+              v-for="option in preferredQualityOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
@@ -289,11 +295,15 @@
             :disabled="!cacheStats.supported"
             interface="action-sheet"
             cancel-text="取消"
+            @ionChange="settings.settings.audioCacheMaxQuality = $event.detail.value"
           >
-            <ion-select-option value="">不限制</ion-select-option>
-            <ion-select-option value="128k">128k</ion-select-option>
-            <ion-select-option value="320k">320k</ion-select-option>
-            <ion-select-option value="flac">FLAC</ion-select-option>
+            <ion-select-option
+              v-for="option in cacheQualityOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
@@ -474,11 +484,18 @@
             <h2>下载音质</h2>
             <p>下载队列会使用该音质请求插件</p>
           </ion-label>
-          <ion-select v-model="settings.settings.downloadQuality" interface="action-sheet" cancel-text="取消">
-            <ion-select-option value="">跟随首选音质</ion-select-option>
-            <ion-select-option value="128k">128k</ion-select-option>
-            <ion-select-option value="320k">320k</ion-select-option>
-            <ion-select-option value="flac">FLAC</ion-select-option>
+          <ion-select
+            v-model="settings.settings.downloadQuality"
+            interface="action-sheet"
+            cancel-text="取消"
+          >
+            <ion-select-option
+              v-for="option in downloadQualityOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </ion-select-option>
           </ion-select>
         </ion-item>
         <ion-item>
@@ -812,6 +829,12 @@ import {
   backgroundSupportsBeat,
   getBackgroundRenderer
 } from '@/services/backgroundRenderers'
+import {
+  buildQualitySelectOptions,
+  collectQualityTypes,
+  getQualityDescription,
+  mergeSavedQualityTypes
+} from '@/services/qualityNames'
 
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
@@ -832,6 +855,50 @@ const choosingSafDownload = ref(false)
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
+
+/**
+ * 没有启用插件（或插件未声明音质）时的兜底音质。
+ * 这里沿用移动端原有的四个常见音质，保证首次安装后下拉依然可用。
+ */
+const FALLBACK_QUALITY_TYPES = ['128k', '320k', 'flac', 'hires']
+
+/** 已启用插件声明的音质并集，顺序沿用清单声明顺序（低 → 高）。 */
+const declaredQualityTypes = computed(() =>
+  collectQualityTypes(pluginStore.providers.map((provider) => provider.qualities))
+)
+
+const qualityTypes = computed(() =>
+  declaredQualityTypes.value.length ? declaredQualityTypes.value : FALLBACK_QUALITY_TYPES
+)
+
+/**
+ * 已保存的音质可能来自当前已卸载/已禁用的插件。这类值必须保留在选项里，
+ * 否则 ion-select 匹配不到会显示空白，用户也看不到自己选的是什么。
+ */
+const qualityTypesWithSaved = computed(() => {
+  return mergeSavedQualityTypes(qualityTypes.value, [
+    settings.settings.preferredQuality,
+    settings.settings.audioCacheMaxQuality,
+    settings.settings.downloadQuality
+  ])
+})
+
+const preferredQualityOptions = computed(() =>
+  buildQualitySelectOptions(qualityTypesWithSaved.value, '自动（最高）')
+)
+
+const cacheQualityOptions = computed(() =>
+  buildQualitySelectOptions(qualityTypesWithSaved.value, '不限制')
+)
+
+const downloadQualityOptions = computed(() =>
+  buildQualitySelectOptions(qualityTypesWithSaved.value, '跟随首选音质')
+)
+
+const preferredQualityDescription = computed(() => {
+  const value = settings.settings.preferredQuality
+  return value ? getQualityDescription(value) : '插件支持时优先使用，未指定时取插件最高音质'
+})
 
 const pluginPages = computed(() => {
   const pages: Array<{ key: string; title: string; view: string; pluginKey: string; pluginName: string; group?: string }> = []

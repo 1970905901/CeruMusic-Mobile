@@ -145,7 +145,7 @@
               <ion-icon :icon="listOutline" />
               队列
             </button>
-            <button type="button" class="action-pill" @click="chooseQuality">
+            <button v-if="canChooseQuality" type="button" class="action-pill" @click="chooseQuality">
               <ion-icon :icon="optionsOutline" />
               {{ qualityLabel }}
             </button>
@@ -358,6 +358,7 @@ import { fourColorGradientBackground } from '@/services/backgroundGradient'
 import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/services/coverColor'
 import { startLowFreqSampler } from '@/services/audioVisualizer'
 import { crossfadeState } from '@/services/crossfade'
+import { getQualityDisplayName } from '@/services/qualityNames'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -391,7 +392,25 @@ const sourceLabel = computed(() => {
   const plugin = pluginStore.plugins.find((item) => item.key === track.value?.pluginKey)
   return plugin?.manifest.name || track.value.subtitle || '插件音源'
 })
-const qualityLabel = computed(() => settings.settings.preferredQuality || '自动音质')
+/** 桌面 moreMenu 的「音质 · 显示名」等价；未指定时显示自动。 */
+const qualityLabel = computed(() =>
+  settings.settings.preferredQuality ? getQualityDisplayName(settings.settings.preferredQuality) : '自动音质'
+)
+/**
+ * 桌面 canSwitchQuality：本地曲目与直链没有可切换的服务端音质。
+ * Web 平台的本地文件走相对路径字段（见 store 的 prepareSource），因此一并判断。
+ */
+const canChooseQuality = computed(() => {
+  const item = track.value
+  if (!item) return false
+  return !(
+    item.localUri ||
+    item.localPath ||
+    item.localRelativePath ||
+    item.downloadedPath ||
+    item.downloadedRelativePath
+  )
+})
 
 const showLyrics = ref(false)
 const lyricsLoading = ref(false)
@@ -640,28 +659,42 @@ function toggleLyrics() {
 
 async function chooseQuality() {
   if (!track.value) return
-  const qualities = track.value.qualities.length ? track.value.qualities : ['自动']
+  const qualities = track.value.qualities
+  const current = settings.settings.preferredQuality
   const sheet = await actionSheetController.create({
     header: '选择音质',
+    subHeader: current ? `当前 ${getQualityDisplayName(current)}` : '当前 自动（最高）',
     buttons: [
-      ...qualities.map((quality) => ({
-        text: quality,
-        handler: () => {
-          settings.settings.preferredQuality = quality === '自动' ? '' : quality
-          if (track.value) void player.playTrack(track.value)
-        }
-      })),
       {
         text: '自动（最高）',
-        handler: () => {
-          settings.settings.preferredQuality = ''
-          if (track.value) void player.playTrack(track.value)
-        }
+        ...(current ? {} : { role: 'selected' as const }),
+        handler: () => applyPreferredQuality('')
       },
+      ...qualities.map((quality) => ({
+        text: getQualityDisplayName(quality),
+        ...(quality === current ? { role: 'selected' as const } : {}),
+        handler: () => applyPreferredQuality(quality)
+      })),
       { text: '取消', role: 'cancel' }
     ]
   })
   await sheet.present()
+}
+
+/**
+ * 桌面 switchQuality 的移动端等价：写入首选音质后按新音质重载当前歌曲，
+ * 保留进度与播放状态（本地/已下载文件没有音质可选，按钮不会出现）。
+ */
+async function applyPreferredQuality(quality: string) {
+  if (settings.settings.preferredQuality === quality) return
+  settings.settings.preferredQuality = quality
+  const name = quality ? getQualityDisplayName(quality) : '自动音质'
+  try {
+    await player.reloadCurrentTrack()
+    await toast(`已切换到${name}`)
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '切换音质失败', 'danger')
+  }
 }
 
 async function downloadTrack() {

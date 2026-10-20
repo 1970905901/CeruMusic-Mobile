@@ -428,7 +428,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function loadTrack(
     track: Track,
     autoplay = true,
-    options?: { skipFadeIn?: boolean }
+    options?: { skipFadeIn?: boolean; startPositionMs?: number }
   ): Promise<boolean> {
     if (resolving) return false
     resolving = true
@@ -441,7 +441,19 @@ export const usePlayerStore = defineStore('player', () => {
       audio.playbackRate = playbackRate.value
       audio.load()
       durationMs.value = track.durationMs ?? 0
-      positionMs.value = 0
+      const startMs = Math.max(0, Math.round(options?.startPositionMs ?? 0))
+      positionMs.value = startMs
+      if (startMs > 0) {
+        // 切换音质要接着原进度播放；load() 之后必须等元数据就绪才能 seek。
+        audio.addEventListener(
+          'loadedmetadata',
+          () => {
+            const total = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
+            audio.currentTime = total ? Math.min(startMs / 1000, total) : startMs / 1000
+          },
+          { once: true }
+        )
+      }
       await applyMetadata(track)
       if (autoplay) {
         // 无感过渡由包络负责整段淡入，这里不能先满音量起播。
@@ -481,6 +493,25 @@ export const usePlayerStore = defineStore('player', () => {
       currentIndex.value = queue.value.findIndex((item) => item.key === track.key)
     }
     await loadTrack(track, true)
+  }
+
+  /**
+   * 切换音质后重载当前歌曲并保留播放进度与播放状态（桌面 switchQuality 的移动端等价）。
+   *
+   * 必须先失效已解析的播放地址缓存，否则 `prepareSource` 会直接复用旧音质的 URL，
+   * 表现为「选了新音质但声音没变」。
+   */
+  async function reloadCurrentTrack(): Promise<boolean> {
+    const track = currentTrack.value
+    if (!track || resolving) return false
+    const wasPlaying = status.value === 'playing' || status.value === 'loading'
+    const resumeMs = wasPlaying || status.value === 'paused' ? positionMs.value : 0
+    cancelCrossfade()
+    cancelVolumeTransition()
+    audio.volume = volume.value
+    resolvedUrl = null
+    resolvedExpiresAt = 0
+    return loadTrack(track, wasPlaying, { startPositionMs: resumeMs })
   }
 
   async function toggle(): Promise<void> {
@@ -1014,6 +1045,7 @@ export const usePlayerStore = defineStore('player', () => {
     progress,
     sleepRemainingMs,
     playTrack,
+    reloadCurrentTrack,
     toggle,
     pause,
     resume,
