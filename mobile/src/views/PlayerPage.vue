@@ -177,7 +177,10 @@
               v-else-if="displayLyrics.lines.length"
               ref="lyricsContainer"
               class="lyrics-lines"
-              :class="{ 'lyric-animate': settings.settings.lyricAnimate }"
+              :class="{
+                'lyric-animate': settings.settings.lyricAnimate,
+                'lyric-jump': settings.settings.lyricJump
+              }"
               :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px', '--lyric-accent': lyricAccent }"
             >
               <p
@@ -311,6 +314,7 @@ import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { extractLightMainColor } from '@/services/coverColor'
 import { createIdleControls } from '@/services/idleControls'
+import { lyricJumpStyle } from '@/services/lyricJump'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -392,9 +396,13 @@ const lyricAccent = computed(() =>
 )
 
 function lyricLineStyle(index: number) {
-  if (!settings.settings.lyricBlur) return undefined
+  const jump =
+    index === currentLineIndex.value
+      ? lyricJumpStyle(displayLyrics.value.lines[index], settings.settings.lyricJump)
+      : undefined
+  if (!settings.settings.lyricBlur) return jump
   const distance = Math.abs(currentLineIndex.value - index)
-  if (distance === 0) return { filter: 'blur(0)' }
+  if (distance === 0) return { filter: 'blur(0)', ...jump }
   const blurPx = Math.min(1.2 + Math.pow(distance, 0.7) * 1.5, 8)
   return { filter: `blur(${blurPx.toFixed(2)}px)` }
 }
@@ -1195,6 +1203,31 @@ onBeforeUnmount(() => {
 @keyframes lyric-beat {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.025); }
+}
+/*
+ * 跳动歌词：与桌面版 LyricAdapter 一致，先起跳再物理回弹，行越长幅度越大。
+ * 只覆盖 animation 长属性，保留「歌词动效」提供的光晕。
+ */
+.lyric-jump .lyric-line.active .lyric-text {
+  display: inline-block;
+  animation-name: lyric-jump;
+  animation-duration: var(--lyric-jump-duration, 1.1s);
+  animation-iteration-count: 1;
+  animation-fill-mode: both;
+  animation-timing-function: linear;
+}
+@keyframes lyric-jump {
+  0% {
+    transform: translateY(var(--lyric-jump-drop, 0.16em)) scale(1);
+    animation-timing-function: ease-out;
+  }
+  80% {
+    transform: translateY(calc(-1 * var(--lyric-jump-lift, 0em))) scale(var(--lyric-jump-scale, 1.02));
+    animation-timing-function: cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 .lyric-text {
   display: block;

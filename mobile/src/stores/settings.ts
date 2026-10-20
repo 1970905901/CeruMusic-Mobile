@@ -37,6 +37,7 @@ export interface AppSettings {
   lyricShowTranslation: boolean
   lyricShowRomanization: boolean
   lyricAnimate: boolean
+  lyricJump: boolean
   lyricImmersiveColor: boolean
   lyricBlur: boolean
   audioVisualizer: boolean
@@ -85,6 +86,7 @@ const defaults: AppSettings = {
   lyricShowTranslation: true,
   lyricShowRomanization: false,
   lyricAnimate: true,
+  lyricJump: true,
   lyricImmersiveColor: true,
   lyricBlur: false,
   audioVisualizer: true,

@@ -327,6 +327,14 @@
           <ion-toggle :checked="settings.settings.lyricAnimate" @ionChange="settings.settings.lyricAnimate = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
+          <ion-label>
+            <h2>跳动歌词</h2>
+            <p>当前句按行长时间起跳并回弹，占用更高性能</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricJump" @ionChange="settings.settings.lyricJump = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
           <ion-label>
             <h2>沉浸色歌词</h2>
