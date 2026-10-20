@@ -69,10 +69,19 @@
       </ion-segment>
 
       <div v-if="activeSegment === 'favorites'" class="section">
+        <div v-if="library.favorites.length > 5" class="filter-wrap ceru-pad">
+          <ion-searchbar
+            v-model="trackFilter"
+            placeholder="搜索收藏歌曲 / 歌手 / 专辑"
+            :debounce="150"
+            show-clear-button="always"
+            @ionClear="trackFilter = ''"
+          />
+        </div>
         <div v-if="library.favorites.length" class="section-actions ceru-pad">
           <ion-button size="small" @click="playFavoriteAll(false)">
             <ion-icon slot="start" :icon="playIcon" />
-            播放全部 ({{ library.favorites.length }})
+            播放全部 ({{ filteredFavorites.length }})
           </ion-button>
           <ion-button size="small" fill="outline" @click="playFavoriteAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
@@ -81,13 +90,16 @@
         </div>
         <div v-if="library.favorites.length" class="list-block">
           <TrackRow
-            v-for="entry in library.favorites"
+            v-for="entry in filteredFavorites"
             :key="entry.key"
             :track="entry.track"
             favorite
             @play="play"
             @more="openMore"
           />
+          <p v-if="trackFilter && !filteredFavorites.length" class="empty-search-hint ceru-pad">
+            未找到包含 “{{ trackFilter }}” 的收藏歌曲
+          </p>
         </div>
         <EmptyState
           v-else
@@ -148,10 +160,19 @@
           </ion-button>
           <span>也可以把音频放入“文件”App 的本应用目录</span>
         </div>
+        <div v-if="library.localRecords.length > 5" class="filter-wrap ceru-pad">
+          <ion-searchbar
+            v-model="trackFilter"
+            placeholder="搜索本地歌曲 / 歌手 / 专辑"
+            :debounce="150"
+            show-clear-button="always"
+            @ionClear="trackFilter = ''"
+          />
+        </div>
         <div v-if="library.localRecords.length" class="section-actions ceru-pad">
           <ion-button size="small" @click="playLocalAll(false)">
             <ion-icon slot="start" :icon="playIcon" />
-            播放全部 ({{ library.localRecords.length }})
+            播放全部 ({{ filteredLocalTracks.length }})
           </ion-button>
           <ion-button size="small" fill="outline" @click="playLocalAll(true)">
             <ion-icon slot="start" :icon="shuffle" />
@@ -160,12 +181,15 @@
         </div>
         <div v-if="library.localRecords.length" class="list-block">
           <TrackRow
-            v-for="track in library.localTracks"
+            v-for="track in filteredLocalTracks"
             :key="track.key"
             :track="track"
             @play="play"
             @more="openLocalActions(track)"
           />
+          <p v-if="trackFilter && !filteredLocalTracks.length" class="empty-search-hint ceru-pad">
+            未找到包含 “{{ trackFilter }}” 的本地歌曲
+          </p>
         </div>
         <EmptyState
           v-else
@@ -235,6 +259,7 @@ import {
   IonPage,
   IonSegment,
   IonSegmentButton,
+  IonSearchbar,
   IonSpinner,
   IonTitle,
   IonToolbar,
@@ -274,6 +299,36 @@ const library = useLibraryStore()
 const player = usePlayerStore()
 const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
+
+const trackFilter = ref('')
+
+const filteredFavorites = computed(() => {
+  const q = trackFilter.value.trim().toLowerCase()
+  if (!q) return library.favorites
+  return library.favorites.filter((entry) => {
+    const t = entry.track
+    return (
+      t.title?.toLowerCase().includes(q) ||
+      t.subtitle?.toLowerCase().includes(q) ||
+      t.album?.toLowerCase().includes(q) ||
+      t.artists?.some((a) => a.toLowerCase().includes(q))
+    )
+  })
+})
+
+const filteredLocalTracks = computed(() => {
+  const q = trackFilter.value.trim().toLowerCase()
+  if (!q) return library.localTracks
+  return library.localTracks.filter((t) => {
+    return (
+      t.title?.toLowerCase().includes(q) ||
+      t.subtitle?.toLowerCase().includes(q) ||
+      t.album?.toLowerCase().includes(q) ||
+      t.artists?.some((a) => a.toLowerCase().includes(q))
+    )
+  })
+})
+
 const localInput = ref<HTMLInputElement | null>(null)
 const playlistFileInput = ref<HTMLInputElement | null>(null)
 const coverInput = ref<HTMLInputElement | null>(null)
@@ -287,8 +342,7 @@ const showPlaylistImport = computed(() =>
 )
 
 function playlistCover(id: string): string | undefined {
-  const tracks = library.playlistTracks(id)
-  return tracks.find((track) => track.artworkUrl)?.artworkUrl
+  return library.getPlaylistCover(id)
 }
 
 async function play(track: Track) {
@@ -328,14 +382,16 @@ async function playTrackList(tracks: Track[], shuffleMode = false) {
 }
 
 function playFavoriteAll(shuffleMode = false) {
+  const source = filteredFavorites.value.length ? filteredFavorites.value : library.favorites
   playTrackList(
-    library.favorites.map((entry) => entry.track),
+    source.map((entry) => entry.track),
     shuffleMode
   )
 }
 
 function playLocalAll(shuffleMode = false) {
-  playTrackList(library.localTracks, shuffleMode)
+  const source = filteredLocalTracks.value.length ? filteredLocalTracks.value : library.localTracks
+  playTrackList(source, shuffleMode)
 }
 
 function playRecentAll(shuffleMode = false) {
@@ -862,6 +918,16 @@ async function openLocalActions(track: Track) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.filter-wrap {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.empty-search-hint {
+  text-align: center;
+  color: var(--ion-color-step-500, #888);
+  font-size: 14px;
+  padding: 24px 16px;
 }
 .local-tools {
   display: flex;

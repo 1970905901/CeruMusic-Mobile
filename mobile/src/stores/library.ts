@@ -11,19 +11,12 @@ import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
+import { blobToDataUrl } from '@/services/imageUtils'
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
-    reader.readAsDataURL(blob)
-  })
-}
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -40,6 +33,12 @@ function blobToBase64(blob: Blob): Promise<string> {
 function extFromName(name: string): string {
   const index = name.lastIndexOf('.')
   return index >= 0 ? name.slice(index + 1).toLowerCase() : 'bin'
+}
+
+export interface UpdatePlaylistOptions {
+  name?: string
+  description?: string
+  cover?: string | null
 }
 
 export interface ScanLocalOptions {
@@ -185,13 +184,76 @@ export const useLibraryStore = defineStore('library', () => {
     return playlist
   }
 
-  async function renamePlaylist(id: string, name: string): Promise<void> {
+  function getPlaylistCover(playlistOrId: Playlist | string): string | undefined {
+    const playlist =
+      typeof playlistOrId === 'string'
+        ? playlists.value.find((item) => item.id === playlistOrId)
+        : playlistOrId
+    if (!playlist) return undefined
+    if (playlist.cover) return playlist.cover
+    const pTracks = playlistTracks(playlist.id)
+    return pTracks.find((item) => item.artworkUrl)?.artworkUrl
+  }
+
+  async function updatePlaylist(
+    id: string,
+    updates: UpdatePlaylistOptions
+  ): Promise<Playlist | null> {
     const playlist = playlists.value.find((item) => item.id === id)
-    if (!playlist) return
-    playlist.name = name.trim() || playlist.name
-    playlist.updatedAt = Date.now()
-    const db = await getDb()
-    await db.put('playlists', toPlain(playlist))
+    if (!playlist) return null
+
+    let changed = false
+    if (typeof updates.name === 'string') {
+      const trimmed = updates.name.trim()
+      if (trimmed && trimmed !== playlist.name) {
+        playlist.name = trimmed
+        changed = true
+      }
+    }
+    if (updates.description !== undefined) {
+      const trimmedDesc = updates.description.trim()
+      if (trimmedDesc !== (playlist.description || '')) {
+        playlist.description = trimmedDesc
+        changed = true
+      }
+    }
+    if (updates.cover !== undefined) {
+      const nextCover = updates.cover?.trim() || undefined
+      if (nextCover !== playlist.cover) {
+        playlist.cover = nextCover
+        changed = true
+      }
+    }
+
+    if (changed) {
+      playlist.updatedAt = Date.now()
+      const db = await getDb()
+      await db.put('playlists', toPlain(playlist))
+      pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
+
+      if (playlist.cloudId) {
+        try {
+          const fullTracks = playlistTracks(playlist.id)
+          const songlist = playlistTracksToCloud(fullTracks)
+          const effectiveCover = playlist.cover || fullTracks.find((t) => t.artworkUrl)?.artworkUrl
+          await cloudSongListApi.updateUserSongList({
+            listId: playlist.cloudId,
+            name: playlist.name,
+            describe: playlist.description || '',
+            cover: effectiveCover,
+            songlist
+          })
+        } catch (err) {
+          console.warn('同步更新云端歌单失败:', err)
+        }
+      }
+    }
+
+    return playlist
+  }
+
+  async function renamePlaylist(id: string, name: string): Promise<void> {
+    await updatePlaylist(id, { name })
   }
 
   async function deletePlaylist(id: string): Promise<void> {
@@ -951,6 +1013,8 @@ export const useLibraryStore = defineStore('library', () => {
     addFavorite,
     removeFavorite,
     createPlaylist,
+    updatePlaylist,
+    getPlaylistCover,
     renamePlaylist,
     deletePlaylist,
     addTrackToPlaylist,

@@ -16,6 +16,15 @@
             <ion-button
               v-if="tracks.length"
               fill="clear"
+              :color="searchActive ? 'primary' : undefined"
+              title="搜索歌曲"
+              @click="toggleSearch"
+            >
+              <ion-icon slot="icon-only" :icon="searchOutline" />
+            </ion-button>
+            <ion-button
+              v-if="tracks.length"
+              fill="clear"
               title="批量选择"
               @click="enterBatchMode"
             >
@@ -31,7 +40,19 @@
 
     <ion-content :fullscreen="true">
       <div class="hero ceru-pad">
-        <CoverImage :src="cover" :size="168" :radius="22" :alt="title" class="hero-cover" />
+        <div class="cover-wrapper" :class="{ clickable: isLocal }" @click="openCoverActions">
+          <CoverImage :src="cover" :size="168" :radius="22" :alt="title" class="hero-cover" />
+          <div v-if="isLocal" class="cover-badge" title="更换封面">
+            <ion-icon :icon="cameraOutline" />
+          </div>
+        </div>
+        <input
+          ref="coverFileInput"
+          type="file"
+          accept="image/*"
+          class="file-input"
+          @change="onCoverFilePicked"
+        />
         <div class="hero-copy">
           <p class="eyebrow">{{ isLocal ? 'PLAYLIST' : 'FROM PLUGIN' }}</p>
           <h1 class="hero-title">{{ title }}</h1>
@@ -61,6 +82,17 @@
 
       <PluginSlot slot="playlist.header.actions" />
 
+      <div v-if="searchActive" class="search-wrap ceru-pad">
+        <ion-searchbar
+          ref="searchBarRef"
+          v-model="searchQuery"
+          placeholder="搜索歌单内歌曲 / 歌手 / 专辑"
+          :debounce="150"
+          show-clear-button="always"
+          @ionClear="searchQuery = ''"
+        />
+      </div>
+
       <div v-if="loading && !tracks.length" class="loading-row">
         <ion-spinner name="crescent" />
         <span>正在加载歌曲…</span>
@@ -70,7 +102,7 @@
       <p v-if="reorderMode" class="reorder-hint ceru-pad">拖动右侧手柄调整歌曲顺序，完成后自动保存。</p>
 
       <div v-if="tracks.length && !reorderMode" class="list-block">
-        <div v-for="track in tracks" :key="track.key" class="track-list-item">
+        <div v-for="track in displayTracks" :key="track.key" class="track-list-item">
           <TrackRow
             :track="track"
             :favorite="library.isFavorite(track)"
@@ -206,6 +238,7 @@ import {
   IonPage,
   IonReorder,
   IonReorderGroup,
+  IonSearchbar,
   IonSpinner,
   IonTitle,
   IonToolbar,
@@ -215,7 +248,9 @@ import {
 } from '@ionic/vue'
 import {
   albumsOutline,
+  cameraOutline,
   checkmarkDoneOutline,
+  searchOutline,
   ellipsisHorizontal,
   play as playIcon,
   playSkipForwardOutline,
@@ -233,6 +268,7 @@ import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
 import PlaylistItemActionSheet from '@/components/PlaylistItemActionSheet.vue'
 import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { useLibraryStore } from '@/stores/library'
+import { compressAndCropToSquare } from '@/services/imageUtils'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
@@ -262,6 +298,30 @@ const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const shareOpen = ref(false)
 const reorderMode = ref(false)
 const batchMode = ref(false)
+
+const searchQuery = ref('')
+const searchActive = ref(false)
+const searchBarRef = ref<any>(null)
+
+function toggleSearch() {
+  searchActive.value = !searchActive.value
+  if (!searchActive.value) {
+    searchQuery.value = ''
+  }
+}
+
+const displayTracks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return tracks.value
+  return tracks.value.filter((track) => {
+    const titleMatch = track.title?.toLowerCase().includes(q)
+    const subtitleMatch = track.subtitle?.toLowerCase().includes(q)
+    const albumMatch = track.album?.toLowerCase().includes(q)
+    const artistMatch = track.artists?.some((artist) => artist.toLowerCase().includes(q))
+    return titleMatch || subtitleMatch || albumMatch || artistMatch
+  })
+})
+
 const selectedKeys = ref<Set<string>>(new Set())
 
 const selectedTracks = computed(() =>
@@ -269,7 +329,7 @@ const selectedTracks = computed(() =>
 )
 const selectedCount = computed(() => selectedKeys.value.size)
 const isAllSelected = computed(
-  () => tracks.value.length > 0 && selectedKeys.value.size === tracks.value.length
+  () => displayTracks.value.length > 0 && selectedKeys.value.size >= displayTracks.value.length
 )
 
 function toggleSelectTrack(track: Track) {
@@ -286,7 +346,7 @@ function toggleSelectAll() {
   if (isAllSelected.value) {
     selectedKeys.value = new Set()
   } else {
-    selectedKeys.value = new Set(tracks.value.map((t) => t.key))
+    selectedKeys.value = new Set(displayTracks.value.map((t) => t.key))
   }
 }
 
@@ -380,7 +440,12 @@ const description = computed(() =>
   isLocal ? localPlaylist.value?.description || '' : String(route.query.description || '')
 )
 const cover = computed(() => {
-  if (isLocal) return library.playlistTracks(remoteId).find((item) => item.artworkUrl)?.artworkUrl
+  if (isLocal) {
+    return (
+      localPlaylist.value?.cover ||
+      library.playlistTracks(remoteId).find((item) => item.artworkUrl)?.artworkUrl
+    )
+  }
   return String(route.query.cover || '')
 })
 const playlistMenus = computed(() =>
@@ -507,11 +572,114 @@ async function toast(message: string, color = 'medium') {
   await element.present()
 }
 
+const coverFileInput = ref<HTMLInputElement | null>(null)
+
+async function openCoverActions() {
+  if (!isLocal || !localPlaylist.value) return
+  const hasCustomCover = !!localPlaylist.value.cover
+  const buttons: any[] = [
+    {
+      text: '从相册选择新封面',
+      handler: () => {
+        coverFileInput.value?.click()
+      }
+    }
+  ]
+  if (hasCustomCover) {
+    buttons.push({
+      text: '恢复默认封面（自动使用首曲）',
+      role: 'destructive',
+      handler: () => {
+        void library.updatePlaylist(remoteId, { cover: null }).then(() => {
+          void toast('已恢复默认封面')
+        })
+      }
+    })
+  }
+  buttons.push({ text: '取消', role: 'cancel' })
+
+  const sheet = await actionSheetController.create({
+    header: '歌单封面',
+    buttons
+  })
+  await sheet.present()
+}
+
+async function onCoverFilePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    await toast('请选择有效的图片文件', 'warning')
+    return
+  }
+
+  try {
+    const dataUrl = await compressAndCropToSquare(file, 600, 0.85)
+    await library.updatePlaylist(remoteId, { cover: dataUrl })
+    await toast('歌单封面已更新')
+  } catch (err) {
+    console.error('更新歌单封面失败:', err)
+    await toast(err instanceof Error ? err.message : '更新封面失败', 'danger')
+  }
+}
+
+async function editPlaylistInfo() {
+  if (!localPlaylist.value) return
+  const alert = await alertController.create({
+    header: '编辑歌单信息',
+    inputs: [
+      {
+        name: 'name',
+        type: 'text',
+        placeholder: '歌单名称',
+        value: localPlaylist.value.name
+      },
+      {
+        name: 'description',
+        type: 'textarea',
+        placeholder: '歌单简介（选填）',
+        value: localPlaylist.value.description || ''
+      }
+    ],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role === 'confirm') {
+    const name = String(data?.values?.name || '').trim()
+    const description = String(data?.values?.description || '').trim()
+    if (!name) {
+      await toast('歌单名称不能为空', 'warning')
+      return
+    }
+    await library.updatePlaylist(remoteId, { name, description })
+    await toast('歌单信息已更新')
+  }
+}
+
 async function openPlaylistMenu() {
   if (!isLocal || !localPlaylist.value) return
   const sheet = await actionSheetController.create({
     header: localPlaylist.value.name,
     buttons: [
+      {
+        text: '编辑歌单信息',
+        handler: () => {
+          void editPlaylistInfo()
+        }
+      },
+      {
+        text: '更换歌单封面',
+        handler: () => {
+          void openCoverActions()
+        }
+      },
       ...playlistMenus.value.map((menu) => ({
         text: menu.title,
         handler: () => {
@@ -682,9 +850,47 @@ onMounted(() => {
   align-items: flex-end;
   padding-top: 18px;
 }
+.cover-wrapper {
+  position: relative;
+  flex: 0 0 auto;
+}
+.cover-wrapper.clickable {
+  cursor: pointer;
+}
+.cover-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
 .hero-cover {
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18);
-  flex: 0 0 auto;
+  display: block;
+}
+.file-input {
+  display: none;
+}
+.search-wrap {
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.empty-search-hint {
+  text-align: center;
+  color: var(--ion-color-step-500, #888);
+  font-size: 14px;
+  padding: 32px 16px;
 }
 .hero-copy {
   min-width: 0;
