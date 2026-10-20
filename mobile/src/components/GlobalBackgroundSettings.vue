@@ -1,5 +1,5 @@
 <template>
-  <ion-list class="group">
+  <ion-list id="group-wallpaper" class="group">
     <div class="group-title">全局背景</div>
     <ion-item>
       <ion-icon slot="start" :icon="imageOutline" color="primary" />

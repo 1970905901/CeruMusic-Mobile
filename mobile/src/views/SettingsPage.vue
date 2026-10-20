@@ -11,9 +11,10 @@
         <p class="eyebrow">CERU MUSIC</p>
         <h1 class="ceru-title">按你的方式听</h1>
         <p class="head-sub">插件、音质、外观与本地数据都保存在这台设备上。</p>
+        <SettingsSearchBar @select="handleSearchSelect" />
       </div>
 
-      <ion-list class="group">
+      <ion-list id="group-account" class="group">
         <div class="group-title">账号与社区</div>
         <ion-item button detail @click="$router.push('/account')">
           <ion-icon slot="start" :icon="personCircleOutline" color="primary" />
@@ -64,7 +65,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-plugin" class="group">
         <div class="group-title">音源与插件</div>
 
         <ion-item button detail @click="$router.push('/tabs/plugins')">
@@ -112,7 +113,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-playback" class="group">
         <div class="group-title">播放</div>
         <ion-item>
           <ion-icon slot="start" :icon="albumsOutline" color="primary" />
@@ -249,7 +250,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-cache" class="group">
         <div class="group-title">音频缓存</div>
         <ion-item>
           <ion-icon slot="start" :icon="layersOutline" color="primary" />
@@ -318,7 +319,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-lyric" class="group">
         <div class="group-title">歌词</div>
         <ion-item>
           <ion-icon slot="start" :icon="textOutline" color="primary" />
@@ -476,7 +477,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-storage" class="group">
         <div class="group-title">下载与存储</div>
         <ion-item>
           <ion-icon slot="start" :icon="cloudDownloadOutline" color="primary" />
@@ -578,7 +579,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-local" class="group">
         <div class="group-title">本地音乐</div>
         <ion-item button :disabled="library.importingLocal" @click="scanLocal">
           <ion-icon slot="start" :icon="folderOpenOutline" color="primary" />
@@ -642,7 +643,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-appearance" class="group">
         <div class="group-title">外观</div>
         <ion-item>
           <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
@@ -678,7 +679,7 @@
 
       <GlobalBackgroundSettings />
 
-      <ion-list class="group">
+      <ion-list id="group-tools" class="group">
         <div class="group-title">工具</div>
         <ion-item button detail @click="$router.push('/ai')">
           <ion-icon slot="start" :icon="sparklesOutline" color="primary" />
@@ -703,7 +704,7 @@
         </ion-item>
       </ion-list>
 
-      <ion-list class="group">
+      <ion-list id="group-about" class="group">
         <div class="group-title">关于</div>
         <ion-item>
           <ion-icon slot="start" :icon="informationCircleOutline" color="primary" />
@@ -746,7 +747,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   IonBadge,
   IonContent,
@@ -813,6 +814,8 @@ import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
+import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
+import type { SettingsSearchItem } from '@/services/settingsSearch'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { useLibraryStore } from '@/stores/library'
@@ -951,6 +954,33 @@ function openAudioEffects() {
   void import('@/router').then(({ default: router }) => {
     void router.push('/audio-effects')
   })
+}
+
+const HIGHLIGHT_DURATION_MS = 2000
+const HIGHLIGHT_MAX_ATTEMPTS = 20
+const HIGHLIGHT_RETRY_MS = 80
+
+/**
+ * 命中搜索后滚动到对应分组并高亮一次。
+ * 分组是 v-if 渲染的（如「插件页面」），所以找不到时按帧重试，而不是立即放弃。
+ */
+function scrollToSettingsGroup(id: string, attempt = 0): void {
+  const element = document.getElementById(id)
+  if (!element) {
+    if (attempt < HIGHLIGHT_MAX_ATTEMPTS) {
+      setTimeout(() => scrollToSettingsGroup(id, attempt + 1), HIGHLIGHT_RETRY_MS)
+    }
+    return
+  }
+  element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  element.classList.remove('highlight-flash')
+  void element.offsetWidth
+  element.classList.add('highlight-flash')
+  setTimeout(() => element.classList.remove('highlight-flash'), HIGHLIGHT_DURATION_MS)
+}
+
+function handleSearchSelect(item: SettingsSearchItem) {
+  void nextTick(() => scrollToSettingsGroup(item.id))
 }
 
 const checkingUpdates = ref(false)
@@ -1331,6 +1361,20 @@ async function toast(message: string, color = 'medium') {
   --ion-item-background: var(--ceru-bg-elevated);
   border-top: 1px solid var(--ceru-border);
   border-bottom: 1px solid var(--ceru-border);
+}
+.group.highlight-flash {
+  position: relative;
+  animation: settings-flash 2s ease-out;
+}
+@keyframes settings-flash {
+  0% {
+    background-color: rgba(var(--ion-color-primary-rgb), 0.16);
+    box-shadow: inset 0 0 0 2px var(--ceru-brand);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 2px transparent;
+  }
 }
 .group-title {
   font-size: 12px;
