@@ -37,6 +37,8 @@ export interface AppSettings {
   lyricShowRomanization: boolean
   lyricAnimate: boolean
   lyricOffsetMs: number
+  lyricFilterInfo: boolean
+  lyricStrictFilter: boolean
   playerBackgroundAnimation: boolean
   audioCacheEnabled: boolean
   audioCacheMaxBytes: number
@@ -77,6 +79,8 @@ const defaults: AppSettings = {
   lyricShowRomanization: false,
   lyricAnimate: true,
   lyricOffsetMs: 0,
+  lyricFilterInfo: false,
+  lyricStrictFilter: false,
   playerBackgroundAnimation: true,
   audioCacheEnabled: true,
   audioCacheMaxBytes: 1024 * 1024 * 1024,

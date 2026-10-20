@@ -111,7 +111,7 @@
           <PluginSlot slot="player.actions" class="player-plugin-slot" />
 
           <div v-if="showLyrics" class="lyrics-panel">
-            <div v-if="lyricsDoc.lines.length || lyricsDoc.plainText" class="lyrics-head">
+            <div v-if="displayLyrics.lines.length || displayLyrics.plainText" class="lyrics-head">
               <div class="lyrics-head-left">
                 <span>歌词</span>
                 <button
@@ -143,9 +143,9 @@
               <ion-spinner name="crescent" />
               正在读取歌词…
             </div>
-            <div v-else-if="lyricsDoc.lines.length" ref="lyricsContainer" class="lyrics-lines" :class="{ 'lyric-animate': settings.settings.lyricAnimate }" :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px' }">
+            <div v-else-if="displayLyrics.lines.length" ref="lyricsContainer" class="lyrics-lines" :class="{ 'lyric-animate': settings.settings.lyricAnimate }" :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px' }">
               <p
-                v-for="(line, index) in lyricsDoc.lines"
+                v-for="(line, index) in displayLyrics.lines"
                 :key="index"
                 class="lyric-line"
                 :class="{ active: index === currentLineIndex }"
@@ -156,7 +156,7 @@
                 <span v-if="settings.settings.lyricShowRomanization && line.romanization" class="lyric-romanization">{{ line.romanization }}</span>
               </p>
             </div>
-            <div v-else class="plain-lyrics">{{ lyricsDoc.plainText || '暂无歌词' }}</div>
+            <div v-else class="plain-lyrics">{{ displayLyrics.plainText || '暂无歌词' }}</div>
           </div>
         </template>
       </div>
@@ -197,13 +197,13 @@
     <LyricConverterSheet
       :open="lyricConverterOpen"
       :track="track"
-      :document="lyricsDoc"
+      :document="displayLyrics"
       @close="lyricConverterOpen = false"
     />
     <LyricShareSheet
       :open="lyricShareOpen"
       :track="track"
-      :document="lyricsDoc"
+      :document="displayLyrics"
       @close="lyricShareOpen = false"
     />
     <LyricOffsetSheet
@@ -270,6 +270,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
+import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -319,8 +320,14 @@ const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
 
+const displayLyrics = computed(() =>
+  filterLyricDocument(lyricsDoc.value, {
+    filterInfo: settings.settings.lyricFilterInfo,
+    strict: settings.settings.lyricStrictFilter
+  })
+)
 const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0) + currentTrackOffset.value)
-const currentLineIndex = computed(() => currentLyricIndex(lyricsDoc.value.lines, lyricPositionMs.value))
+const currentLineIndex = computed(() => currentLyricIndex(displayLyrics.value.lines, lyricPositionMs.value))
 
 function closePlayer() {
   if (window.history.length > 1) {

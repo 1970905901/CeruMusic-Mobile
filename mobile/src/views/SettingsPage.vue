@@ -289,6 +289,22 @@
           <ion-toggle :checked="settings.settings.lyricAnimate" @ionChange="settings.settings.lyricAnimate = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="optionsOutline" color="primary" />
+          <ion-label>
+            <h2>过滤歌词信息</h2>
+            <p>隐藏作词、作曲、编曲等制作信息行</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricFilterInfo" @ionChange="settings.settings.lyricFilterInfo = $event.detail.checked" />
+        </ion-item>
+        <ion-item v-if="settings.settings.lyricFilterInfo">
+          <ion-icon slot="start" :icon="shieldCheckmarkOutline" color="primary" />
+          <ion-label>
+            <h2>严格过滤模式</h2>
+            <p>含冒号的行都会隐藏，可能误伤歌词</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricStrictFilter" @ionChange="settings.settings.lyricStrictFilter = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="timerOutline" color="primary" />
           <ion-label>
             <h2>歌词偏移</h2>

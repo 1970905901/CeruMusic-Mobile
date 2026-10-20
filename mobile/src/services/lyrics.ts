@@ -1,4 +1,5 @@
 import type { LyricDocument, LyricLine } from '@/types/music'
+import { sanitizeLyricText } from './lyricInfoFilter'
 
 function parseTime(value: string): number | null {
   const trimmed = value.trim()
@@ -86,8 +87,9 @@ function parseCrLyric(document: any): LyricLine[] {
       startMs,
       endMs: Number.isFinite(line.endTimeMs) ? Number(line.endTimeMs) : undefined,
       text,
-      translation: line.translation || line.translations?.[0]?.text,
-      romanization: line.romanization || line.romanizations?.[0]?.text
+      translation: sanitizeLyricText(line.translation || line.translations?.[0]?.text) || undefined,
+      romanization:
+        sanitizeLyricText(line.romanization || line.romanizations?.[0]?.text) || undefined
     })
   }
   return lines.sort((a, b) => a.startMs - b.startMs)

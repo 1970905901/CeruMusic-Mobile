@@ -9,6 +9,8 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricShowRomanization',
   'lyricAnimate',
   'lyricOffsetMs',
+  'lyricFilterInfo',
+  'lyricStrictFilter',
   'playerBackgroundAnimation',
   'audioCacheEnabled',
   'audioCacheMaxBytes',
