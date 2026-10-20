@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -292,6 +292,7 @@ import { saveAndShareFile } from '@/services/fileExport'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import { useTrackBatchSelection } from '@/services/trackBatch'
+import { createRequestGuard } from '@/services/requestGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -428,6 +429,8 @@ async function doRemoveSelected() {
 }
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
+/** 远程歌单/榜单的分页请求守卫；本地歌单是同步读取，不参与竞态。 */
+const remoteRequests = createRequestGuard()
 const error = ref<string | null>(null)
 
 const localPlaylist = computed(() => library.playlists.find((item) => item.id === remoteId))
@@ -502,6 +505,9 @@ async function loadRemote(reset = false) {
     return
   }
   if (!reset && !nextCursor.value) return
+  // 远程歌单按「音源 + provider + 目标」归属；换歌单后旧响应必须丢弃。
+  const identity = `${source}|${providerId}|${remoteKind}|${String(route.query.remoteId || '')}`
+  const token = reset ? remoteRequests.beginLatest(identity) : remoteRequests.capture(identity)
   loading.value = true
   error.value = null
   try {
@@ -515,6 +521,7 @@ async function loadRemote(reset = false) {
       remoteKind === 'chart'
         ? await pluginStore.chartTracks(source, reference, reset ? undefined : nextCursor.value)
         : await pluginStore.playlistTracks(source, reference, reset ? undefined : nextCursor.value)
+    if (!remoteRequests.isCurrent(token, identity)) return
     const provider = pluginStore.selectedProvider(source)
     const items = (page.items || [])
       .filter((item: any) => item?.ref?.kind === 'track')
@@ -522,9 +529,10 @@ async function loadRemote(reset = false) {
     tracks.value = reset ? items : [...tracks.value, ...items]
     nextCursor.value = page.nextCursor
   } catch (cause) {
+    if (!remoteRequests.isCurrent(token, identity)) return
     error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
-    loading.value = false
+    if (remoteRequests.isCurrent(token, identity)) loading.value = false
   }
 }
 
@@ -979,6 +987,10 @@ watch(
 onMounted(() => {
   if (isLocal) loadLocal()
   else void loadRemote(true)
+})
+
+onBeforeUnmount(() => {
+  remoteRequests.dispose()
 })
 </script>
 

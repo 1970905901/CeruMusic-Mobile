@@ -190,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -237,6 +237,7 @@ import {
   type PostImageOrUrl
 } from '@/services/communityApi'
 import type { Track } from '@/types/music'
+import { createRequestGuard } from '@/services/requestGuard'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 
@@ -252,6 +253,16 @@ const hasMore = ref(false)
 const loading = ref(false)
 const error = ref('')
 const liking = new Set<string>()
+/**
+ * 社区列表守卫：切换推荐/最新/我的时作废旧请求，
+ * 否则旧分类的响应会追加到新分类的列表里。
+ */
+const feedRequests = createRequestGuard()
+
+/** 列表归属：分类 + 作者；任一变化都说明响应已过期。 */
+function feedIdentity(): string {
+  return `${feedMode.value}|${feedMode.value === 'mine' ? currentUserId.value : ''}`
+}
 
 const creating = ref(false)
 const publishing = ref(false)
@@ -335,11 +346,13 @@ function formatTime(value: string): string {
 }
 
 async function load(reset = false) {
-  if (loading.value) return
   if (!reset && !hasMore.value) return
   if (feedMode.value === 'mine' && !auth.authenticated) {
+    feedRequests.invalidate()
     posts.value = []
     hasMore.value = false
+    total.value = 0
+    loading.value = false
     return
   }
   if (reset) {
@@ -347,23 +360,30 @@ async function load(reset = false) {
     posts.value = []
     error.value = ''
   }
+  // 分类切换属于"只认最后一次"，同一分类内的分页用 capture 并存。
+  const identity = feedIdentity()
+  const token = reset ? feedRequests.beginLatest(identity) : feedRequests.capture(identity)
+  const requestedPage = page.value
   loading.value = true
   try {
     const result = await communityApi.listPosts({
       sort: feedMode.value === 'recommend' ? 'recommend' : 'latest',
-      page: page.value,
+      page: requestedPage,
       pageSize: 20,
       userId: feedMode.value === 'mine' ? currentUserId.value : undefined
     })
+    if (!feedRequests.isCurrent(token, feedIdentity())) return
     const known = new Set(posts.value.map((post) => post.id))
     posts.value = [...posts.value, ...(result.items || []).filter((post) => !known.has(post.id))]
     total.value = Number(result.total || posts.value.length)
     hasMore.value = posts.value.length < total.value && (result.items || []).length > 0
-    if (hasMore.value) page.value += 1
+    // 用请求时的页码推进，避免并发分页重复自增。
+    if (hasMore.value) page.value = requestedPage + 1
   } catch (cause) {
+    if (!feedRequests.isCurrent(token, feedIdentity())) return
     error.value = cause instanceof Error ? cause.message : '加载失败'
   } finally {
-    loading.value = false
+    if (feedRequests.isCurrent(token, feedIdentity())) loading.value = false
   }
 }
 
@@ -513,6 +533,10 @@ async function toast(message: string, color = 'medium') {
 
 onMounted(() => {
   void load(true)
+})
+
+onBeforeUnmount(() => {
+  feedRequests.dispose()
 })
 </script>
 

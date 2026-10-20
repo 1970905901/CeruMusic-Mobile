@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   IonBackButton,
   IonButtons,
@@ -80,6 +80,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
+import { createRequestGuard } from '@/services/requestGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -92,6 +93,8 @@ const items = ref<any[]>([])
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
+/** 分类页只按路由参数加载一次，分页请求之间用 capture 并存。 */
+const listRequests = createRequestGuard()
 
 const sourceName = computed(
   () => pluginStore.sources.find((item) => item.id === source)?.name || '插件音源'
@@ -107,6 +110,7 @@ function artworkOf(item: any): string | undefined {
 
 async function load(reset = false) {
   if (!reset && !nextCursor.value) return
+  const token = reset ? listRequests.beginLatest(categoryId) : listRequests.capture(categoryId)
   loading.value = true
   error.value = null
   try {
@@ -115,13 +119,15 @@ async function load(reset = false) {
       { pluginId: source, providerId, kind: 'category', id: categoryId },
       reset ? undefined : nextCursor.value
     )
+    if (!listRequests.isCurrent(token, categoryId)) return
     const next = (page.items || []).filter((item: any) => item?.ref?.kind === 'playlist')
     items.value = reset ? next : [...items.value, ...next]
     nextCursor.value = page.nextCursor
   } catch (cause) {
+    if (!listRequests.isCurrent(token, categoryId)) return
     error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
-    loading.value = false
+    if (listRequests.isCurrent(token, categoryId)) loading.value = false
   }
 }
 
@@ -150,6 +156,10 @@ function openPlaylist(item: any) {
 }
 
 onMounted(() => void load(true))
+
+onBeforeUnmount(() => {
+  listRequests.dispose()
+})
 </script>
 
 <style scoped>

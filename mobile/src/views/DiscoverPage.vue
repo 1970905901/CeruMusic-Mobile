@@ -208,7 +208,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   IonButton,
   IonButtons,
@@ -244,6 +244,7 @@ import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
 import { openTrackActions } from '@/services/trackActions'
+import { createRequestGuard } from '@/services/requestGuard'
 import type { Track } from '@/types/music'
 
 const router = useRouter()
@@ -257,6 +258,12 @@ const charts = ref<any[]>([])
 const categories = ref<any[]>([])
 const loading = ref(false)
 let suggestionTimer: ReturnType<typeof setTimeout> | null = null
+/**
+ * 联想词与首页数据各自独立的竞态守卫：
+ * 连续输入时只认最后一次联想结果；切换音源时只认最后一次榜单/分类结果。
+ */
+const suggestionRequests = createRequestGuard()
+const sourceDataRequests = createRequestGuard()
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -341,16 +348,20 @@ function onSearchInput(event: any) {
   query.value = value
   if (suggestionTimer) clearTimeout(suggestionTimer)
   if (!value.trim() || !pluginStore.sources.length) {
+    suggestionRequests.invalidate()
     suggestions.value = []
     return
   }
   suggestionTimer = setTimeout(async () => {
+    const token = suggestionRequests.beginLatest(`${selectedSource.value?.id ?? ''}|${value}`)
     try {
       const result = await pluginStore.suggest(selectedSource.value?.id ?? '', value)
+      if (!suggestionRequests.isCurrent(token, `${selectedSource.value?.id ?? ''}|${value}`)) return
       if (Array.isArray(result)) suggestions.value = result.map(String)
       else if (Array.isArray(result?.items)) suggestions.value = result.items.map((item: any) => String(item.title ?? item))
       else suggestions.value = []
     } catch {
+      if (!suggestionRequests.isCurrent(token, `${selectedSource.value?.id ?? ''}|${value}`)) return
       suggestions.value = []
     }
   }, 260)
@@ -359,20 +370,24 @@ function onSearchInput(event: any) {
 async function loadSourceData() {
   const source = selectedSource.value?.id
   if (!source) {
+    sourceDataRequests.invalidate()
     charts.value = []
     categories.value = []
+    loading.value = false
     return
   }
+  const token = sourceDataRequests.beginLatest(source)
   loading.value = true
   try {
     const [chartPage, categoryPage] = await Promise.all([
       pluginStore.charts(source).catch(() => ({ items: [] })),
       pluginStore.playlistCategories(source).catch(() => ({ items: [] }))
     ])
+    if (!sourceDataRequests.isCurrent(token, selectedSource.value?.id ?? '')) return
     charts.value = chartPage.items ?? []
     categories.value = categoryPage.items ?? []
   } finally {
-    loading.value = false
+    if (sourceDataRequests.isCurrent(token, selectedSource.value?.id ?? '')) loading.value = false
   }
 }
 
@@ -442,6 +457,12 @@ onMounted(() => {
     settings.settings.lastSource = pluginStore.sources[0].id
   }
   void loadSourceData()
+})
+
+onBeforeUnmount(() => {
+  if (suggestionTimer) clearTimeout(suggestionTimer)
+  suggestionRequests.dispose()
+  sourceDataRequests.dispose()
 })
 </script>
 

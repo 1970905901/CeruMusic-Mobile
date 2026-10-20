@@ -40,7 +40,7 @@
             v-if="query"
             class="source-pill"
             type="button"
-            @click="query = ''; results = []; playlists = [];"
+            @click="clearSearch"
           >
             清空
           </button>
@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   IonButton,
   IonButtons,
@@ -179,6 +179,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
+import { createRequestGuard } from '@/services/requestGuard'
 import type { Track } from '@/types/music'
 
 const route = useRoute()
@@ -196,6 +197,11 @@ const playlists = ref<any[]>([])
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
+/**
+ * 搜索请求守卫：换关键词、切音源或切分类后，旧请求可能晚于新请求返回。
+ * 分页请求用 `capture` 与其他分页并存，重新搜索用 `beginLatest` 作废全部在途请求。
+ */
+const searchRequests = createRequestGuard()
 const history = computed(() => settings.settings.searchHistory)
 const searchMenus = computed(() =>
   pluginStore.menus.filter(
@@ -209,6 +215,11 @@ const source = computed(() => {
   return pluginStore.sources.find((item) => item.id === id) ?? pluginStore.sources[0]
 })
 const sourceName = computed(() => source.value?.name ?? '选择音源')
+
+/** 一次搜索结果的归属：音源 + 分类 + 关键词，任一变化都应丢弃旧响应。 */
+function searchIdentity(): string {
+  return `${source.value?.id ?? ''}|${kind.value}|${query.value.trim()}`
+}
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })
@@ -266,9 +277,13 @@ function onInput(event: any) {
 async function runSearch(reset = false) {
   const text = query.value.trim()
   if (!text) {
+    // 清空关键词时作废在途请求，否则旧结果会重新填回列表。
+    searchRequests.invalidate()
     results.value = []
     playlists.value = []
     nextCursor.value = undefined
+    loading.value = false
+    error.value = null
     return
   }
   if (!source.value) {
@@ -276,6 +291,9 @@ async function runSearch(reset = false) {
     return
   }
   if (!reset && !nextCursor.value) return
+  const token = reset
+    ? searchRequests.beginLatest(searchIdentity())
+    : searchRequests.capture(searchIdentity())
   loading.value = true
   error.value = null
   if (reset) {
@@ -287,19 +305,33 @@ async function runSearch(reset = false) {
   try {
     if (kind.value === 'tracks') {
       const page = await pluginStore.searchTracks(source.value.id, text, reset ? undefined : nextCursor.value)
+      if (!searchRequests.isCurrent(token, searchIdentity())) return
       results.value = reset ? page.items : [...results.value, ...page.items]
       nextCursor.value = page.nextCursor
     } else {
       const page = await pluginStore.searchPlaylists(source.value.id, text, reset ? undefined : nextCursor.value)
+      if (!searchRequests.isCurrent(token, searchIdentity())) return
       const items = (page.items ?? []).map((item: any) => ({ ...item }))
       playlists.value = reset ? items : [...playlists.value, ...items]
       nextCursor.value = page.nextCursor
     }
   } catch (cause) {
+    if (!searchRequests.isCurrent(token, searchIdentity())) return
     error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
-    loading.value = false
+    // 过期请求不得关闭新请求的加载态。
+    if (searchRequests.isCurrent(token, searchIdentity())) loading.value = false
   }
+}
+
+function clearSearch() {
+  searchRequests.invalidate()
+  query.value = ''
+  results.value = []
+  playlists.value = []
+  nextCursor.value = undefined
+  error.value = null
+  loading.value = false
 }
 
 async function loadMore(event: any) {
@@ -351,6 +383,11 @@ onMounted(() => {
     query.value = q
     void runSearch(true)
   }
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
+  searchRequests.dispose()
 })
 </script>
 
