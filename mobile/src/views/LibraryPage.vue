@@ -206,6 +206,15 @@
             <ion-icon slot="start" :icon="swapVerticalOutline" />
             {{ localSortLabel }}
           </ion-button>
+          <ion-button
+            size="small"
+            fill="outline"
+            :disabled="batchMode || batchMatching"
+            @click="matchLocalBatch"
+          >
+            <ion-icon slot="start" :icon="sparklesOutline" />
+            {{ batchMatching ? '匹配中…' : '批量匹配' }}
+          </ion-button>
         </div>
         <div v-if="library.localRecords.length" class="list-block">
           <TrackRow
@@ -327,6 +336,7 @@ import {
   heartOutline,
   linkOutline,
   play as playIcon,
+  sparklesOutline,
   trashOutline,
   shuffle,
   swapVerticalOutline,
@@ -350,6 +360,13 @@ import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { useTrackBatchSelection } from '@/services/trackBatch'
+import {
+  hasUnknownArtist,
+  hasUnknownTitle,
+  needsMetadataMatch,
+  runLocalMetadataMatch
+} from '@/services/localMetadataMatch'
+import { createPluginProgress, updatePluginProgress, closePluginProgress } from '@/services/pluginProgress'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -358,6 +375,7 @@ const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 
 const trackFilter = ref('')
+const batchMatching = ref(false)
 const favoriteSortType = ref<TrackSortType>('default')
 const localSortType = ref<TrackSortType>('default')
 
@@ -1028,6 +1046,55 @@ async function matchLocalTrack(track: Track) {
     await showToast(lyrics ? '已匹配封面与歌词' : '已匹配封面', 'success')
   } catch (error) {
     await showToast(error instanceof Error ? error.message : '匹配失败', 'danger')
+  }
+}
+
+/**
+ * Matches every local track that is still missing a cover, album, or title
+ * against one source, reporting progress through the shared overlay.
+ */
+async function matchLocalBatch() {
+  if (batchMatching.value) return
+  const source = await chooseMatchSource()
+  if (!source) return
+  const targets = library.localTracks.filter(needsMetadataMatch)
+  if (!targets.length) {
+    await showToast('本地歌曲信息已完整，无需匹配', 'medium')
+    return
+  }
+  batchMatching.value = true
+  const progressId = createPluginProgress({
+    title: '批量匹配本地歌曲',
+    message: `0 / ${targets.length}`
+  })
+  try {
+    const result = await runLocalMetadataMatch({
+      tracks: targets,
+      search: async (query) => {
+        const page = await pluginStore.searchTracks(source, query, undefined, 10)
+        return page.items || []
+      },
+      lyrics: async (picked) => lyricValueToLrc(await pluginStore.lyrics(picked)),
+      apply: (track, picked, metadata) =>
+        library.applyLocalMetadata(track.key, {
+          ...metadata,
+          title: hasUnknownTitle(track) ? picked.title : undefined,
+          artist: hasUnknownArtist(track) ? picked.artists.join(' / ') : undefined,
+          album: track.album ? undefined : picked.album
+        }),
+      onProgress: ({ processed, total }) => {
+        updatePluginProgress(progressId, { message: `${processed} / ${total}`, value: processed / total })
+      }
+    })
+    await showToast(
+      result.matched ? `已匹配 ${result.matched} / ${result.total} 首本地歌曲` : '没有找到匹配结果',
+      result.matched ? 'success' : 'warning'
+    )
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '批量匹配失败', 'danger')
+  } finally {
+    closePluginProgress(progressId)
+    batchMatching.value = false
   }
 }
 

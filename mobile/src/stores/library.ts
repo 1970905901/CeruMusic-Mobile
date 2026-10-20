@@ -789,12 +789,18 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function applyLocalMetadata(
     trackKey: string,
-    metadata: { cover?: string; lyrics?: string }
+    metadata: { cover?: string; lyrics?: string; title?: string; artist?: string; album?: string }
   ): Promise<boolean> {
     const record = localRecords.value.find((item) => item.key === trackKey)
     if (!record) return false
     if (metadata.cover !== undefined) record.cover = metadata.cover || undefined
     if (metadata.lyrics !== undefined) record.lyrics = metadata.lyrics || undefined
+    const title = metadata.title?.trim()
+    if (title) record.title = title
+    const artist = metadata.artist?.trim()
+    if (artist) record.artist = artist
+    const album = metadata.album?.trim()
+    if (album) record.album = album
     const db = await getDb()
     await db.put('localTracks', toPlain(record))
     tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
