@@ -8,6 +8,8 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricShowTranslation',
   'lyricShowRomanization',
   'lyricAnimate',
+  'lyricImmersiveColor',
+  'lyricBlur',
   'lyricOffsetMs',
   'lyricFilterInfo',
   'lyricStrictFilter',

@@ -297,6 +297,22 @@
           <ion-toggle :checked="settings.settings.lyricAnimate" @ionChange="settings.settings.lyricAnimate = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
+          <ion-label>
+            <h2>沉浸色歌词</h2>
+            <p>当前句歌词取封面主色调的浅色版本</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricImmersiveColor" @ionChange="settings.settings.lyricImmersiveColor = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="eyeOffOutline" color="primary" />
+          <ion-label>
+            <h2>歌词模糊效果</h2>
+            <p>离当前句越远的歌词越模糊</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.lyricBlur" @ionChange="settings.settings.lyricBlur = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="optionsOutline" color="primary" />
           <ion-label>
             <h2>过滤歌词信息</h2>
@@ -654,6 +670,7 @@ import {
   colorWandOutline,
   downloadOutline,
   extensionPuzzleOutline,
+  eyeOffOutline,
   gitNetworkOutline,
   headsetOutline,
   informationCircleOutline,

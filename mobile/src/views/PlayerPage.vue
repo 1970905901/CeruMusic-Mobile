@@ -143,12 +143,19 @@
               <ion-spinner name="crescent" />
               正在读取歌词…
             </div>
-            <div v-else-if="displayLyrics.lines.length" ref="lyricsContainer" class="lyrics-lines" :class="{ 'lyric-animate': settings.settings.lyricAnimate }" :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px' }">
+            <div
+              v-else-if="displayLyrics.lines.length"
+              ref="lyricsContainer"
+              class="lyrics-lines"
+              :class="{ 'lyric-animate': settings.settings.lyricAnimate }"
+              :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px', '--lyric-accent': lyricAccent }"
+            >
               <p
                 v-for="(line, index) in displayLyrics.lines"
                 :key="index"
                 class="lyric-line"
                 :class="{ active: index === currentLineIndex }"
+                :style="lyricLineStyle(index)"
                 @click="seekTo((line.startMs - settings.settings.lyricOffsetMs - currentTrackOffset) / 1000)"
               >
                 <span class="lyric-text">{{ line.text }}</span>
@@ -271,6 +278,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
+import { extractLightMainColor } from '@/services/coverColor'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -328,6 +336,36 @@ const displayLyrics = computed(() =>
 )
 const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0) + currentTrackOffset.value)
 const currentLineIndex = computed(() => currentLyricIndex(displayLyrics.value.lines, lyricPositionMs.value))
+
+const DEFAULT_LYRIC_ACCENT = 'rgba(255, 255, 255, 0.9)'
+const coverAccent = ref(DEFAULT_LYRIC_ACCENT)
+const coverAccentSource = ref('')
+
+watch(
+  () => track.value?.artworkUrl || '',
+  async (src) => {
+    coverAccentSource.value = src
+    if (!src) {
+      coverAccent.value = DEFAULT_LYRIC_ACCENT
+      return
+    }
+    const accent = await extractLightMainColor(src)
+    if (coverAccentSource.value === src) coverAccent.value = accent
+  },
+  { immediate: true }
+)
+
+const lyricAccent = computed(() =>
+  settings.settings.lyricImmersiveColor ? coverAccent.value : 'rgba(255, 255, 255, 1)'
+)
+
+function lyricLineStyle(index: number) {
+  if (!settings.settings.lyricBlur) return undefined
+  const distance = Math.abs(currentLineIndex.value - index)
+  if (distance === 0) return { filter: 'blur(0)' }
+  const blurPx = Math.min(1.2 + Math.pow(distance, 0.7) * 1.5, 8)
+  return { filter: `blur(${blurPx.toFixed(2)}px)` }
+}
 
 function closePlayer() {
   if (window.history.length > 1) {
@@ -950,12 +988,13 @@ onBeforeUnmount(() => {
   color: rgba(245, 248, 251, 0.28);
   font-size: 16px;
   line-height: 1.45;
-  transition: color 0.25s ease, transform 0.25s ease;
+  transition: color 0.25s ease, transform 0.25s ease, filter 0.3s ease;
 }
 .lyric-line.active {
-  color: #f5f8fb;
+  color: var(--lyric-accent, #f5f8fb);
   transform: scale(1.035);
   font-weight: 650;
+  filter: none;
 }
 .lyric-animate .lyric-line.active .lyric-text {
   display: inline-block;
