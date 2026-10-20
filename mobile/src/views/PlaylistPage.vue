@@ -7,7 +7,8 @@
         </ion-buttons>
         <ion-title>{{ headerTitle }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button v-if="isLocal" fill="clear" @click="openPlaylistMenu">
+          <ion-button v-if="reorderMode" fill="clear" @click="exitReorder">完成</ion-button>
+          <ion-button v-else-if="isLocal" fill="clear" @click="openPlaylistMenu">
             <ion-icon slot="icon-only" :icon="ellipsisHorizontal" />
           </ion-button>
         </ion-buttons>
@@ -43,7 +44,9 @@
       </div>
       <p v-if="error" class="error">{{ error }}</p>
 
-      <div v-if="tracks.length" class="list-block">
+      <p v-if="reorderMode" class="reorder-hint ceru-pad">拖动右侧手柄调整歌曲顺序，完成后自动保存。</p>
+
+      <div v-if="tracks.length && !reorderMode" class="list-block">
         <div v-for="track in tracks" :key="track.key" class="track-list-item">
           <TrackRow
             :track="track"
@@ -54,6 +57,23 @@
           <PlaylistItemActions :track="track" @open="openPlaylistAction" />
         </div>
       </div>
+
+      <ion-reorder-group
+        v-else-if="tracks.length"
+        class="reorder-block"
+        :disabled="false"
+        @ionItemReorder="onReorder"
+      >
+        <ion-item v-for="track in tracks" :key="track.key" class="reorder-item" lines="none">
+          <ion-label class="reorder-label">
+            <div class="reorder-title ceru-truncate">{{ track.title }}</div>
+            <div class="reorder-sub ceru-truncate">
+              {{ track.artists.join(' / ') || '未知艺术家' }}
+            </div>
+          </ion-label>
+          <ion-reorder slot="end" />
+        </ion-item>
+      </ion-reorder-group>
 
       <div v-if="playlistSections.length" class="playlist-plugin-sections ceru-pad">
         <h2>插件歌单工具</h2>
@@ -103,7 +123,11 @@ import {
   IonIcon,
   IonInfiniteScroll,
   IonInfiniteScrollContent,
+  IonItem,
+  IonLabel,
   IonPage,
+  IonReorder,
+  IonReorderGroup,
   IonSpinner,
   IonTitle,
   IonToolbar,
@@ -146,6 +170,7 @@ const tracks = ref<Track[]>([])
 const playlistActionTrack = ref<Track | null>(null)
 const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const shareOpen = ref(false)
+const reorderMode = ref(false)
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -328,6 +353,12 @@ async function openPlaylistMenu() {
         }
       },
       {
+        text: '调整歌曲顺序',
+        handler: () => {
+          startReorder()
+        }
+      },
+      {
         text: '重命名',
         handler: () => {
           void renamePlaylist()
@@ -344,6 +375,40 @@ async function openPlaylistMenu() {
     ]
   })
   await sheet.present()
+}
+
+function startReorder(): void {
+  if (tracks.value.length < 2) {
+    void toast('至少需要两首歌曲才能排序')
+    return
+  }
+  reorderMode.value = true
+}
+
+function exitReorder(): void {
+  reorderMode.value = false
+}
+
+async function onReorder(
+  event: CustomEvent<{ from: number; to: number; complete: (data?: Track[]) => void }>
+): Promise<void> {
+  const { from, to, complete } = event.detail
+  const next = [...tracks.value]
+  const [moved] = next.splice(from, 1)
+  if (!moved) {
+    complete()
+    return
+  }
+  next.splice(to, 0, moved)
+  tracks.value = next
+  complete(next)
+  try {
+    await library.reorderPlaylist(remoteId, next.map((track) => track.key))
+    await toast('歌单顺序已保存')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '排序保存失败', 'danger')
+    loadLocal()
+  }
 }
 
 async function exportPlaylistFile() {
@@ -473,6 +538,34 @@ onMounted(() => {
 }
 .list-block {
   margin: 18px 8px 0;
+}
+.reorder-hint {
+  margin: 14px 0 0;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reorder-block {
+  margin: 8px 8px 0;
+  background: transparent;
+}
+.reorder-item {
+  --background: transparent;
+  --padding-start: 8px;
+  --inner-padding-end: 8px;
+}
+.reorder-label {
+  min-width: 0;
+}
+.reorder-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.reorder-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ceru-text-secondary);
 }
 .playlist-plugin-sections {
   display: grid;
