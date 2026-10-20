@@ -1,5 +1,16 @@
 <template>
-  <div class="track-row ceru-press" @click="$emit('play', track)">
+  <div
+    class="track-row ceru-press"
+    :class="{ selectable, selected }"
+    @click="selectable ? $emit('toggleSelect', track) : $emit('play', track)"
+  >
+    <div v-if="selectable" class="checkbox-container">
+      <ion-icon
+        :icon="selected ? checkmarkCircle : ellipseOutline"
+        class="select-icon"
+        :class="{ checked: selected }"
+      />
+    </div>
     <CoverImage :src="track.artworkUrl" :size="52" :radius="12" :alt="track.title" />
     <div class="meta">
       <div class="title ceru-truncate">{{ track.title }}</div>
@@ -9,9 +20,15 @@
       </div>
     </div>
     <div class="tail">
-      <ion-icon v-if="favorite" :icon="heart" class="favorite" />
+      <ion-icon v-if="favorite && !selectable" :icon="heart" class="favorite" />
       <span v-if="duration" class="duration">{{ duration }}</span>
-      <button class="more" type="button" aria-label="更多操作" @click.stop="$emit('more', track)">
+      <button
+        v-if="!selectable"
+        class="more"
+        type="button"
+        aria-label="更多操作"
+        @click.stop="$emit('more', track)"
+      >
         <ion-icon :icon="ellipsisHorizontal" />
       </button>
     </div>
@@ -21,7 +38,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { IonIcon } from '@ionic/vue'
-import { ellipsisHorizontal, heart } from 'ionicons/icons'
+import { checkmarkCircle, ellipseOutline, ellipsisHorizontal, heart } from 'ionicons/icons'
 import CoverImage from './CoverImage.vue'
 import type { Track } from '@/types/music'
 
@@ -29,10 +46,13 @@ const props = defineProps<{
   track: Track
   favorite?: boolean
   index?: number
+  selectable?: boolean
+  selected?: boolean
 }>()
 defineEmits<{
   play: [track: Track]
   more: [track: Track]
+  toggleSelect: [track: Track]
 }>()
 
 const duration = computed(() => {
@@ -72,6 +92,23 @@ const duration = computed(() => {
   align-items: center;
   gap: 8px;
   color: var(--ceru-text-secondary);
+}
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--ceru-text-secondary);
+  flex-shrink: 0;
+}
+.select-icon.checked {
+  color: var(--ceru-brand);
+}
+.track-row.selectable {
+  user-select: none;
+}
+.track-row.selected {
+  background: var(--ceru-card-active, rgba(120, 120, 128, 0.08));
 }
 .duration {
   font-size: 12px;

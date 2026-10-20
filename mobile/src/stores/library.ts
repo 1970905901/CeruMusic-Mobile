@@ -183,6 +183,42 @@ export const useLibraryStore = defineStore('library', () => {
     pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
   }
 
+  async function addTracksToPlaylist(playlistId: string, tracksToAdd: Track[]): Promise<number> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist || !tracksToAdd.length) return 0
+    let added = 0
+    for (const track of tracksToAdd) {
+      upsertTrack(track)
+      if (!playlist.trackKeys.includes(track.key)) {
+        playlist.trackKeys.push(track.key)
+        added++
+      }
+    }
+    if (added > 0) {
+      playlist.updatedAt = Date.now()
+      const db = await getDb()
+      await db.put('playlists', toPlain(playlist))
+      pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
+    }
+    return added
+  }
+
+  async function removeTracksFromPlaylist(playlistId: string, trackKeys: string[]): Promise<number> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist || !trackKeys.length) return 0
+    const keySet = new Set(trackKeys)
+    const initialLen = playlist.trackKeys.length
+    playlist.trackKeys = playlist.trackKeys.filter((key) => !keySet.has(key))
+    const removed = initialLen - playlist.trackKeys.length
+    if (removed > 0) {
+      playlist.updatedAt = Date.now()
+      const db = await getDb()
+      await db.put('playlists', toPlain(playlist))
+      pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
+    }
+    return removed
+  }
+
   async function removeTrackFromPlaylist(playlistId: string, trackKey: string): Promise<void> {
     const playlist = playlists.value.find((item) => item.id === playlistId)
     if (!playlist) return
@@ -790,7 +826,9 @@ export const useLibraryStore = defineStore('library', () => {
     renamePlaylist,
     deletePlaylist,
     addTrackToPlaylist,
+    addTracksToPlaylist,
     removeTrackFromPlaylist,
+    removeTracksFromPlaylist,
     reorderPlaylist,
     playlistTracks,
     recordHistory,

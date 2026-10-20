@@ -628,6 +628,28 @@ export const usePlayerStore = defineStore('player', () => {
     publishQueue()
   }
 
+  function insertTracksNext(tracks: Track[]): void {
+    if (!tracks.length) return
+    tracks.forEach((track) => library.upsertTrack(track))
+    if (!queue.value.length) {
+      queue.value = [...tracks]
+      currentIndex.value = 0
+      shuffleOrder.value = queue.value.map((_, index) => index)
+      publishQueue()
+      return
+    }
+    const currentKey = currentTrack.value?.key
+    const keySet = new Set(tracks.map((t) => t.key))
+    queue.value = queue.value.filter((item) => !keySet.has(item.key) || item.key === currentKey)
+    const curIdx = currentKey ? queue.value.findIndex((t) => t.key === currentKey) : 0
+    currentIndex.value = curIdx >= 0 ? curIdx : 0
+    const insertAt = currentIndex.value + 1
+    const tracksToInsert = tracks.filter((t) => t.key !== currentKey)
+    queue.value.splice(insertAt, 0, ...tracksToInsert)
+    shuffleOrder.value = queue.value.map((_, index) => index)
+    publishQueue()
+  }
+
   watch(
     () => [queue.value, currentIndex.value, repeat.value, shuffle.value, volume.value, muted.value, playbackRate.value],
     () => persistState(),
@@ -803,6 +825,7 @@ export const usePlayerStore = defineStore('player', () => {
     setMode,
     setSleepTimer,
     insertNext,
+    insertTracksNext,
     loadPersisted,
     persistState,
     restoreIfAvailable,

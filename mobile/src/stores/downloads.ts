@@ -364,6 +364,21 @@ export const useDownloadStore = defineStore('downloads', () => {
     return task
   }
 
+  async function createBatchDownloads(items: Track[], quality?: string): Promise<number> {
+    const candidates = items.filter((track) => !track.localUri)
+    let enqueued = 0
+    for (const track of candidates) {
+      const existing = tasks.value.find(
+        (t) => t.trackKey === track.key && (t.status === 'running' || t.status === 'queued')
+      )
+      if (!existing) {
+        await createDownload(track, quality)
+        enqueued++
+      }
+    }
+    return enqueued
+  }
+
   async function runTask(id: string): Promise<void> {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
@@ -541,6 +556,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     completed,
     init,
     createDownload,
+    createBatchDownloads,
     pause,
     resume,
     cancel,

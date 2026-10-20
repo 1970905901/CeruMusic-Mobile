@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { Track } from '@/types/music'
-import { openTrackActions } from '@/services/trackActions'
+import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 
 let createdSheetOptions: any = null
 
@@ -103,5 +103,14 @@ describe('trackActions', () => {
     expect(extraBtn.role).toBe('destructive')
     extraBtn.handler()
     expect(customHandler).toHaveBeenCalled()
+  })
+
+  it('creates action sheet for batch adding to playlist', async () => {
+    await addTracksToPlaylistDialog([sampleTrack])
+    expect(createdSheetOptions).toBeTruthy()
+    expect(createdSheetOptions.header).toBe('将 1 首歌曲添加到歌单')
+    const buttonTexts = createdSheetOptions.buttons.map((b: any) => b.text)
+    expect(buttonTexts).toContain('新建歌单…')
+    expect(buttonTexts).toContain('取消')
   })
 })

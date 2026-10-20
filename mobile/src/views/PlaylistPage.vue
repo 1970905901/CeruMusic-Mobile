@@ -3,14 +3,28 @@
     <ion-header :translucent="true">
       <ion-toolbar>
         <ion-buttons slot="start">
-          <ion-back-button default-href="/tabs/library" text="" />
+          <ion-button v-if="batchMode" fill="clear" @click="exitBatchMode">取消</ion-button>
+          <ion-back-button v-else default-href="/tabs/library" text="" />
         </ion-buttons>
-        <ion-title>{{ headerTitle }}</ion-title>
+        <ion-title>{{ batchMode ? `已选择 ${selectedCount} 首` : headerTitle }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button v-if="reorderMode" fill="clear" @click="exitReorder">完成</ion-button>
-          <ion-button v-else-if="isLocal" fill="clear" @click="openPlaylistMenu">
-            <ion-icon slot="icon-only" :icon="ellipsisHorizontal" />
+          <ion-button v-if="batchMode" fill="clear" @click="toggleSelectAll">
+            {{ isAllSelected ? '取消全选' : '全选' }}
           </ion-button>
+          <ion-button v-else-if="reorderMode" fill="clear" @click="exitReorder">完成</ion-button>
+          <template v-else>
+            <ion-button
+              v-if="tracks.length"
+              fill="clear"
+              title="批量选择"
+              @click="enterBatchMode"
+            >
+              <ion-icon slot="icon-only" :icon="checkmarkDoneOutline" />
+            </ion-button>
+            <ion-button v-if="isLocal" fill="clear" @click="openPlaylistMenu">
+              <ion-icon slot="icon-only" :icon="ellipsisHorizontal" />
+            </ion-button>
+          </template>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
@@ -24,13 +38,22 @@
           <p v-if="description" class="hero-desc">{{ description }}</p>
           <p class="hero-meta">{{ tracks.length }} 首 · {{ sourceName }}</p>
           <div class="hero-actions">
-            <ion-button :disabled="!tracks.length" @click="playAll">
+            <ion-button :disabled="!tracks.length || batchMode" @click="playAll">
               <ion-icon slot="start" :icon="playIcon" />
               播放全部
             </ion-button>
-            <ion-button fill="outline" :disabled="!tracks.length" @click="shuffleAll">
+            <ion-button fill="outline" :disabled="!tracks.length || batchMode" @click="shuffleAll">
               <ion-icon slot="start" :icon="shuffle" />
               随机
+            </ion-button>
+            <ion-button
+              v-if="!batchMode && !reorderMode"
+              fill="outline"
+              :disabled="!tracks.length"
+              @click="enterBatchMode"
+            >
+              <ion-icon slot="start" :icon="checkmarkDoneOutline" />
+              批量
             </ion-button>
           </div>
         </div>
@@ -51,10 +74,13 @@
           <TrackRow
             :track="track"
             :favorite="library.isFavorite(track)"
+            :selectable="batchMode"
+            :selected="selectedKeys.has(track.key)"
             @play="play"
             @more="openMore"
+            @toggleSelect="toggleSelectTrack"
           />
-          <PlaylistItemActions :track="track" @open="openPlaylistAction" />
+          <PlaylistItemActions v-if="!batchMode" :track="track" @open="openPlaylistAction" />
         </div>
       </div>
 
@@ -103,6 +129,58 @@
       <div class="bottom-space" />
     </ion-content>
 
+    <!-- 底部批量操作栏 -->
+    <div v-if="batchMode" class="batch-bar-backdrop">
+      <div class="batch-bar-container ceru-card">
+        <button
+          type="button"
+          class="batch-action-btn ceru-press"
+          :disabled="selectedCount === 0"
+          @click="playSelected"
+        >
+          <ion-icon :icon="playIcon" />
+          <span>播放</span>
+        </button>
+        <button
+          type="button"
+          class="batch-action-btn ceru-press"
+          :disabled="selectedCount === 0"
+          @click="playNextSelected"
+        >
+          <ion-icon :icon="playSkipForwardOutline" />
+          <span>下一首</span>
+        </button>
+        <button
+          type="button"
+          class="batch-action-btn ceru-press"
+          :disabled="selectedCount === 0"
+          @click="addToPlaylistSelected"
+        >
+          <ion-icon :icon="addCircleOutline" />
+          <span>加歌单</span>
+        </button>
+        <button
+          type="button"
+          class="batch-action-btn ceru-press"
+          :disabled="selectedCount === 0"
+          @click="downloadSelected"
+        >
+          <ion-icon :icon="cloudDownloadOutline" />
+          <span>下载</span>
+        </button>
+        <button
+          v-if="isLocal"
+          type="button"
+          class="batch-action-btn danger ceru-press"
+          :disabled="selectedCount === 0"
+          @click="removeSelected"
+        >
+          <ion-icon :icon="trashOutline" />
+          <span>移除</span>
+        </button>
+      </div>
+    </div>
+
     <PlaylistItemActionSheet
       :open="playlistActionOpen"
       :track="playlistActionTrack"
@@ -135,7 +213,17 @@ import {
   alertController,
   toastController
 } from '@ionic/vue'
-import { albumsOutline, ellipsisHorizontal, play as playIcon, shuffle } from 'ionicons/icons'
+import {
+  albumsOutline,
+  checkmarkDoneOutline,
+  ellipsisHorizontal,
+  play as playIcon,
+  playSkipForwardOutline,
+  addCircleOutline,
+  cloudDownloadOutline,
+  trashOutline,
+  shuffle
+} from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
@@ -147,8 +235,9 @@ import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
+import { useDownloadStore } from '@/stores/downloads'
 import { useAuthStore } from '@/stores/auth'
-import { openTrackActions } from '@/services/trackActions'
+import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { Clipboard } from '@capacitor/clipboard'
 import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/services/playlistFiles'
 import { saveAndShareFile } from '@/services/fileExport'
@@ -159,6 +248,7 @@ const router = useRouter()
 const library = useLibraryStore()
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
+const downloads = useDownloadStore()
 const auth = useAuthStore()
 
 const remoteId = String(route.params.id || '')
@@ -171,6 +261,113 @@ const playlistActionTrack = ref<Track | null>(null)
 const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const shareOpen = ref(false)
 const reorderMode = ref(false)
+const batchMode = ref(false)
+const selectedKeys = ref<Set<string>>(new Set())
+
+const selectedTracks = computed(() =>
+  tracks.value.filter((track) => selectedKeys.value.has(track.key))
+)
+const selectedCount = computed(() => selectedKeys.value.size)
+const isAllSelected = computed(
+  () => tracks.value.length > 0 && selectedKeys.value.size === tracks.value.length
+)
+
+function toggleSelectTrack(track: Track) {
+  const next = new Set(selectedKeys.value)
+  if (next.has(track.key)) {
+    next.delete(track.key)
+  } else {
+    next.add(track.key)
+  }
+  selectedKeys.value = next
+}
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedKeys.value = new Set()
+  } else {
+    selectedKeys.value = new Set(tracks.value.map((t) => t.key))
+  }
+}
+
+function enterBatchMode(): void {
+  if (!tracks.value.length) return
+  reorderMode.value = false
+  batchMode.value = true
+  selectedKeys.value = new Set()
+}
+
+function exitBatchMode(): void {
+  batchMode.value = false
+  selectedKeys.value = new Set()
+}
+
+async function playSelected() {
+  if (!selectedTracks.value.length) return
+  await play(selectedTracks.value[0], selectedTracks.value)
+  exitBatchMode()
+}
+
+function playNextSelected() {
+  if (!selectedTracks.value.length) return
+  player.insertTracksNext(selectedTracks.value)
+  void toast(`已将 ${selectedTracks.value.length} 首歌曲加入下一首播放`)
+  exitBatchMode()
+}
+
+async function addToPlaylistSelected() {
+  if (!selectedTracks.value.length) return
+  await addTracksToPlaylistDialog(selectedTracks.value)
+  exitBatchMode()
+}
+
+async function downloadSelected() {
+  if (!selectedTracks.value.length) return
+  try {
+    const enqueued = await downloads.createBatchDownloads(selectedTracks.value)
+    if (enqueued > 0) {
+      await toast(`已添加 ${enqueued} 首歌曲到下载队列`)
+    } else {
+      await toast('所选歌曲已在下载或已是本地歌曲')
+    }
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '批量下载失败', 'danger')
+  }
+  exitBatchMode()
+}
+
+async function removeSelected() {
+  if (!isLocal || !selectedTracks.value.length) return
+  const count = selectedTracks.value.length
+  const alert = await alertController.create({
+    header: '从歌单中移除',
+    message: `确定要从当前歌单移除选中的 ${count} 首歌曲吗？`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '移除',
+        role: 'destructive',
+        handler: () => {
+          void doRemoveSelected()
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
+async function doRemoveSelected() {
+  try {
+    const keys = Array.from(selectedKeys.value)
+    const removedCount = await library.removeTracksFromPlaylist(remoteId, keys)
+    loadLocal()
+    await toast(`已从歌单移除 ${removedCount} 首歌曲`)
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '移除失败', 'danger')
+  } finally {
+    exitBatchMode()
+  }
+}
 const nextCursor = ref<string | undefined>()
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -268,9 +465,9 @@ async function loadRemote(reset = false) {
   }
 }
 
-async function play(track: Track) {
+async function play(track: Track, customQueue?: Track[]) {
   try {
-    await player.playTrack(track, tracks.value)
+    await player.playTrack(track, customQueue || tracks.value)
   } catch (cause) {
     const element = await toastController.create({
       message: cause instanceof Error ? cause.message : String(cause),
@@ -290,7 +487,7 @@ async function shuffleAll() {
   if (!tracks.value.length) return
   const shuffled = [...tracks.value].sort(() => Math.random() - 0.5)
   player.setMode({ shuffle: true })
-  await play(shuffled[0])
+  await play(shuffled[0], shuffled)
 }
 
 function openMore(track: Track) {
@@ -334,6 +531,12 @@ async function openPlaylistMenu() {
             )
         }
       })),
+      {
+        text: '批量操作',
+        handler: () => {
+          enterBatchMode()
+        }
+      },
       {
         text: '分享歌单',
         handler: () => {
@@ -382,6 +585,7 @@ function startReorder(): void {
     void toast('至少需要两首歌曲才能排序')
     return
   }
+  exitBatchMode()
   reorderMode.value = true
 }
 
@@ -598,6 +802,70 @@ onMounted(() => {
 .playlist-plugin-row small {
   color: var(--ceru-text-secondary);
   font-size: 10px;
+}
+.batch-bar-backdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--ceru-mini-player-height, 64px) + var(--ion-safe-area-bottom, 16px) + 12px);
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  z-index: 99;
+  pointer-events: none;
+  animation: batchSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes batchSlideUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.batch-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--ceru-card-bg, rgba(30, 30, 35, 0.92));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--ceru-border, rgba(255, 255, 255, 0.12));
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  max-width: 440px;
+  width: 100%;
+  justify-content: space-around;
+}
+.batch-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-text);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  min-width: 52px;
+}
+.batch-action-btn ion-icon {
+  font-size: 20px;
+  color: var(--ceru-brand);
+}
+.batch-action-btn.danger ion-icon {
+  color: var(--ion-color-danger, #eb445a);
+}
+.batch-action-btn:disabled {
+  opacity: 0.38;
+  pointer-events: none;
 }
 .bottom-space {
   height: 140px;

@@ -144,3 +144,48 @@ async function createPlaylistAndAdd(track: Track): Promise<void> {
   await library.addTrackToPlaylist(playlist.id, track)
   await toast('已创建并添加')
 }
+
+export async function addTracksToPlaylistDialog(tracks: Track[]): Promise<void> {
+  if (!tracks.length) return
+  const library = useLibraryStore()
+  const sheet = await actionSheetController.create({
+    header: `将 ${tracks.length} 首歌曲添加到歌单`,
+    buttons: [
+      ...library.playlists.map((playlist) => ({
+        text: playlist.name,
+        handler: () => {
+          void library
+            .addTracksToPlaylist(playlist.id, tracks)
+            .then((count) => toast(`已添加 ${count} 首歌曲到「${playlist.name}」`))
+        }
+      })),
+      {
+        text: '新建歌单…',
+        handler: () => {
+          void createPlaylistAndAddBatch(tracks)
+        }
+      },
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
+async function createPlaylistAndAddBatch(tracks: Track[]): Promise<void> {
+  const library = useLibraryStore()
+  const alert = await alertController.create({
+    header: '新建歌单',
+    inputs: [{ name: 'name', type: 'text', placeholder: '歌单名称' }],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '创建', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  const name = String(data?.values?.name ?? '').trim()
+  if (role !== 'confirm' || !name) return
+  const playlist = library.createPlaylist(name)
+  const count = await library.addTracksToPlaylist(playlist.id, tracks)
+  await toast(`已创建「${playlist.name}」并添加 ${count} 首歌曲`)
+}
