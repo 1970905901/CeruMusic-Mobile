@@ -58,7 +58,8 @@
 
 ### 分享
 - 后端歌曲分享链接与深链打开。
-- 后端歌单分享链接与分页浏览、导入、播放。
+- 后端歌单分享链接与分页浏览、整单导入、播放。
+- 分享歌单多链接批量导入：粘贴多个分享链接，逐个拉取全部分页并导入为本地歌单。
 - 插件生成的数据分享链接 `cerumusic://share/v2_...`。
 - 插件分享链接只包含歌曲引用、标题、艺术家，不包含插件源码、token、媒体直链。
 
@@ -105,7 +106,7 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：26 个测试文件，79 个测试全部通过
+- `npm run test`：26 个测试文件，86 个测试全部通过
 - `npm run build`：通过
 - GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均成功
 
@@ -114,7 +115,7 @@ npm run build
 - HTTP/SOCKS5 代理与自定义 CA。
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件；当前仍是 Ionic iOS 模式 + `ios-14` … `ios-26` 版本化样式。
 - iPad Stage Manager / iOS 原生多窗口完整能力；当前只保证分屏与大窗口布局可用。
-- 后端歌单分享链接批量导入。
+- 后端歌单分享链接创建（依赖云歌单）。
 - 真机回归仍未系统性完成。
 
 ## 真机回归清单

@@ -79,16 +79,18 @@ export const useLibraryStore = defineStore('library', () => {
   async function init(): Promise<void> {
     if (initialized.value) return
     const db = await getDb()
-    const [favoriteRows, playlistRows, historyRows, localRows] = await Promise.all([
+    const [favoriteRows, playlistRows, historyRows, localRows, trackRows] = await Promise.all([
       db.getAll('favorites'),
       db.getAll('playlists'),
       db.getAll('history'),
-      db.getAll('localTracks')
+      db.getAll('localTracks'),
+      db.getAll('tracks')
     ])
     favorites.value = favoriteRows.sort((a, b) => b.createdAt - a.createdAt)
     playlists.value = playlistRows.sort((a, b) => b.updatedAt - a.updatedAt)
     history.value = historyRows.sort((a, b) => b.playedAt - a.playedAt).slice(0, 300)
     localRecords.value = localRows.sort((a, b) => b.createdAt - a.createdAt)
+    for (const track of trackRows) tracks.value[track.key] = track
     for (const favorite of favorites.value) tracks.value[favorite.track.key] = favorite.track
     for (const entry of history.value) tracks.value[entry.track.key] = entry.track
     for (const record of localRecords.value) tracks.value[record.key] = localTrackToTrack(record)
@@ -625,6 +627,30 @@ export const useLibraryStore = defineStore('library', () => {
     if (local) await removeFavorite(local)
   }
 
+  async function importSharedPlaylist(
+    name: string,
+    description: string,
+    tracks: Track[]
+  ): Promise<Playlist> {
+    const playlist = createPlaylist(name, description)
+    const uniqueTracks = new Map<string, Track>()
+    for (const track of tracks) {
+      if (!track?.key) continue
+      uniqueTracks.set(track.key, track)
+      upsertTrack(track)
+      if (!playlist.trackKeys.includes(track.key)) playlist.trackKeys.push(track.key)
+    }
+    playlist.updatedAt = Date.now()
+    const db = await getDb()
+    if (uniqueTracks.size) {
+      const tx = db.transaction('tracks', 'readwrite')
+      for (const track of uniqueTracks.values()) tx.store.put(toPlain(track))
+      await tx.done
+    }
+    await db.put('playlists', toPlain(playlist))
+    return playlist
+  }
+
   async function importPlaylistFromPlugin(
     pluginKey: string,
     pluginId: string,
@@ -708,6 +734,7 @@ export const useLibraryStore = defineStore('library', () => {
     historyPage,
     addHostFavorite,
     removeHostFavorite,
-    importPlaylistFromPlugin
+    importPlaylistFromPlugin,
+    importSharedPlaylist
   }
 })

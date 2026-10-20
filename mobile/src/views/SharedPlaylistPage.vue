@@ -51,7 +51,7 @@
               </ion-button>
               <ion-button fill="outline" :disabled="importing" @click="importPlaylist">
                 <ion-icon slot="start" :icon="albumsOutline" />
-                {{ importing ? '导入中…' : '导入歌单' }}
+                {{ importing ? '导入中' + (importProgress ? ' ' + importProgress : '') + '…' : '导入歌单' }}
               </ion-button>
             </div>
           </div>
@@ -112,6 +112,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import shareApi, { type PlaylistShareDetail } from '@/services/shareApi'
 import {
+  fetchSharedPlaylistSongs,
   sharedPlaylistNextPos,
   sharedPlaylistTracks
 } from '@/services/sharedPlaylist'
@@ -135,6 +136,7 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const importing = ref(false)
+const importProgress = ref('')
 const error = ref('')
 
 const playableTracks = computed(() => tracks.value.filter((track) => track.playable))
@@ -225,21 +227,33 @@ async function playTrack(track: Track) {
 async function importPlaylist() {
   if (!detail.value || importing.value) return
   importing.value = true
+  importProgress.value = ''
   try {
-    const playlist = library.createPlaylist(
-      detail.value.playlist.name || '分享歌单',
-      detail.value.playlist.describe || ''
+    const result = await fetchSharedPlaylistSongs(
+      id.value,
+      (limit, pos) => shareApi.getPlaylistById(id.value, limit, pos),
+      {
+        pageSize: PAGE_SIZE,
+        onProgress: (loaded, total) => {
+          importProgress.value = total ? `${loaded}/${total}` : String(loaded)
+        }
+      }
     )
-    for (const track of tracks.value) {
-      library.upsertTrack(track)
-      if (!playlist.trackKeys.includes(track.key)) playlist.trackKeys.push(track.key)
-    }
-    playlist.updatedAt = Date.now()
-    await toast(`已导入到“${playlist.name}”`, 'success')
+    const mapped = sharedPlaylistTracks(result.songs, {
+      providers: pluginStore.providers,
+      shareId: id.value
+    })
+    const playlist = await library.importSharedPlaylist(
+      result.detail.playlist.name || detail.value.playlist.name || '分享歌单',
+      result.detail.playlist.describe || detail.value.playlist.describe || '',
+      mapped
+    )
+    await toast(`已导入 ${playlist.trackKeys.length} 首到“${playlist.name}”`, 'success')
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '导入失败', 'danger')
   } finally {
     importing.value = false
+    importProgress.value = ''
   }
 }
 

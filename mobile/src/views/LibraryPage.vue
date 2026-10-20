@@ -32,6 +32,10 @@
             <ion-icon :icon="cloudDownloadOutline" />
             <span>导入歌单链接</span>
           </button>
+          <button class="quick-card ceru-card ceru-press" type="button" @click="sharedImportOpen = true">
+            <ion-icon :icon="linkOutline" />
+            <span>导入分享歌单</span>
+          </button>
           <button class="quick-card ceru-card ceru-press" type="button" @click="$router.push('/downloads')">
             <ion-icon :icon="cloudDownloadOutline" />
             <span>下载管理</span>
@@ -164,6 +168,7 @@
     </ion-content>
 
     <PlaylistImportSheet :open="importOpen" @close="importOpen = false" />
+    <SharedPlaylistImportSheet :open="sharedImportOpen" @close="sharedImportOpen = false" />
   </ion-page>
 </template>
 
@@ -193,6 +198,7 @@ import {
   ellipsisHorizontal,
   folderOpenOutline,
   heartOutline,
+  linkOutline,
   timeOutline
 } from 'ionicons/icons'
 import TrackRow from '@/components/TrackRow.vue'
@@ -205,6 +211,7 @@ import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
+import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { openTrackActions } from '@/services/trackActions'
 
@@ -214,6 +221,7 @@ const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 const localInput = ref<HTMLInputElement | null>(null)
 const importOpen = ref(false)
+const sharedImportOpen = ref(false)
 const showPlaylistImport = computed(() =>
   collectPlaylistImporters(pluginStore.enabledPlugins, {
     runtimeInfo: pluginStore.runtimeInfo

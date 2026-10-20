@@ -124,6 +124,7 @@ esizeableActivity 与大屏支持。
 - 听歌识曲：支持麦克风录制最多 12 秒，或上传音频；使用 AFP 指纹模块生成指纹，并调用插件的 `recognize` 命令。识别结果可直接搜索并播放。
 - 歌单转换器：支持桌面端 `.json` / `.lxmc` 歌单，生成并分享 Ceru Music `.cpl` 文件。
 - 插件进度 UI：`ui.progress.create / update / close` 现在会显示可更新的进度卡片，不再是无操作占位。
+- 分享歌单批量导入：支持粘贴一个或多个分享链接，逐个按分页拉取整张歌单后导入为本地歌单。
 - 权限：iOS 已增加麦克风用途说明，Android 已增加 `RECORD_AUDIO` 权限。
 ## 权限与安全边界
 
@@ -137,7 +138,7 @@ esizeableActivity 与大屏支持。
 
 以下能力仍待后续里程碑完成，界面上不会伪装成可用：
 
-- 后端歌单分享链接（依赖云歌单）与分享链接批量导入
+- 后端歌单分享链接创建（依赖云歌单）
 
 - HTTP/SOCKS5 代理与自定义 CA
 - iPad Stage Manager 与 iOS 原生多窗口/分屏（Android/iPad 已支持分屏与大窗口布局，Android SAF 导入/下载已接入）
