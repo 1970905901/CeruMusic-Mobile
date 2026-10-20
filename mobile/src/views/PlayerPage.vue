@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <ion-page class="player-page" :class="{ 'background-animated': settings.settings.playerBackgroundAnimation }">
     <ion-content :fullscreen="true" class="player-content">
       <div v-if="track" class="bg-layer" :style="bgStyle" />
@@ -111,12 +111,33 @@
           <PluginSlot slot="player.actions" class="player-plugin-slot" />
 
           <div v-if="showLyrics" class="lyrics-panel">
-            <div v-if="lyricConverters.length && (lyricsDoc.lines.length || lyricsDoc.plainText)" class="lyrics-head">
-              <span>歌词</span>
-              <button class="lyric-export" type="button" @click="lyricConverterOpen = true">
-                <ion-icon :icon="downloadOutline" />
-                导出
-              </button>
+            <div v-if="lyricsDoc.lines.length || lyricsDoc.plainText" class="lyrics-head">
+              <div class="lyrics-head-left">
+                <span>歌词</span>
+                <button
+                  v-if="currentTrackOffset !== 0"
+                  type="button"
+                  class="offset-badge"
+                  aria-label="查看时间轴偏移"
+                  @click="lyricOffsetOpen = true"
+                >
+                  {{ currentTrackOffset > 0 ? '+' : '' }}{{ (currentTrackOffset / 1000).toFixed(1) }}s
+                </button>
+              </div>
+              <div class="lyrics-head-actions">
+                <button class="lyric-btn" type="button" aria-label="调整歌词时间" @click="lyricOffsetOpen = true">
+                  <ion-icon :icon="timeOutline" />
+                  微调
+                </button>
+                <button class="lyric-btn" type="button" aria-label="分享复制歌词" @click="lyricShareOpen = true">
+                  <ion-icon :icon="copyOutline" />
+                  分享
+                </button>
+                <button v-if="lyricConverters.length" class="lyric-btn" type="button" aria-label="导出歌词" @click="lyricConverterOpen = true">
+                  <ion-icon :icon="downloadOutline" />
+                  导出
+                </button>
+              </div>
             </div>
             <div v-if="lyricsLoading" class="lyrics-loading">
               <ion-spinner name="crescent" />
@@ -128,7 +149,7 @@
                 :key="index"
                 class="lyric-line"
                 :class="{ active: index === currentLineIndex }"
-                @click="seekTo((line.startMs - settings.settings.lyricOffsetMs) / 1000)"
+                @click="seekTo((line.startMs - settings.settings.lyricOffsetMs - currentTrackOffset) / 1000)"
               >
                 <span class="lyric-text">{{ line.text }}</span>
                 <span v-if="settings.settings.lyricShowTranslation && line.translation" class="lyric-translation">{{ line.translation }}</span>
@@ -179,6 +200,17 @@
       :document="lyricsDoc"
       @close="lyricConverterOpen = false"
     />
+    <LyricShareSheet
+      :open="lyricShareOpen"
+      :track="track"
+      :document="lyricsDoc"
+      @close="lyricShareOpen = false"
+    />
+    <LyricOffsetSheet
+      :open="lyricOffsetOpen"
+      :track="track"
+      @close="lyricOffsetOpen = false"
+    />
   </ion-page>
 </template>
 
@@ -201,6 +233,8 @@ import {
 } from '@ionic/vue'
 import {
   chatbubbleEllipsesOutline,
+  copyOutline,
+  timeOutline,
   chevronDown,
   closeCircle,
   cloudDownloadOutline,
@@ -234,6 +268,7 @@ import { useDownloadStore } from '@/stores/downloads'
 import { useShareStore } from '@/stores/share'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { collectLyricConverters } from '@/services/lyricConverters'
 import type { LyricDocument } from '@/types/music'
@@ -247,6 +282,7 @@ const downloadStore = useDownloadStore()
 const shareStore = useShareStore()
 const auth = useAuthStore()
 const settings = useSettingsStore()
+const lyricExtras = useLyricExtrasStore()
 
 const track = computed(() => player.currentTrack)
 const favorite = computed(() => (track.value ? library.isFavorite(track.value) : false))
@@ -270,6 +306,9 @@ const lyricsLoading = ref(false)
 const lyricsDoc = ref<LyricDocument>({ lines: [], format: 'plain' })
 const lyricsContainer = ref<HTMLElement | null>(null)
 const lyricConverterOpen = ref(false)
+const lyricShareOpen = ref(false)
+const lyricOffsetOpen = ref(false)
+const currentTrackOffset = computed(() => lyricExtras.getOffset(track.value?.key))
 const lyricConverters = computed(() =>
   collectLyricConverters(pluginStore.enabledPlugins, {
     runtimeInfo: pluginStore.runtimeInfo
@@ -280,7 +319,7 @@ const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
 
-const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0))
+const lyricPositionMs = computed(() => player.positionMs + Number(settings.settings.lyricOffsetMs || 0) + currentTrackOffset.value)
 const currentLineIndex = computed(() => currentLyricIndex(lyricsDoc.value.lines, lyricPositionMs.value))
 
 function closePlayer() {
@@ -456,6 +495,20 @@ async function openMore() {
       {
         text: '查看评论',
         handler: () => openComments()
+      },
+      {
+        text: '分享 / 复制歌词',
+        handler: () => {
+          lyricShareOpen.value = true
+        }
+      },
+      {
+        text: currentTrackOffset.value !== 0
+          ? '微调歌词时间 (' + (currentTrackOffset.value > 0 ? '+' : '') + (currentTrackOffset.value / 1000).toFixed(1) + 's)'
+          : '微调歌词时间',
+        handler: () => {
+          lyricOffsetOpen.value = true
+        }
       },
       ...pluginStore.menus
         .filter(
@@ -807,10 +860,47 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 0 8px 8px;
 }
-.lyrics-head span {
+.lyrics-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lyrics-head-left span {
   color: rgba(245, 248, 251, 0.55);
   font-size: 11px;
   font-weight: 650;
+}
+.offset-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-family: monospace;
+  background: rgba(0, 218, 192, 0.2);
+  color: var(--ion-color-primary, #00dac0);
+  border: 1px solid rgba(0, 218, 192, 0.35);
+  cursor: pointer;
+}
+.lyrics-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lyric-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(245, 248, 251, 0.14);
+  border-radius: 999px;
+  background: rgba(245, 248, 251, 0.06);
+  color: rgba(245, 248, 251, 0.78);
+  font-size: 11px;
+  font-weight: 650;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.lyric-btn ion-icon {
+  font-size: 12px;
 }
 .lyric-export {
   display: inline-flex;

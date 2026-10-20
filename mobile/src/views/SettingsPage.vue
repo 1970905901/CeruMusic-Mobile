@@ -305,6 +305,23 @@
           </ion-select>
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="timerOutline" color="primary" />
+          <ion-label>
+            <h2>单曲歌词微调缓存</h2>
+            <p>{{ lyricExtras.adjustedCount > 0 ? '已独立校准 ' + lyricExtras.adjustedCount + ' 首歌曲' : '暂无单曲校准记录' }}</p>
+          </ion-label>
+          <ion-button
+            v-if="lyricExtras.adjustedCount > 0"
+            slot="end"
+            size="small"
+            fill="outline"
+            color="danger"
+            @click="clearLyricOffsets"
+          >
+            清空
+          </ion-button>
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="colorWandOutline" color="primary" />
           <ion-label>
             <h2>播放器背景动效</h2>
@@ -635,6 +652,7 @@ import {
 } from 'ionicons/icons'
 import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
+import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
@@ -655,6 +673,7 @@ import { importSafFolder, pickSafDirectory, safImportSupported } from '@/service
 const settings = useSettingsStore()
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
+const lyricExtras = useLyricExtrasStore()
 const downloadStore = useDownloadStore()
 const library = useLibraryStore()
 const auth = useAuthStore()
@@ -759,6 +778,25 @@ function setTheme(value: any) {
 function setSleep(value: any) {
   const minutes = Number(value) || 0
   player.setSleepTimer(minutes > 0 ? minutes : null)
+}
+
+async function clearLyricOffsets() {
+  const alert = await alertController.create({
+    header: '清空单曲歌词微调',
+    message: '确定要清空全部 ' + lyricExtras.adjustedCount + ' 首歌曲的独立时间轴微调记录吗？',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '清空',
+        role: 'destructive',
+        handler: () => {
+          lyricExtras.clearAllOffsets()
+          void toast('已清空单曲歌词微调记录')
+        }
+      }
+    ]
+  })
+  await alert.present()
 }
 
 function formatLyricOffset(value: number): string {
