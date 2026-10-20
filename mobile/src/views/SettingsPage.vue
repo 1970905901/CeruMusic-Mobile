@@ -187,6 +187,14 @@
             <p>10 段均衡器、低音增强、环绕与响度均衡</p>
           </ion-label>
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="swapHorizontalOutline" color="primary" />
+          <ion-label>
+            <h2>暂停过渡</h2>
+            <p>播放与暂停时音量渐入渐出，一起听房间内自动关闭</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.pauseTransition" @ionChange="settings.settings.pauseTransition = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list class="group">

@@ -10,6 +10,8 @@ import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
 import { isAudioEffectsActive } from '@/services/audioEffects'
+import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
+import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
 
 function rawEntityToTrack(entity: any, pluginKey?: string): Track {
   const ref = entity?.ref ?? {}
@@ -82,6 +84,7 @@ export const usePlayerStore = defineStore('player', () => {
   let sleepInterval: ReturnType<typeof setInterval> | null = null
   let restorePositionMs = 0
   let lastPersistAt = 0
+  let transitionToken = 0
 
   audio.volume = volume.value
   audio.playbackRate = playbackRate.value
@@ -434,31 +437,63 @@ export const usePlayerStore = defineStore('player', () => {
   async function toggle(): Promise<void> {
     if (!currentTrack.value) return
     if (status.value === 'playing' || status.value === 'loading') {
-      audio.pause()
-      setStatus('paused')
+      await stopWithTransition()
       return
     }
     if (audio.src) {
-      await audio.play()
-      setStatus('playing')
+      await startWithTransition()
       return
     }
     await loadTrack(currentTrack.value, true)
   }
 
   function pause(): void {
-    audio.pause()
-    setStatus('paused')
+    void stopWithTransition()
   }
 
   async function resume(): Promise<void> {
     if (!currentTrack.value) return
     if (audio.src) {
-      await audio.play()
-      setStatus('playing')
+      await startWithTransition()
     } else {
       await loadTrack(currentTrack.value, true)
     }
+  }
+
+  async function startWithTransition(): Promise<void> {
+    const token = ++transitionToken
+    cancelVolumeTransition()
+    const target = volume.value
+    if (!settings.settings.pauseTransition || isListenTogetherPlaybackActive()) {
+      audio.volume = target
+      await audio.play()
+      setStatus('playing')
+      return
+    }
+    audio.volume = 0
+    try {
+      await audio.play()
+      setStatus('playing')
+      await transitionVolume(audio, target, true, true)
+    } catch (cause) {
+      if (token === transitionToken) audio.volume = target
+      throw cause
+    }
+  }
+
+  async function stopWithTransition(): Promise<void> {
+    const token = ++transitionToken
+    cancelVolumeTransition()
+    if (!settings.settings.pauseTransition || isListenTogetherPlaybackActive()) {
+      audio.pause()
+      audio.volume = volume.value
+      setStatus('paused')
+      return
+    }
+    setStatus('paused')
+    await transitionVolume(audio, volume.value, false, true)
+    if (token !== transitionToken) return
+    audio.pause()
   }
 
   function seek(ms: number): void {

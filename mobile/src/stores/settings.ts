@@ -19,6 +19,7 @@ export interface AppSettings {
   autoPlayOnOpen: boolean
   showLyricsInPlayer: boolean
   sleepTimerMinutes: number | null
+  pauseTransition: boolean
   onboardingDone: boolean
   lastSource?: string
   searchHistory: string[]
@@ -64,6 +65,7 @@ const defaults: AppSettings = {
   autoPlayOnOpen: false,
   showLyricsInPlayer: true,
   sleepTimerMinutes: null,
+  pauseTransition: true,
   onboardingDone: false,
   searchHistory: [],
   aiProvider: 'deepseek',

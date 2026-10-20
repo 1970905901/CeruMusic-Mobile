@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
 import { CERU_API_RESOURCE } from '@/services/authClient'
 import { getAccessToken } from '@/services/ceruApi'
+import { setListenTogetherPlaybackActive } from '@/services/playbackContext'
 import {
   extractRoomCode,
   listenTogetherApi,
@@ -133,6 +134,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
   }
 
   function resetRoomState() {
+    setListenTogetherPlaybackActive(false)
     room.value = null
     members.value = []
     current.value = emptySnapshot()
@@ -266,6 +268,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     sock.on(SERVER.STATE, (state: RoomState) => {
       everJoined = true
       room.value = state.meta
+      setListenTogetherPlaybackActive(!!state.meta)
       members.value = state.members || []
       current.value = state.current || emptySnapshot()
       queue.value = state.queue || []

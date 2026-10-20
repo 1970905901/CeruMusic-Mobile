@@ -11,6 +11,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricOffsetMs',
   'lyricFilterInfo',
   'lyricStrictFilter',
+  'pauseTransition',
   'playerBackgroundAnimation',
   'audioCacheEnabled',
   'audioCacheMaxBytes',
