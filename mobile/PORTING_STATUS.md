@@ -7,8 +7,8 @@
 - 仓库：`1970905901/CeruMusic-Mobile`
 - 分支：`main`
 - 版本：`2.5.13`
-- 最后提交：`1b7e163`
-- 最新 CI：`39301544139`，Android/iOS 均成功
+- 最后提交：见 `git log -1`
+- 最新 CI：`39365039950`，Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -61,6 +61,7 @@
 - 后端歌单分享链接与分页浏览、整单导入、播放。
 - 分享歌单多链接批量导入：粘贴多个分享链接，逐个拉取全部分页并导入为本地歌单。
 - 后端歌单分享链接创建：本地歌单同步到云歌单后生成 App 内分享链接，支持复制链接与系统分享；网页在线播放待服务端解析模块导出。
+- 歌单文件备份：本地歌单导出为加密 .cmpl 文件、复制加密数据到剪贴板，支持从 .cpl / .cmpl 文件导入。
 - 插件生成的数据分享链接 `cerumusic://share/v2_...`。
 - 插件分享链接只包含歌曲引用、标题、艺术家，不包含插件源码、token、媒体直链。
 
@@ -107,7 +108,7 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：27 个测试文件，92 个测试全部通过
+- `npm run test`：28 个测试文件，99 个测试全部通过
 - `npm run build`：通过
 - GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均成功
 

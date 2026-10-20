@@ -56,9 +56,7 @@ import {
   toastController
 } from '@ionic/vue'
 import { swapHorizontalOutline } from 'ionicons/icons'
-import { Capacitor } from '@capacitor/core'
-import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
-import { Share } from '@capacitor/share'
+import { saveAndShareFile } from '@/services/fileExport'
 import {
   convertPlaylist,
   encryptPlaylist,
@@ -112,28 +110,12 @@ async function share(): Promise<void> {
   if (!encrypted.value) return
   const fileName = 'cerumusic-playlist-' + new Date().toISOString().slice(0, 10) + '.cpl'
   try {
-    if (Capacitor.isNativePlatform()) {
-      await Filesystem.writeFile({
-        path: fileName,
-        data: encrypted.value,
-        directory: Directory.Cache,
-        encoding: Encoding.UTF8
-      })
-      const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache })
-      await Share.share({
-        title: 'Ceru Music 歌单',
-        text: fileName,
-        url: Capacitor.convertFileSrc(uri.uri)
-      })
-    } else {
-      const blob = new Blob([encrypted.value], { type: 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = fileName
-      anchor.click()
-      setTimeout(() => URL.revokeObjectURL(url), 3000)
-    }
+    await saveAndShareFile({
+      name: fileName,
+      data: encrypted.value,
+      mime: 'application/octet-stream',
+      title: 'Ceru Music 歌单'
+    })
   } catch (error) {
     await toast(error instanceof Error ? error.message : '保存失败', 'danger')
   }

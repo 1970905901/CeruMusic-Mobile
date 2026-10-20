@@ -125,6 +125,9 @@ import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
+import { Clipboard } from '@capacitor/clipboard'
+import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/services/playlistFiles'
+import { saveAndShareFile } from '@/services/fileExport'
 import type { Track } from '@/types/music'
 
 const route = useRoute()
@@ -313,6 +316,18 @@ async function openPlaylistMenu() {
         }
       },
       {
+        text: '导出歌单文件',
+        handler: () => {
+          void exportPlaylistFile()
+        }
+      },
+      {
+        text: '复制歌单到剪贴板',
+        handler: () => {
+          void copyPlaylistToClipboard()
+        }
+      },
+      {
         text: '重命名',
         handler: () => {
           void renamePlaylist()
@@ -329,6 +344,36 @@ async function openPlaylistMenu() {
     ]
   })
   await sheet.present()
+}
+
+async function exportPlaylistFile() {
+  const playlist = localPlaylist.value
+  if (!playlist) return
+  try {
+    const encrypted = encryptPlaylistTracks(library.playlistTracks(remoteId))
+    const fileName = playlistFileName(playlist.name)
+    await saveAndShareFile({
+      name: fileName,
+      data: packPlaylistFile(encrypted),
+      mime: 'application/gzip',
+      title: 'Ceru Music 歌单'
+    })
+    await toast('歌单文件已导出')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '导出失败', 'danger')
+  }
+}
+
+async function copyPlaylistToClipboard() {
+  const playlist = localPlaylist.value
+  if (!playlist) return
+  try {
+    const encrypted = encryptPlaylistTracks(library.playlistTracks(remoteId))
+    await Clipboard.write({ string: encrypted })
+    await toast('歌单已复制到剪贴板')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '复制失败', 'danger')
+  }
 }
 
 async function renamePlaylist() {

@@ -20,6 +20,13 @@
         multiple
         @change="onLocalFiles"
       />
+      <input
+        ref="playlistFileInput"
+        class="file-input"
+        type="file"
+        accept=".cpl,.cmpl"
+        @change="onPlaylistFile"
+      />
       <div class="library-head ceru-pad">
         <p class="eyebrow">YOUR LIBRARY</p>
         <h1 class="ceru-title">收藏与本地</h1>
@@ -35,6 +42,10 @@
           <button class="quick-card ceru-card ceru-press" type="button" @click="sharedImportOpen = true">
             <ion-icon :icon="linkOutline" />
             <span>导入分享歌单</span>
+          </button>
+          <button class="quick-card ceru-card ceru-press" type="button" @click="pickPlaylistFile">
+            <ion-icon :icon="documentOutline" />
+            <span>导入歌单文件</span>
           </button>
           <button class="quick-card ceru-card ceru-press" type="button" @click="$router.push('/downloads')">
             <ion-icon :icon="cloudDownloadOutline" />
@@ -195,6 +206,7 @@ import {
   addOutline,
   albumsOutline,
   cloudDownloadOutline,
+  documentOutline,
   ellipsisHorizontal,
   folderOpenOutline,
   heartOutline,
@@ -213,6 +225,7 @@ import { lyricValueToLrc } from '@/services/lyrics'
 import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
 import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
+import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { openTrackActions } from '@/services/trackActions'
 
 const library = useLibraryStore()
@@ -220,6 +233,7 @@ const player = usePlayerStore()
 const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 const localInput = ref<HTMLInputElement | null>(null)
+const playlistFileInput = ref<HTMLInputElement | null>(null)
 const importOpen = ref(false)
 const sharedImportOpen = ref(false)
 const showPlaylistImport = computed(() =>
@@ -252,6 +266,28 @@ function openMore(track: Track) {
 
 function pickLocal() {
   localInput.value?.click()
+}
+
+function pickPlaylistFile() {
+  playlistFileInput.value?.click()
+}
+
+async function onPlaylistFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const songs = parsePlaylistFile(file.name, new Uint8Array(await file.arrayBuffer()))
+    const tracks = playlistFileTracks(songs, pluginStore.providers)
+    if (!tracks.length) throw new Error('歌单文件里没有可导入的歌曲')
+    const name = file.name.replace(/\.(cmpl|cpl)$/i, '') || '导入歌单'
+    const playlist = await library.importSharedPlaylist(name, '从歌单文件导入', tracks)
+    activeSegment.value = 'playlists'
+    await showToast('已导入 ' + playlist.trackKeys.length + ' 首歌曲', 'success')
+  } catch (error) {
+    await showToast(error instanceof Error ? error.message : '导入失败', 'danger')
+  }
 }
 
 async function onLocalFiles(event: Event) {
