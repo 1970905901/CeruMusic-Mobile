@@ -145,7 +145,13 @@
       <ion-content class="queue-content">
         <div class="queue-head ceru-pad">
           <h2>播放队列</h2>
-          <span>{{ player.queue.length }} 首</span>
+          <div class="queue-head-actions">
+            <span>{{ player.queue.length }} 首</span>
+            <button v-if="player.queue.length" class="queue-clear" type="button" @click="clearQueue">
+              <ion-icon :icon="trashOutline" />
+              清空
+            </button>
+          </div>
         </div>
         <ion-reorder-group :disabled="false" @ionItemReorder="reorderQueue">
           <div v-for="(item, index) in player.queue" :key="item.key" class="queue-row" :class="{ current: index === player.currentIndex }">
@@ -156,6 +162,9 @@
                 <span class="queue-title ceru-truncate">{{ item.title }}</span>
                 <span class="queue-sub ceru-truncate">{{ item.artists.join(' / ') }}</span>
               </span>
+            </button>
+            <button class="queue-remove" type="button" :aria-label="`移除 ${item.title}`" @click="removeQueueItem(item)">
+              <ion-icon :icon="closeCircle" />
             </button>
             <ion-reorder />
           </div>
@@ -186,12 +195,14 @@ import {
   IonReorderGroup,
   IonSpinner,
   actionSheetController,
+  alertController,
   toastController,
   useIonRouter
 } from '@ionic/vue'
 import {
   chatbubbleEllipsesOutline,
   chevronDown,
+  closeCircle,
   cloudDownloadOutline,
   ellipsisHorizontal,
   heart,
@@ -208,7 +219,8 @@ import {
   repeat,
   shuffle,
   speedometerOutline,
-  textOutline
+  textOutline,
+  trashOutline
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
@@ -404,6 +416,29 @@ function reorderQueue(event: any) {
   keys.splice(event.detail.to, 0, moved)
   player.reorderHostTracks(keys)
   event.detail.complete()
+}
+
+function removeQueueItem(item: Track) {
+  player.removeHostTracks([item.key])
+}
+
+async function clearQueue() {
+  const alert = await alertController.create({
+    header: '清空播放队列',
+    message: '将移除队列中的全部歌曲并停止播放。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '清空',
+        role: 'destructive',
+        handler: () => {
+          player.clearQueue()
+          queueOpen.value = false
+        }
+      }
+    ]
+  })
+  await alert.present()
 }
 
 async function openMore() {
@@ -870,6 +905,24 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--ceru-text-secondary);
 }
+.queue-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.queue-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-danger, #ff5a5f);
+  font-size: 12px;
+  padding: 4px 2px;
+}
+.queue-clear ion-icon {
+  font-size: 14px;
+}
 .queue-row {
   display: flex;
   align-items: center;
@@ -910,6 +963,20 @@ onBeforeUnmount(() => {
 .queue-sub {
   font-size: 11px;
   color: var(--ceru-text-secondary);
+}
+.queue-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-text-secondary);
+  flex: none;
+}
+.queue-remove ion-icon {
+  font-size: 20px;
 }
 .empty-title {
   font-weight: 700;

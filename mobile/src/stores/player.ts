@@ -689,28 +689,57 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function removeHostTracks(keys: string[]): void {
-    queue.value = queue.value.filter((track) => !keys.includes(track.key))
-    currentIndex.value = Math.min(currentIndex.value, queue.value.length - 1)
+    if (!keys.length || !queue.value.length) return
+    const removing = new Set(keys)
+    const currentKey = currentTrack.value?.key
+    const removingCurrent = !!currentKey && removing.has(currentKey)
+    const wasActive = status.value === 'playing' || status.value === 'loading'
+    const previousIndex = currentIndex.value
+    queue.value = queue.value.filter((track) => !removing.has(track.key))
+    shuffleOrder.value = queue.value.map((_, index) => index)
+    if (!queue.value.length) {
+      currentIndex.value = -1
+      if (removingCurrent) resetAudio()
+      publishQueue()
+      return
+    }
+    if (removingCurrent) {
+      const nextIndex = Math.min(previousIndex, queue.value.length - 1)
+      currentIndex.value = nextIndex
+      publishQueue()
+      void loadTrack(queue.value[nextIndex], wasActive)
+      return
+    }
+    const nextIndex = currentKey
+      ? queue.value.findIndex((track) => track.key === currentKey)
+      : -1
+    currentIndex.value = nextIndex >= 0 ? nextIndex : Math.min(previousIndex, queue.value.length - 1)
     publishQueue()
   }
 
   function reorderHostTracks(keys: string[]): void {
+    const currentKey = currentTrack.value?.key
     const map = new Map(queue.value.map((track) => [track.key, track]))
     queue.value = keys.map((key) => map.get(key)).filter((track): track is Track => !!track)
-    currentIndex.value = queue.value.findIndex((track) => track.key === currentTrack.value?.key)
+    const nextIndex = currentKey ? queue.value.findIndex((track) => track.key === currentKey) : -1
+    currentIndex.value = nextIndex >= 0 ? nextIndex : Math.min(currentIndex.value, queue.value.length - 1)
     publishQueue()
   }
 
-  function clearQueue(): void {
+  function resetAudio(): void {
     audio.pause()
     audio.removeAttribute('src')
     audio.load()
     cleanupObjectUrl()
-    queue.value = []
-    currentIndex.value = -1
     positionMs.value = 0
     durationMs.value = 0
     setStatus('idle')
+  }
+
+  function clearQueue(): void {
+    resetAudio()
+    queue.value = []
+    currentIndex.value = -1
     publishQueue()
   }
 
