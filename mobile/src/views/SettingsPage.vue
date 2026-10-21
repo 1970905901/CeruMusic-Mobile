@@ -271,6 +271,56 @@
             @ionChange="settings.settings.ltMentionStrong = $event.detail.checked"
           />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="chatbubbleEllipsesOutline" color="primary" />
+          <ion-label>
+            <h2>一起听弹幕</h2>
+            <p>房间聊天以弹幕形式飘过播放页歌词区</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.ltDanmakuEnabled"
+            @ionChange="settings.settings.ltDanmakuEnabled = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item :disabled="!settings.settings.ltDanmakuEnabled">
+          <ion-icon slot="start" :icon="speedometerOutline" color="primary" />
+          <ion-label>
+            <h2>弹幕速度</h2>
+            <p>{{ settings.settings.ltDanmakuSpeed }}×</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.ltDanmakuSpeed"
+            :disabled="!settings.settings.ltDanmakuEnabled"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.ltDanmakuSpeed = Number($event.detail.value)"
+          >
+            <ion-select-option :value="0.6">0.6× 慢</ion-select-option>
+            <ion-select-option :value="0.8">0.8×</ion-select-option>
+            <ion-select-option :value="1">1× 标准</ion-select-option>
+            <ion-select-option :value="1.3">1.3×</ion-select-option>
+            <ion-select-option :value="1.6">1.6× 快</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item :disabled="!settings.settings.ltDanmakuEnabled">
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>弹幕字号</h2>
+            <p>{{ Math.round(settings.settings.ltDanmakuFontScale * 100) }}%</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.ltDanmakuFontScale"
+            :disabled="!settings.settings.ltDanmakuEnabled"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.ltDanmakuFontScale = Number($event.detail.value)"
+          >
+            <ion-select-option :value="0.8">80%</ion-select-option>
+            <ion-select-option :value="1">100%</ion-select-option>
+            <ion-select-option :value="1.2">120%</ion-select-option>
+            <ion-select-option :value="1.5">150%</ion-select-option>
+          </ion-select>
+        </ion-item>
       </ion-list>
 
       <ion-list id="group-cache" class="group">
@@ -804,6 +854,7 @@ import {
   albumsOutline,
   atOutline,
   bookOutline,
+  chatbubbleEllipsesOutline,
   chatbubblesOutline,
   createOutline,
   cloudDownloadOutline,

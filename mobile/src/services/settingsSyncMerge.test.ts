@@ -58,6 +58,9 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     routePreloadEnabled: true,
     ltNotifyEnabled: true,
     ltMentionStrong: true,
+    ltDanmakuEnabled: true,
+    ltDanmakuSpeed: 1,
+    ltDanmakuFontScale: 1,
     ...overrides
   }
 }

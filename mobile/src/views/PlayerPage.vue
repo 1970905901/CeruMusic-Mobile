@@ -9,6 +9,7 @@
         <div v-if="track && gradientBackground" class="bg-gradient" :style="{ backgroundImage: gradientBackground }" />
       </div>
       <div class="bg-shade" />
+      <LtDanmakuLayer v-if="track" />
       <div class="player-shell ceru-safe-top">
         <header class="top-bar">
           <button class="round-btn" type="button" aria-label="关闭播放器" @click="closePlayer">
@@ -329,6 +330,7 @@ import {
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
+import LtDanmakuLayer from '@/components/LtDanmakuLayer.vue'
 import AudioVisualizer from '@/components/AudioVisualizer.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
 import LyricConverterSheet from '@/components/LyricConverterSheet.vue'

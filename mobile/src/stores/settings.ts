@@ -69,6 +69,12 @@ export interface AppSettings {
   ltNotifyEnabled: boolean
   /** 一起听：被 @ 或被引用时绕过普通通知开关强提示 */
   ltMentionStrong: boolean
+  /** 一起听：播放页以弹幕形式飘过房间聊天 */
+  ltDanmakuEnabled: boolean
+  /** 弹幕飞行速度倍率：越大越快 */
+  ltDanmakuSpeed: number
+  /** 弹幕字号倍率 */
+  ltDanmakuFontScale: number
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -127,7 +133,10 @@ const defaults: AppSettings = {
   localScanFilterMinDurationSec: 30,
   routePreloadEnabled: true,
   ltNotifyEnabled: true,
-  ltMentionStrong: true
+  ltMentionStrong: true,
+  ltDanmakuEnabled: true,
+  ltDanmakuSpeed: 1,
+  ltDanmakuFontScale: 1
 }
 
 function load(): AppSettings {
