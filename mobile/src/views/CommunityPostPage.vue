@@ -79,7 +79,13 @@
         </div>
 
         <div v-if="rootComments.length" class="comments ceru-pad">
-          <article v-for="comment in rootComments" :key="comment.id" class="comment">
+          <article
+            v-for="comment in rootComments"
+            :key="comment.id"
+            class="comment"
+            :class="{ highlighted: highlightedCommentId === comment.id }"
+            :data-comment-id="comment.id"
+          >
             <CoverImage :src="ossAvatar(comment.userAvatar)" :size="36" :radius="18" :alt="comment.username" />
             <div class="comment-body">
               <div class="comment-name">
@@ -99,7 +105,13 @@
               </div>
 
               <div v-if="repliesFor(comment).length" class="replies">
-                <article v-for="reply in repliesFor(comment)" :key="reply.id" class="reply">
+                <article
+                  v-for="reply in repliesFor(comment)"
+                  :key="reply.id"
+                  class="reply"
+                  :class="{ highlighted: highlightedCommentId === reply.id }"
+                  :data-comment-id="reply.id"
+                >
                   <CoverImage :src="ossAvatar(reply.userAvatar)" :size="30" :radius="15" :alt="reply.username" />
                   <div class="comment-body">
                     <div class="comment-name">
@@ -211,7 +223,7 @@
   </ion-page>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   IonBackButton,
@@ -246,6 +258,7 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
+import { COMMENT_HIGHLIGHT_MS, locateComment } from '@/services/commentLocate'
 import { showSupportNotice } from '@/services/communitySupport'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -365,16 +378,61 @@ async function loadPost() {
   try {
     post.value = await communityApi.getPost(postId)
     await loadComments(true)
-    const commentId = String(route.query.comment || '')
-    if (commentId) {
-      const target = comments.value.find((item) => item.id === commentId)
-      if (target) startReply(target)
-    }
+    await locateFromQuery()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '加载失败'
   } finally {
     loading.value = false
   }
+}
+
+/* ---------------- 通知深链定位 ---------------- */
+
+const highlightedCommentId = ref('')
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * 定位并高亮通知指向的评论：根评论直接滚动；回复先展开所属根评论的回复，
+ * 再滚动到回复本身。找不到时（未加载/已删除）给出提示，不静默失败。
+ */
+async function locateFromQuery() {
+  const location = locateComment(
+    rootComments.value.map((comment) => ({
+      id: comment.id,
+      replies: repliesFor(comment).map((reply) => ({ id: reply.id }))
+    })),
+    String(route.query.comment || '')
+  )
+  if (!location) return
+  const root = rootComments.value.find((comment) => comment.id === location.rootId)
+  if (!root) return
+  if (location.needsReplies && location.targetId !== root.id) {
+    /* 目标回复还没加载出来时先拉一页，否则滚不过去 */
+    if (!repliesFor(root).some((reply) => reply.id === location.targetId)) {
+      await loadMoreReplies(root)
+    }
+  }
+  await nextTick()
+  await nextTick()
+  const element = document.querySelector<HTMLElement>(
+    '[data-comment-id="' + CSS.escape(location.targetId) + '"]'
+  )
+  if (!element) {
+    await toast('评论已删除或暂未加载', 'warning')
+    return
+  }
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  highlightedCommentId.value = location.targetId
+  /* 回复类通知沿用旧行为：顺带预填「回复 @昵称」 */
+  if (location.needsReplies && location.targetId !== root.id) {
+    const reply = comments.value.find((item) => item.id === location.targetId)
+    if (reply) startReply(reply)
+  }
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => {
+    highlightedCommentId.value = ''
+    highlightTimer = undefined
+  }, COMMENT_HIGHLIGHT_MS)
 }
 
 async function loadComments(reset: boolean) {
@@ -717,6 +775,11 @@ async function toast(message: string, color = 'medium') {
 onMounted(() => {
   void loadPost()
 })
+
+onBeforeUnmount(() => {
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = undefined
+})
 </script>
 
 <style scoped>
@@ -850,7 +913,15 @@ onMounted(() => {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 0;
+  border-radius: 10px;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
   border-bottom: 1px solid var(--ceru-border);
+}
+/* 从通知跳转过来时短暂高亮，1.6s 后自动褪去 */
+.comment.highlighted,
+.reply.highlighted {
+  background-color: rgba(0, 179, 155, 0.12);
+  box-shadow: inset 0 0 0 2px var(--ceru-brand);
 }
 .comment-body {
   min-width: 0;
