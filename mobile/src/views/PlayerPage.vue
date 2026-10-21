@@ -335,6 +335,7 @@ import {
 } from 'ionicons/icons'
 import { Clipboard } from '@capacitor/clipboard'
 import CoverImage from '@/components/CoverImage.vue'
+import { planPlayerEntry } from '@/services/playerEntry'
 import LtDanmakuLayer from '@/components/LtDanmakuLayer.vue'
 import AudioVisualizer from '@/components/AudioVisualizer.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
@@ -916,7 +917,16 @@ watch(currentLineIndex, (next, previous) => {
 
 onMounted(() => {
   window.addEventListener('resize', updateArtSize)
-  if (showLyrics.value) void loadLyrics()
+  /* 打开播放页时的初始行为由设置决定；判定集中在 services/playerEntry.ts */
+  const plan = planPlayerEntry(settings.settings, {
+    hasTrack: Boolean(player.currentTrack),
+    status: player.status
+  })
+  if (plan.expandLyrics) {
+    showLyrics.value = true
+    void loadLyrics()
+  }
+  if (plan.autoPlay) void player.resume().catch(() => undefined)
   controlsIdle.poke()
 })
 

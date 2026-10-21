@@ -30,6 +30,8 @@ const rawItems: RawItem[] = [
   { id: 'group-plugin', category: '音源与插件', title: '音源实现', description: '为相同来源选择由哪个插件提供', keywords: ['路由', '能力', 'provider', 'routing'] },
   { id: 'group-playback', category: '播放', title: '播放器样式', description: '经典黑胶 / 沉浸封面', keywords: ['布局', '黑胶', '唱片', 'layout', 'cd', 'cover'] },
   { id: 'group-playback', category: '播放', title: '首选音质', description: '播放时向插件请求的音质', keywords: ['音质', 'quality', '无损', 'flac', 'hires'] },
+  { id: 'group-playback', category: '播放', title: '打开播放页自动播放', keywords: ['自动播放', '续播', 'autoplay', 'resume'] },
+  { id: 'group-playback', category: '播放', title: '打开播放页显示歌词', keywords: ['歌词', '默认展开', 'lyrics', 'player'] },
   { id: 'group-playback', category: '播放', title: '播放音量', keywords: ['音量', 'volume'] },
   { id: 'group-playback', category: '播放', title: '播放速度', description: '0.5x - 2x 变速播放', keywords: ['倍速', '速度', 'speed', 'rate'] },
   { id: 'group-playback', category: '播放', title: '睡眠定时', keywords: ['定时', '关闭', 'sleep', 'timer'] },

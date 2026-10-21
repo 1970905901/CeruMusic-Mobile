@@ -157,6 +157,28 @@
           </ion-select>
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="playCircleOutline" color="primary" />
+          <ion-label>
+            <h2>打开播放页自动播放</h2>
+            <p>仅当上次停留在暂停状态时续播</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.autoPlayOnOpen"
+            @ionChange="settings.settings.autoPlayOnOpen = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>打开播放页显示歌词</h2>
+            <p>关闭后进入播放页先显示封面</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.showLyricsInPlayer"
+            @ionChange="settings.settings.showLyricsInPlayer = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="volumeHighOutline" color="primary" />
           <ion-label>
             <h2>播放音量</h2>
@@ -1035,6 +1057,7 @@ import {
   moonOutline,
   musicalNotesOutline,
   pricetagOutline,
+  playCircleOutline,
   refreshOutline,
   flashOutline,
   pulseOutline,
