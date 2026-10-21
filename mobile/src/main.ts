@@ -25,6 +25,7 @@ import '@/theme/tablet.css'
 
 import App from './App.vue'
 import router from './router'
+import { startRoutePreloading } from './router'
 import { useSettingsStore } from '@/stores/settings'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
@@ -168,6 +169,9 @@ void (async () => {
   }
 
   app.mount('#app')
+
+// 首屏挂载后再启动空闲预加载，避免与初始化抢主线程。
+startRoutePreloading(() => settings.settings.routePreloadEnabled)
   startSettingsSync()
 
   if (Capacitor.isNativePlatform()) {

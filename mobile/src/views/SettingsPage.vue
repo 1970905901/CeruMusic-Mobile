@@ -475,6 +475,14 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.playerBackgroundBeat" @ionChange="settings.settings.playerBackgroundBeat = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="flashOutline" color="primary" />
+          <ion-label>
+            <h2>路由预加载</h2>
+            <p>空闲时预加载其他页面，切换更快；关闭可减少流量与电量消耗</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.routePreloadEnabled" @ionChange="settings.settings.routePreloadEnabled = $event.detail.checked" />
+        </ion-item>
       </ion-list>
 
       <ion-list id="group-storage" class="group">
@@ -799,6 +807,7 @@ import {
   moonOutline,
   musicalNotesOutline,
   pricetagOutline,
+  flashOutline,
   pulseOutline,
   shieldCheckmarkOutline,
   speedometerOutline,

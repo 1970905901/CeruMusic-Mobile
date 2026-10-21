@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from '@ionic/vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { MOBILE_ROUTE_PRIORITY, startRoutePreload } from '@/services/routePreload'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/tabs/discover' },
@@ -135,5 +136,15 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes
 })
+
+/**
+ * 空闲时预加载尚未访问的页面分包（桌面端 router 的 startPreload 同源实现）。
+ * 放在 router 模块里是为了直接复用 routes 声明；启动延迟由服务内部控制。
+ */
+let stopPreload: (() => void) | null = null
+export function startRoutePreloading(enabled: () => boolean): void {
+  stopPreload?.()
+  stopPreload = startRoutePreload(routes, { enabled, priorityOrder: MOBILE_ROUTE_PRIORITY })
+}
 
 export default router

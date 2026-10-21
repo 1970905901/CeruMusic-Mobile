@@ -64,6 +64,7 @@ export interface AppSettings {
   audioCacheMaxQuality: string
   localScanFilterMinSizeKb: number
   localScanFilterMinDurationSec: number
+  routePreloadEnabled: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -119,7 +120,8 @@ const defaults: AppSettings = {
   audioCacheMaxBytes: 1024 * 1024 * 1024,
   audioCacheMaxQuality: 'flac',
   localScanFilterMinSizeKb: 100,
-  localScanFilterMinDurationSec: 30
+  localScanFilterMinDurationSec: 30,
+  routePreloadEnabled: true
 }
 
 function load(): AppSettings {
