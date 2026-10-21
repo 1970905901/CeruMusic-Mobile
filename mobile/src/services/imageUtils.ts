@@ -40,10 +40,12 @@ export async function compressAndCropToSquare(
             return
           }
 
-          const squareSize = Math.min(naturalWidth, naturalHeight)
-          const sx = (naturalWidth - squareSize) / 2
-          const sy = (naturalHeight - squareSize) / 2
-          const targetSize = Math.max(1, Math.min(squareSize, maxSize))
+          const geometry = squareCropGeometry(naturalWidth, naturalHeight, maxSize)
+          if (!geometry) {
+            resolve(dataUrl)
+            return
+          }
+          const { sx, sy, squareSize, targetSize } = geometry
 
           const canvas = document.createElement('canvas')
           canvas.width = targetSize
@@ -66,5 +68,37 @@ export async function compressAndCropToSquare(
     })
   } catch {
     return blobToDataUrl(file)
+  }
+}
+
+export interface SquareCropGeometry {
+  sx: number
+  sy: number
+  squareSize: number
+  targetSize: number
+}
+
+/**
+ * 计算「居中裁成正方形 + 等比缩到 maxSize」的取图参数。
+ *
+ * 抽成纯函数的原因：这段几何之前内联在 canvas 回调里，任何边界
+ * （零尺寸、非正方形、maxSize 异常）都只能靠肉眼判断。
+ * 返回 null 表示输入不可用，调用方应回落到原始 Data URL。
+ */
+export function squareCropGeometry(
+  width: number,
+  height: number,
+  maxSize = 600
+): SquareCropGeometry | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null
+  if (width <= 0 || height <= 0) return null
+  const squareSize = Math.min(width, height)
+  if (!Number.isFinite(squareSize) || squareSize <= 0) return null
+  const limit = Number.isFinite(maxSize) && maxSize > 0 ? maxSize : 600
+  return {
+    sx: (width - squareSize) / 2,
+    sy: (height - squareSize) / 2,
+    squareSize,
+    targetSize: Math.max(1, Math.min(squareSize, limit))
   }
 }
