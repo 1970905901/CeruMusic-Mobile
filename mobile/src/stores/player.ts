@@ -21,6 +21,12 @@ import { applyAudioOutput } from '@/services/audioOutput'
 import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
 import { timeDomainRms } from '@/services/crossfadeCurve'
 import {
+  buildShuffleOrder,
+  isShuffleOrderValid,
+  nextShuffleKey,
+  previousShuffleKey
+} from '@/services/shuffleOrder'
+import {
   type CrossfadeElement,
   cancelCrossfade,
   initCrossfade,
@@ -75,13 +81,16 @@ export const usePlayerStore = defineStore('player', () => {
   const playbackRate = ref(1)
   const repeat = ref<RepeatMode>('off')
   const shuffle = ref(false)
-  const shuffleOrder = ref<number[]>([])
+  /** 洗牌顺序存的是歌曲 key，不是下标：队列增删后下标会指向别的歌。 */
+  const shuffleOrder = ref<string[]>([])
   const error = ref<string | null>(null)
   const loading = computed(() => status.value === 'loading')
   const currentTrack = computed(() => queue.value[currentIndex.value] ?? null)
   const hasNext = computed(() => {
     if (!queue.value.length) return false
     if (repeat.value === 'all') return true
+    // 随机模式下队列下标说明不了还有没有下一首——顺序是打乱的。
+    if (shuffle.value) return queue.value.length > 1
     return currentIndex.value < queue.value.length - 1
   })
   const hasPrevious = computed(() => currentIndex.value > 0 || positionMs.value > 3000)
@@ -117,7 +126,9 @@ export const usePlayerStore = defineStore('player', () => {
       muted: muted.value,
       playbackRate: playbackRate.value,
       repeat: repeat.value,
-      shuffle: shuffle.value
+      shuffle: shuffle.value,
+      // 洗牌顺序一起持久化：否则重启后顺序丢失，用户正在听的一轮会被重洗。
+      shuffleOrder: shuffleOrder.value
     }
   }
 
@@ -143,6 +154,10 @@ export const usePlayerStore = defineStore('player', () => {
       playbackRate.value = Math.max(0.5, Math.min(3, Number(saved.playbackRate) || 1))
       repeat.value = saved.repeat === 'one' || saved.repeat === 'all' ? saved.repeat : 'off'
       shuffle.value = !!saved.shuffle
+      // 旧版本没有这个字段，且队列可能变过——只接受仍然对得上的顺序，
+      // 否则丢弃，由 ensureShuffleOrder 重洗。
+      const savedOrder = Array.isArray(saved.shuffleOrder) ? saved.shuffleOrder.map(String) : []
+      shuffleOrder.value = isShuffleOrderValid(savedOrder, queueKeys()) ? savedOrder : []
       audio.volume = volume.value
       audio.muted = muted.value
     } catch {
@@ -156,6 +171,28 @@ export const usePlayerStore = defineStore('player', () => {
       URL.revokeObjectURL(objectUrl)
     }
     objectUrl = null
+  }
+
+  function queueKeys(): string[] {
+    return queue.value.map((item) => item.key)
+  }
+
+  /**
+   * 队列变化后同步洗牌顺序。
+   *
+   * 只在顺序确实失效时重建：用户点了一首歌、往队列里插了歌，都不该把已经
+   * 洗好的顺序打乱重来——原实现每次都重置成递增序列，于是打开随机播放后
+   * 点任意一首歌，随机就静默失效了。
+   */
+  function ensureShuffleOrder(rebuild = false): void {
+    if (!shuffle.value) {
+      shuffleOrder.value = []
+      return
+    }
+    const keys = queueKeys()
+    if (rebuild || !isShuffleOrderValid(shuffleOrder.value, keys)) {
+      shuffleOrder.value = buildShuffleOrder(keys)
+    }
   }
 
   function setStatus(value: PlaybackStatus) {
@@ -483,12 +520,13 @@ export const usePlayerStore = defineStore('player', () => {
       const index = nextQueue.findIndex((item) => item.key === track.key)
       queue.value = nextQueue
       currentIndex.value = index >= 0 ? index : 0
-      shuffleOrder.value = nextQueue.map((_, i) => i)
+      // 换成新的播放上下文时才重新洗牌；同一队列里点歌不应打乱。
+      ensureShuffleOrder(true)
       publishQueue()
     } else if (!queue.value.some((item) => item.key === track.key)) {
       queue.value = [track, ...queue.value]
       currentIndex.value = 0
-      shuffleOrder.value = queue.value.map((_, i) => i)
+      ensureShuffleOrder()
       publishQueue()
     } else {
       currentIndex.value = queue.value.findIndex((item) => item.key === track.key)
@@ -726,14 +764,26 @@ export const usePlayerStore = defineStore('player', () => {
     }
   })
 
+  /**
+   * 下一首的下标。
+   *
+   * 随机模式下沿洗牌顺序推进游标（桌面版 `resolveNextSong` 的语义），
+   * 而不是从剩余项里再抽一次：逐个抽样会重复唱同一首，游标推进才能在一轮内
+   * 把队列听完。循环模式走到末尾时重洗，单曲循环不经过这里（由 `handleEnded` 处理）。
+   */
   function nextIndex(): number {
     if (!queue.value.length) return -1
     if (shuffle.value && queue.value.length > 1) {
-      const candidates = shuffleOrder.value.filter((index) => index !== currentIndex.value)
-      if (candidates.length) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)]
-        return pick
+      ensureShuffleOrder()
+      const step = nextShuffleKey(shuffleOrder.value, currentTrack.value?.key, {
+        wrap: repeat.value === 'all'
+      })
+      shuffleOrder.value = step.order
+      if (step.key) {
+        const index = queue.value.findIndex((item) => item.key === step.key)
+        if (index >= 0) return index
       }
+      return -1
     }
     if (currentIndex.value < queue.value.length - 1) return currentIndex.value + 1
     return repeat.value === 'all' ? 0 : -1
@@ -753,6 +803,20 @@ export const usePlayerStore = defineStore('player', () => {
     if (positionMs.value > 3000) {
       seek(0)
       return
+    }
+    if (shuffle.value && queue.value.length > 1) {
+      // 随机模式下「上一首」沿洗牌顺序回退，而不是按队列下标倒退。
+      ensureShuffleOrder()
+      const key = previousShuffleKey(shuffleOrder.value, currentTrack.value?.key)
+      if (key) {
+        const index = queue.value.findIndex((item) => item.key === key)
+        if (index >= 0) {
+          currentIndex.value = index
+          publishQueue()
+          await loadTrack(queue.value[index], true)
+          return
+        }
+      }
     }
     if (currentIndex.value <= 0) {
       if (repeat.value === 'all' && queue.value.length) {
@@ -785,9 +849,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   function toggleShuffle(): void {
     shuffle.value = !shuffle.value
-    if (shuffle.value) {
-      shuffleOrder.value = queue.value.map((_, index) => index).sort(() => Math.random() - 0.5)
-    }
+    ensureShuffleOrder(true)
     publishState()
   }
 
@@ -800,10 +862,9 @@ export const usePlayerStore = defineStore('player', () => {
     if (!mode) return
     if (mode.repeat) repeat.value = mode.repeat
     if (typeof mode.shuffle === 'boolean') {
+      const changed = shuffle.value !== mode.shuffle
       shuffle.value = mode.shuffle
-      if (mode.shuffle) {
-        shuffleOrder.value = queue.value.map((_, index) => index).sort(() => Math.random() - 0.5)
-      }
+      ensureShuffleOrder(changed)
     }
     publishState()
   }
@@ -861,7 +922,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (existing >= 0) queue.value.splice(existing, 1)
     const insertAt = Math.max(0, currentIndex.value + 1)
     queue.value.splice(insertAt, 0, track)
-    shuffleOrder.value = queue.value.map((_, index) => index)
+    ensureShuffleOrder()
     publishQueue()
   }
 
@@ -871,7 +932,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (!queue.value.length) {
       queue.value = [...tracks]
       currentIndex.value = 0
-      shuffleOrder.value = queue.value.map((_, index) => index)
+      ensureShuffleOrder()
       publishQueue()
       return
     }
@@ -883,7 +944,7 @@ export const usePlayerStore = defineStore('player', () => {
     const insertAt = currentIndex.value + 1
     const tracksToInsert = tracks.filter((t) => t.key !== currentKey)
     queue.value.splice(insertAt, 0, ...tracksToInsert)
-    shuffleOrder.value = queue.value.map((_, index) => index)
+    ensureShuffleOrder()
     publishQueue()
   }
 
@@ -949,7 +1010,7 @@ export const usePlayerStore = defineStore('player', () => {
       if (!next.some((item) => item.key === track.key)) next.push(track)
     }
     queue.value = next
-    shuffleOrder.value = next.map((_, index) => index)
+    ensureShuffleOrder()
     publishQueue()
   }
 
@@ -960,7 +1021,7 @@ export const usePlayerStore = defineStore('player', () => {
       return rawEntityToTrack(entity, provider?.pluginKey)
     })
     currentIndex.value = 0
-    shuffleOrder.value = queue.value.map((_, index) => index)
+    ensureShuffleOrder()
     publishQueue()
   }
 
@@ -972,7 +1033,7 @@ export const usePlayerStore = defineStore('player', () => {
     const wasActive = status.value === 'playing' || status.value === 'loading'
     const previousIndex = currentIndex.value
     queue.value = queue.value.filter((track) => !removing.has(track.key))
-    shuffleOrder.value = queue.value.map((_, index) => index)
+    ensureShuffleOrder()
     if (!queue.value.length) {
       currentIndex.value = -1
       if (removingCurrent) resetAudio()
