@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39557607656`（功能提交 `446e7c8`），Android/iOS 均成功
+- 最新 CI：`39559250858`（功能提交 `3d47b3a`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -124,6 +124,7 @@
 - 通知未读角标：subtractUnread 统一处理总数与分类扣减，计数落后于列表时夹到 0，脏计数按 0 处理。
 - 插件页面隔离：PLUGIN_SURFACE_CSP 抽成常量并被测试锁定（禁 connect/frame/form/base、脚本仅 data:、无 unsafe-eval），escapeSurfaceCss 统一处理 </style 提前闭合；插件脚本始终以 data: base64 内联，不引入外部源。
 - 封面取色兜底：dominantColorFromPixels 在过滤掉近黑/近白后若无可用色（纯黑白封面）时回落默认强调色，不再返回 rgb(0,0,0) 让深色背景上的歌词与光晕不可见；渐变取色始终返回请求数量并可重复取色。
+- 图片裁切几何：squareCropGeometry 抽出居中方形裁切与等比缩放计算，零/负数/NaN 尺寸返回 null 由调用方回落原图，maxSize 非法时回到 600，小图不放大。
 - 路由预加载：`services/routePreload.ts` 在首屏挂载后按「底部标签顺序 → 播放页 → 设置 → 插件 → 详情页」在空闲时逐个拉取页面分包；用户交互后冷却 600ms，应用切后台暂停，设置页可关闭。队列构建与调度均可单测。
 - 无感过渡音效一致：`services/audioEffects.ts` 的 `AudioEffectChain` 改为可共享 `AudioContext` 并用 `output` 节点接入，尾巴元素在交接前建立第二条同参数效果链，EQ/低音/环绕/响度与主链一致，切歌瞬间不再出现音色跳变；尾巴淡出仍由包络直接写 `volume`，不会与主链增益叠加过响。
 
@@ -151,7 +152,7 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：72 个测试文件，388 个测试全部通过
+- `npm run test`：73 个测试文件，395 个测试全部通过
 - `npm run build`：通过
 - GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39552191989，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
