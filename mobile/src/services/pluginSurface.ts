@@ -46,8 +46,15 @@ function utf8Base64(value: string): string {
   return btoa(binary)
 }
 
-function dataScript(source: string): string {
+export function dataScript(source: string): string {
   return '<script src="data:text/javascript;base64,' + utf8Base64(source) + '"></script>'
+}
+
+export const PLUGIN_SURFACE_CSP =
+  "default-src 'none'; script-src data:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
+
+export function escapeSurfaceCss(css: string): string {
+  return css.replace(/<\/style/gi, '<\\/style')
 }
 
 export interface PluginWebSurfaceDocument {
@@ -102,10 +109,11 @@ export async function createPluginWebSurface(
     '  setTimeout(report, 80);' +
     '  setTimeout(report, 500);' +
     '})();'
-  const surfaceCss = collectSurfaceStyles([record])
-    .map((entry) => entry.css)
-    .join('\n')
-    .replace(/<\/style/gi, '<\\/style')
+  const surfaceCss = escapeSurfaceCss(
+    collectSurfaceStyles([record])
+      .map((entry) => entry.css)
+      .join('\n')
+  )
   const html =
     '<!doctype html><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
