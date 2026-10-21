@@ -38,8 +38,11 @@ import { restartSettingsSync, startSettingsSync, stopSettingsSync } from '@/serv
 import { installLegacyPolyfills } from '@/utils/polyfills'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
 import { settingsChangedKeys } from '@/services/pluginEvents'
+import { initAppVisibility, setNativeActive } from '@/services/appVisibility'
 
 installLegacyPolyfills()
+
+initAppVisibility()
 
 function applyLayoutCapabilities() {
   const flex = document.createElement('div')
@@ -176,6 +179,7 @@ void (async () => {
 
 if (Capacitor.isNativePlatform()) {
   void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    setNativeActive(isActive)
     if (!isActive) usePlayerStore(pinia).persistState()
     else useNotificationsStore(pinia).wakeRealtime()
   })

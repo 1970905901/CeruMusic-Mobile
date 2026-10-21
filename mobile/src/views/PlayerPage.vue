@@ -1,7 +1,7 @@
-﻿<template>
+<template>
   <ion-page
     class="player-page"
-    :class="[`bg-renderer-${backgroundRenderer}`, { 'background-animated': settings.settings.playerBackgroundAnimation }]"
+    :class="[`bg-renderer-${backgroundRenderer}`, { 'background-animated': settings.settings.playerBackgroundAnimation && !isAppBackground }]"
   >
     <ion-content :fullscreen="true" class="player-content" @click.capture="controlsIdle.poke()" @scroll="controlsIdle.poke()">
       <div ref="backgroundHost" class="bg-beat-host">
@@ -72,7 +72,7 @@
           </div>
 
           <AudioVisualizer
-            v-if="settings.settings.audioVisualizer && player.isPlaying"
+            v-if="settings.settings.audioVisualizer && player.isPlaying && !isAppBackground"
             class="player-visualizer"
             :height="52"
             :bar-count="48"
@@ -357,6 +357,7 @@ import { backgroundBeatStyle, createBackgroundBeatSmoother } from '@/services/ba
 import { fourColorGradientBackground } from '@/services/backgroundGradient'
 import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/services/coverColor'
 import { startLowFreqSampler } from '@/services/audioVisualizer'
+import { useAppBackground } from '@/services/appVisibility'
 import { crossfadeState } from '@/services/crossfade'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import { createRequestGuard } from '@/services/requestGuard'
@@ -382,6 +383,11 @@ const bgStyle = computed(() => {
   return { backgroundImage: 'url("' + url + '")' }
 })
 const backgroundRenderer = computed(() => settings.settings.playerBackgroundRenderer)
+/**
+ * 桌面端 `useAppBackground` 的移动端用法：切后台时停止高开销渲染。
+ * 音频继续播放（后台播放依赖系统媒体服务），这里只暂停视觉层。
+ */
+const { isAppBackground } = useAppBackground()
 /** Desktop parity: only 网格渐变 consumes the low-frequency beat. */
 const beatEnabled = computed(
   () => settings.settings.playerBackgroundBeat && backgroundSupportsBeat(backgroundRenderer.value)
@@ -522,8 +528,8 @@ function applyBeat(value: number): void {
 }
 
 watch(
-  [beatEnabled, () => player.isPlaying],
-  ([enabled, playing]) => {
+  [beatEnabled, () => player.isPlaying, () => isAppBackground.value],
+  ([enabled, playing, background]) => {
     if (stopBeatSampler) {
       stopBeatSampler()
       stopBeatSampler = null
@@ -536,7 +542,7 @@ watch(
       host.style.removeProperty('--bg-beat-scale')
       host.style.removeProperty('--bg-beat-brightness')
     }
-    if (!enabled || !playing) return
+    if (!enabled || !playing || background) return
     stopBeatSampler = startLowFreqSampler(applyBeat)
   },
   { immediate: true }

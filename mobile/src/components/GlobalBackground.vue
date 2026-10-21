@@ -27,6 +27,7 @@ import {
   isGlobalBackgroundActive,
   resolveGlobalBackgroundUrl
 } from '@/services/globalBackground'
+import { useAppBackground } from '@/services/appVisibility'
 
 const settings = useSettingsStore()
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -35,6 +36,8 @@ const background = computed(() => settings.settings.globalBackground)
 const active = computed(() => isGlobalBackgroundActive(background.value))
 const mediaUrl = computed(() => resolveGlobalBackgroundUrl(background.value.url))
 const mediaFilter = computed(() => buildGlobalBackgroundFilter(background.value))
+/** 切后台时停掉视频解码，图片壁纸不受影响。 */
+const { isAppBackground } = useAppBackground()
 
 /** Browsers may reject autoplay; the still frame stays visible either way. */
 function startVideo() {
@@ -45,10 +48,17 @@ function startVideo() {
 }
 
 watch(
-  [active, mediaUrl],
+  [active, mediaUrl, () => isAppBackground.value],
   async ([enabled]) => {
     if (!enabled) return
     await nextTick()
+    const video = videoRef.value
+    if (!video) return
+    // 后台不排队解码；回到前台后恢复播放（仍由浏览器决定是否允许自动播放）。
+    if (isAppBackground.value) {
+      video.pause()
+      return
+    }
     startVideo()
   },
   { flush: 'post' }
