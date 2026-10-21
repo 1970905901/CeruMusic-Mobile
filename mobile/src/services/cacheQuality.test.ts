@@ -3,10 +3,10 @@ import {
   CACHE_QUALITY_COLORS,
   CACHE_UNKNOWN_COLOR,
   buildDonutArcs,
+  cacheUsageOf,
   formatCacheBytes,
   summarizeCacheQualities
 } from './cacheQuality'
-
 describe('formatCacheBytes', () => {
   it('scales units and clamps invalid input', () => {
     expect(formatCacheBytes(0)).toBe('0 B')
@@ -97,5 +97,37 @@ describe('buildDonutArcs', () => {
     const arcs = buildDonutArcs([{ color: 'a', percent: -20 }, { color: 'b', percent: Number.NaN }], 50)
     expect(arcs.every((arc) => arc.dashArray.startsWith('0 '))).toBe(true)
     expect(buildDonutArcs([])).toEqual([])
+  })
+})
+
+describe('cacheUsageOf', () => {
+  it('computes the bar percentage against a valid limit', () => {
+    expect(cacheUsageOf(50 * 1024 ** 2, 100 * 1024 ** 2)).toEqual({
+      percent: 50,
+      barPercent: 50,
+      overLimit: false,
+      limited: true
+    })
+  })
+
+  it('clamps the bar but keeps the real percentage when over the limit', () => {
+    const usage = cacheUsageOf(150, 100)
+    expect(usage.percent).toBe(150)
+    expect(usage.barPercent).toBe(100)
+    expect(usage.overLimit).toBe(true)
+  })
+
+  it('treats an unlimited cache as zero usage', () => {
+    expect(cacheUsageOf(999, 0)).toEqual({
+      percent: 0,
+      barPercent: 0,
+      overLimit: false,
+      limited: false
+    })
+    expect(cacheUsageOf(999, Number.NaN).limited).toBe(false)
+  })
+
+  it('never reports negative usage', () => {
+    expect(cacheUsageOf(-5, 100)).toMatchObject({ percent: 0, barPercent: 0, overLimit: false })
   })
 })

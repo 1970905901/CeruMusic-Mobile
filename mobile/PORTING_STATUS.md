@@ -133,6 +133,7 @@
 - 一起听弹幕：`components/LtDanmakuLayer.vue` + `services/ltDanmaku.ts` 对齐桌面端 `LtDanmakuLayer`——只把 text / emoji 消息飘过播放页歌词区，8 条轨道按「最早可用前 5 条随机」分配并带 1s 轨道冷却，单条飞行 6.5–11s 随机、字号 12–14px 抖动，速度与字号倍率可在设置里调；进房时已有历史不重放，离房清空，关开关立即清掉在飞的弹幕。随机源可注入，轨道/时长/裁剪规则均有单测。
 - 歌词字号设置修复：`PlayerPage.vue` 的 `.lyric-line` 里 `font-size` 被重复声明（`var(--lyric-size)` 之后又写死 `16px`），导致「歌词字号」滑杆实际无效；现在保留变量并补上对齐桌面端 `LyricFontSettings` 的「歌词字号倍率」「歌词字重」两项设置，字重通过 `--lyric-weight` 变量下发。
 - 缓存音质占比：`services/cacheQuality.ts` + 设置页「音频缓存」新增环形图与图例，对齐桌面端 `Settings/MusicCache.vue`——`getMediaCacheStats` 额外按音质聚合条目数与字节数，排序沿用已安装插件声明的音质顺序（未知音质垫底、中性灰），占比相对音频总量，中心显示音频总占用。移动端用 SVG `stroke-dasharray` 绘制，不引入 echarts，避免为一张环形图增加约 1 MB 依赖。
+- 缓存容量占用与手动清理：设置页「音频缓存」新增容量进度条与超限警告，nforceMediaCacheLimit 的语义明确为「只在手动触发或改上限时清理」——超出上限不会静默删除，而是显示「清理到上限」按钮并提示仍超出部分；占用比例由 services/cacheQuality.ts 的 cacheUsageOf 计算（上限为 0/非法时视为不限），进度条夹到 0–100 但真实占比保留，便于看出超了多少。
 
 ### 其他
 - 云账号与 Logto。

@@ -122,3 +122,35 @@ export function buildDonutArcs(
     return arc
   })
 }
+
+export interface CacheUsage {
+  /** 真实占用比例，可能超过 100（上限调小后尚未清理） */
+  percent: number
+  /** 进度条用值，夹到 0–100 */
+  barPercent: number
+  /** 是否已超过上限，需要清理 */
+  overLimit: boolean
+  /** 上限是否有效（0 / 非数字视为不限） */
+  limited: boolean
+}
+
+/**
+ * 缓存占用比例。上限非法或为 0 时视为不限，进度条显示 0。
+ *
+ * 与桌面端一致：超出上限只标记警告并提供「立即清理」，不自动静默删除，
+ * 避免用户把上限调小后缓存被立刻清空而毫不知情。
+ */
+export function cacheUsageOf(sizeBytes: number, maxBytes: number): CacheUsage {
+  const size = Math.max(0, Number(sizeBytes) || 0)
+  const max = Number(maxBytes)
+  if (!Number.isFinite(max) || max <= 0) {
+    return { percent: 0, barPercent: 0, overLimit: false, limited: false }
+  }
+  const percent = (size / max) * 100
+  return {
+    percent,
+    barPercent: Math.max(0, Math.min(100, percent)),
+    overLimit: size > max,
+    limited: true
+  }
+}

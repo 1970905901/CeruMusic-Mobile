@@ -386,10 +386,35 @@
             <h2>已用空间</h2>
             <p>{{ cacheStats.supported ? formatCacheSize(cacheStats.sizeBytes) + ' · ' + cacheStats.entries + ' 项' : '不支持' }}</p>
           </ion-label>
+          <ion-button
+            v-if="cacheUsage.overLimit"
+            fill="outline"
+            size="small"
+            color="warning"
+            :disabled="clearingCache || !cacheStats.entries"
+            @click="enforceCacheLimit"
+          >
+            清理到上限
+          </ion-button>
           <ion-button fill="outline" size="small" :disabled="clearingCache || !cacheStats.entries" @click="clearAudioCache">
             清理
           </ion-button>
         </ion-item>
+        <div v-if="cacheStats.supported" class="cache-usage">
+          <div class="cache-usage-bar" :class="{ over: cacheUsage.overLimit }">
+            <span :style="{ width: cacheUsage.barPercent + '%' }" />
+          </div>
+          <div class="cache-usage-caption">
+            <span>{{ formatCacheSize(cacheStats.sizeBytes) }}</span>
+            <span v-if="cacheUsage.limited">
+              {{ cacheUsage.percent.toFixed(cacheUsage.overLimit ? 0 : 1) }}% · 上限 {{ formatCacheSize(settings.settings.audioCacheMaxBytes) }}
+            </span>
+            <span v-else>不限制容量</span>
+          </div>
+          <p v-if="cacheUsage.overLimit" class="cache-usage-warn">
+            已超过容量上限，可手动清理到上限；超出部分不会自动删除。
+          </p>
+        </div>
         <div v-if="cacheQuality.segments.length" class="cache-quality">
           <div class="cache-quality-title">音质占比</div>
           <div class="cache-quality-body">
@@ -966,7 +991,7 @@ import {
 import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
-import { buildDonutArcs, summarizeCacheQualities } from '@/services/cacheQuality'
+import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
@@ -1020,6 +1045,10 @@ const cacheQuality = computed(() =>
   )
 )
 const cacheDonutArcs = computed(() => buildDonutArcs(cacheQuality.value.segments))
+/** 占用比例只用于展示与「清理到上限」入口，不触发自动删除。 */
+const cacheUsage = computed(() =>
+  cacheUsageOf(cacheStats.value.sizeBytes, settings.settings.audioCacheMaxBytes)
+)
 const clearingCache = ref(false)
 const choosingSafDownload = ref(false)
 
@@ -1361,6 +1390,24 @@ async function changeAudioCacheLimit(value: number) {
   }
 }
 
+/** 手动清理到当前上限（桌面端「立即清理到上限」），不回写设置避免误改策略。 */
+async function enforceCacheLimit() {
+  if (clearingCache.value) return
+  clearingCache.value = true
+  try {
+    const result = await enforceMediaCacheLimit(settings.settings.audioCacheMaxBytes)
+    if (result.evicted > 0) {
+      await toast(`已清理 ${result.evicted} 项，释放 ${formatCacheSize(result.freedBytes)}`)
+    } else {
+      await toast('缓存未超过上限')
+    }
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '清理缓存失败', 'danger')
+  } finally {
+    await refreshCacheStats()
+    clearingCache.value = false
+  }
+}
 async function clearAudioCache() {
   if (clearingCache.value) return
   clearingCache.value = true
@@ -1548,7 +1595,40 @@ async function toast(message: string, color = 'medium') {
   letter-spacing: 0.04em;
   padding: 0 18px 8px;
 }
-.cache-quality {
+.cache-usage {
+  padding: 10px 16px 14px;
+}
+.cache-usage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ceru-bg-soft);
+  overflow: hidden;
+}
+.cache-usage-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ceru-brand);
+  transition: width 0.25s ease;
+}
+.cache-usage-bar.over span {
+  background: #e37318;
+}
+.cache-usage-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.cache-usage-warn {
+  margin: 6px 0 0;
+  color: #e37318;
+  font-size: 10px;
+  line-height: 1.5;
+}.cache-quality {
   padding: 12px 16px 16px;
   border-top: 1px solid var(--ceru-border);
 }
