@@ -417,10 +417,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
   }
 
   function getTargetPosition(snapshot: PlaybackSnapshot): number {
-    const elapsed = snapshot.isPlaying
-      ? Math.max(0, (serverNow() - Number(snapshot.anchorAt || 0)) / 1000)
-      : 0
-    return Math.max(0, Number(snapshot.anchorPos || 0) + elapsed)
+    return targetPositionAt(snapshot, serverNow())
   }
 
   function isCurrentSong(song: SongRef): boolean {
@@ -731,3 +728,26 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     canRemoveQueueItem
   }
 })
+
+/**
+ * 房间播放位置推算：以服务端锚点为基础，播放中按服务端时钟补上流逝时间。
+ *
+ * 抽成纯函数便于验证边界：暂停时不补偿、锚点在未来（时钟偏差）时不倒扣、
+ * 负数锚点归零。now 由调用方传入，测试无需伪造全局时钟。
+ */
+/** 服务端字段可能是字符串甚至脏值，先收敛成有限数再做时间推算。 */
+function finiteOrZero(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export function targetPositionAt(
+  snapshot: { isPlaying: boolean; anchorAt?: number | string; anchorPos?: number | string },
+  now: number
+): number {
+  const anchorPos = finiteOrZero(snapshot.anchorPos)
+  if (!snapshot.isPlaying) return Math.max(0, anchorPos)
+  const anchorAt = finiteOrZero(snapshot.anchorAt)
+  const elapsed = Math.max(0, (now - anchorAt) / 1000)
+  return Math.max(0, anchorPos + elapsed)
+}
