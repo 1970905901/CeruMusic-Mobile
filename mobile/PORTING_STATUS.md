@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39634160557`（功能提交 `4493e52`），Android/iOS 均成功
+- 最新 CI：`39636467190`（功能提交 `e02acee`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -77,6 +77,7 @@
 - 本地音乐导入。
 - 本地音乐扫描过滤：支持按文件大小（默认 100KB）与时长（默认 30s）两层过滤短音频与系统提示音，设置页提供自定义阈值与“不过滤”选项，扫描与 SAF 文件夹导入自动反馈导入与过滤数量。
 - Android SAF 导入音频。
+- SAF 导入跳过原因：`importLocalFile` 原先对「重复文件」与「被时长过滤」都返回 `null`，调用方分不清，于是 `filteredDuration` 永远是 0，界面只能笼统报「跳过/过滤」——用户看不出过滤规则到底有没有生效，也分不清某首歌到底是「本来就有」还是「被判太短」。现在导入会带回原因（`size` / `duration` / `duplicate`），文件夹导入分别统计，结果提示里「已存在 N 首」与「过滤 N 首」分行说明。
 - Android SAF 下载目录。
 - 下载管理与批量操作：支持下载全部暂停、全部开始、清空队列（含部分已下载临时文件清理）与清空失败/取消记录，配套二次确认弹窗。
 - 下载队列补位：`services/downloadPump.ts` 把「现在该拉起哪些任务」抽成纯函数。原先并发位只在任务完成或失败时才重新评估，于是**暂停或取消一个正在下载的任务会白白空出一个位置**，队列里剩下的歌要等下一次有任务结束才动；「全部暂停」后再「全部开始」最明显——只有前 N 首会重新跑。现在暂停、取消、恢复以及修改并发数之后都会统一补位，按队列顺序拉起直到占满空闲位置。
@@ -165,9 +166,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：90 个测试文件，533 个测试全部通过
+- `npm run test`：90 个测试文件，534 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39634160557）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39636467190）
 
 ## 当前未完成
 
