@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39548137336`（功能提交 `a191f5b`），Android/iOS 均成功
+- 最新 CI：`39548831682`（功能提交 `0d599a4`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -114,6 +114,7 @@
 - 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
 - 自伤援助提示唯一实现：`services/communitySupport.ts` 收敛了原先在社区列表与帖子详情各写一份的 `showSupport`；发帖、编辑、评论三处发布成功后统一调用 `showSupportNotice`，弹窗展示标题、正文与心理援助热线。
 - 分享歌单分页防死循环：`services/sharedPlaylist.ts` 改为按「新增歌曲数」累计进度，并沿用桌面版口径——连续两页没有新增歌曲即停止；此前重复页会让 `loaded` 虚增而提前结束，或在异常音源上空转。
+- 播放历史口径：`stores/library.ts` 的 `mergeHistoryEntry` / `planHistoryCleanup` 抽成纯函数，同 key 只保留最新一条并裁剪到 200 条（原实现先删 3 条再按 key 去重，规则互相矛盾且上限是 300）。
 - 路由预加载：`services/routePreload.ts` 在首屏挂载后按「底部标签顺序 → 播放页 → 设置 → 插件 → 详情页」在空闲时逐个拉取页面分包；用户交互后冷却 600ms，应用切后台暂停，设置页可关闭。队列构建与调度均可单测。
 - 无感过渡音效一致：`services/audioEffects.ts` 的 `AudioEffectChain` 改为可共享 `AudioContext` 并用 `output` 节点接入，尾巴元素在交接前建立第二条同参数效果链，EQ/低音/环绕/响度与主链一致，切歌瞬间不再出现音色跳变；尾巴淡出仍由包络直接写 `volume`，不会与主链增益叠加过响。
 
@@ -141,9 +142,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：61 个测试文件，324 个测试全部通过
+- `npm run test`：62 个测试文件，329 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39548137336，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39548831682，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
