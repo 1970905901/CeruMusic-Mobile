@@ -1,18 +1,27 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
-import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import type { DownloadStatus, DownloadTask } from '@/types/download'
-import type { Track } from '@/types/music'
+import type { LyricDocument, Track } from '@/types/music'
 import { getDb, toPlain } from '@/services/db'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { buildDownloadFilename } from '@/utils/filename'
-import { isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
+import {
+  isFlacFile,
+  isMp3File,
+  writeFlacTagsToBase64,
+  writeMp3TagsToBase64,
+  type WritableAudioTags
+} from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { deleteSafDocument, writeSafFromApp } from '@/services/safImport'
+import { parseLyrics } from '@/services/lyrics'
+import { blobToDataUrl } from '@/services/imageUtils'
+import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -156,23 +165,85 @@ export const useDownloadStore = defineStore('downloads', () => {
     return prefix + '/' + task.id + '.' + extension
   }
 
+  /**
+   * 解析下载时需要的歌词文档，供内嵌与「单独下载歌词文件」共用。
+   * 与桌面版 DownloadManager 的 lyricFetcher 同口径：失败不阻断下载，只记警告。
+   */
+  async function resolveTagLyric(
+    task: DownloadTask,
+    track: Track | undefined
+  ): Promise<LyricDocument | null> {
+    if (!track) return null
+    try {
+      const localLyrics = typeof track.raw?.lrc === 'string' ? track.raw.lrc : ''
+      if (localLyrics) return parseLyrics(localLyrics)
+      return parseLyrics(await pluginStore.lyrics(track))
+    } catch (error) {
+      console.warn('获取下载歌词失败', error)
+      return null
+    }
+  }
+
+  /**
+   * 拉取封面并转成 data URL 以便嵌入标签。跨域直链拿不到时返回 undefined，
+   * 与桌面版一致——封面失败不影响音频与歌词写入。
+   */
+  async function resolveTagCover(task: DownloadTask): Promise<string | undefined> {
+    const url = task.cover
+    if (!url) return undefined
+    if (url.startsWith('data:')) return url
+    try {
+      const response = await CapacitorHttp.request({
+        url,
+        method: 'GET',
+        responseType: 'blob',
+        connectTimeout: 15000,
+        readTimeout: 30000
+      })
+      if (response.status < 200 || response.status >= 300) return undefined
+      const data = response.data
+      if (data instanceof Blob) return await blobToDataUrl(data)
+      const mime =
+        response.headers?.['content-type'] || response.headers?.['Content-Type'] || 'image/jpeg'
+      const base64 = await responseToBase64(data)
+      return `data:${mime};base64,${base64}`
+    } catch (error) {
+      console.warn('获取下载封面失败', error)
+      return undefined
+    }
+  }
+
   async function prepareDownloadData(
     task: DownloadTask,
     base64: string,
     ext: string,
     mime: string
   ): Promise<string> {
-    if (!settings.settings.downloadWriteTags) return base64
+    const options = settings.tagWriteOptions
+    if (!embedsAnyTag(options)) return base64
     const isMp3 = isMp3File(`download.${ext}`, mime)
     const isFlac = isFlacFile(`download.${ext}`, mime)
     const isM4a = isM4aFile(`download.${ext}`, mime)
     if (!isMp3 && !isFlac && !isM4a) return base64
     const track = library.getTrack(task.trackKey)
     try {
-      const tags = {
-        title: task.title,
-        artists: task.artist.split(/\s*\/\s*/).filter(Boolean),
-        album: track?.album
+      const tags: WritableAudioTags = {
+        ...(options.basicInfo
+          ? {
+              title: task.title,
+              artists: task.artist.split(/\s*\/\s*/).filter(Boolean),
+              album: track?.album
+            }
+          : {}),
+        ...(options.cover ? { coverDataUrl: await resolveTagCover(task) } : {}),
+        ...(options.lyrics
+          ? {
+              lyrics: serializeTagLyrics(
+                await resolveTagLyric(task, track),
+                options.lyricFormat
+              ) || undefined
+            }
+          : {})
       }
       return isMp3
         ? writeMp3TagsToBase64(base64, tags)
@@ -182,6 +253,62 @@ export const useDownloadStore = defineStore('downloads', () => {
     } catch (error) {
       console.warn('写入下载文件标签失败', error)
       return base64
+    }
+  }
+
+  /** 音频文件同一路径下的同名歌词文件路径。 */
+  function sidecarLyricPath(audioPath: string, extension: string): string {
+    const slash = audioPath.lastIndexOf('/')
+    const dot = audioPath.lastIndexOf('.')
+    const base = dot > slash ? audioPath.slice(0, dot) : audioPath
+    return `${base}.${extension}`
+  }
+
+  /**
+   * 「单独下载歌词文件」：与桌面版 downloadWorker 一样，在音频同目录写一份同名歌词。
+   * 失败只记警告——歌词是附赠品，不能因为它让已完成的下载变成失败。
+   */
+  async function writeSidecarLyric(task: DownloadTask, audioPath: string): Promise<void> {
+    const options = settings.tagWriteOptions
+    if (!options.downloadLyrics) return
+    const track = library.getTrack(task.trackKey)
+    try {
+      const text = serializeTagLyrics(await resolveTagLyric(task, track), options.lyricFormat)
+      if (!text) return
+      const path = sidecarLyricPath(audioPath, tagLyricExtension(options))
+      if (task.directory === 'saf') {
+        if (!task.safUri) return
+        const stagingPath = `saf-staging/${task.id}.${tagLyricExtension(options)}`
+        await Filesystem.writeFile({
+          path: stagingPath,
+          data: text,
+          directory: Directory.Data,
+          encoding: Encoding.UTF8,
+          recursive: true
+        })
+        try {
+          await writeSafFromApp({
+            sourcePath: stagingPath,
+            treeUri: task.safUri,
+            relativePath: path,
+            mime: 'text/plain'
+          })
+        } finally {
+          await Filesystem.deleteFile({ path: stagingPath, directory: Directory.Data }).catch(
+            () => undefined
+          )
+        }
+        return
+      }
+      await Filesystem.writeFile({
+        path,
+        data: text,
+        directory: storageDirectory(task),
+        encoding: Encoding.UTF8,
+        recursive: true
+      })
+    } catch (error) {
+      console.warn('写入歌词文件失败', error)
     }
   }
 
@@ -216,6 +343,7 @@ export const useDownloadStore = defineStore('downloads', () => {
           relativePath: result.relativePath,
           mime
         })
+        await writeSidecarLyric(task, result.relativePath)
       } finally {
         await Filesystem.deleteFile({ path: stagingPath, directory: Directory.Data }).catch(() => undefined)
       }
@@ -237,6 +365,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       relativePath: path,
       mime
     })
+    await writeSidecarLyric(task, path)
     const track = library.getTrack(task.trackKey)
     if (track) {
       library.upsertTrack({

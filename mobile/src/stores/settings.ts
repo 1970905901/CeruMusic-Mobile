@@ -5,6 +5,11 @@ import {
   normalizeGlobalBackground,
   type GlobalBackgroundSettings
 } from '@/services/globalBackground'
+import {
+  DEFAULT_TAG_WRITE_OPTIONS,
+  normalizeTagWriteOptions,
+  type TagWriteOptions
+} from '@/services/tagWriteOptions'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -19,7 +24,8 @@ export interface AppSettings {
   deniedPermissions: Record<string, Record<string, boolean>>
   downloadQuality: string
   downloadFilenameTemplate: string
-  downloadWriteTags: boolean
+  /** 下载完成后写入音频文件的标签内容，对齐桌面版 tagWriteOptions。 */
+  tagWriteOptions: TagWriteOptions
   maxConcurrentDownloads: number
   autoPlayOnOpen: boolean
   showLyricsInPlayer: boolean
@@ -95,7 +101,7 @@ const defaults: AppSettings = {
   deniedPermissions: {},
   downloadQuality: '',
   downloadFilenameTemplate: '{artist} - {title}',
-  downloadWriteTags: false,
+  tagWriteOptions: { ...DEFAULT_TAG_WRITE_OPTIONS },
   maxConcurrentDownloads: 2,
   autoPlayOnOpen: false,
   showLyricsInPlayer: true,
@@ -170,6 +176,11 @@ function load(): AppSettings {
           ? parsed.localScanFilterMinDurationSec
           : defaults.localScanFilterMinDurationSec,
       globalBackground: normalizeGlobalBackground(parsed.globalBackground),
+      // 旧版本只有 downloadWriteTags 布尔值，升级时迁移为「基础信息」。
+      tagWriteOptions: normalizeTagWriteOptions(
+        parsed.tagWriteOptions,
+        (parsed as Record<string, unknown>).downloadWriteTags
+      ),
       playerBackgroundRenderer: getBackgroundRenderer(
         String(parsed.playerBackgroundRenderer ?? defaults.playerBackgroundRenderer)
       ).value
@@ -198,6 +209,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const isDark = computed(
     () => settings.value.theme === 'dark' || (settings.value.theme === 'system' && systemDark.value)
   )
+
+  /**
+   * 标签选项由云同步与插件写回，值不可信（可能是 null 或半截对象）。
+   * 读取一律走这里归一化，避免下载路径拿到非法值。
+   */
+  const tagWriteOptions = computed(() => normalizeTagWriteOptions(settings.value.tagWriteOptions))
 
   watch(
     settings,
@@ -291,6 +308,7 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     isDark,
+    tagWriteOptions,
     setTheme,
     setBackgroundRenderer,
     setProviderOwner,

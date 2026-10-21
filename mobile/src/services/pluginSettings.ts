@@ -3,7 +3,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'accent',
   'preferredQuality',
   'downloadQuality',
-  'downloadWriteTags',
+  'tagWriteOptions',
   'lyricFontSize',
   'lyricShowTranslation',
   'lyricShowRomanization',

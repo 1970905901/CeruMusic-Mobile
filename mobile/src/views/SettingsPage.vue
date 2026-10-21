@@ -824,13 +824,64 @@
         <ion-item>
           <ion-icon slot="start" :icon="pricetagOutline" color="primary" />
           <ion-label>
-            <h2>写入音频标签</h2>
-            <p>MP3 / FLAC 下载完成后写入标题、艺术家和专辑</p>
+            <h2>写入基础信息</h2>
+            <p>标题、艺术家与专辑；MP3 / FLAC / M4A 支持写入</p>
           </ion-label>
           <ion-toggle
-            :checked="settings.settings.downloadWriteTags"
-            @ionChange="settings.settings.downloadWriteTags = $event.detail.checked"
+            :checked="settings.tagWriteOptions.basicInfo"
+            @ionChange="setTagWriteOption('basicInfo', $event.detail.checked)"
           />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="imageOutline" color="primary" />
+          <ion-label>
+            <h2>写入封面</h2>
+            <p>把专辑封面嵌入音频文件</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.tagWriteOptions.cover"
+            @ionChange="setTagWriteOption('cover', $event.detail.checked)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>写入歌词</h2>
+            <p>把歌词写入音频文件元信息</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.tagWriteOptions.lyrics"
+            @ionChange="setTagWriteOption('lyrics', $event.detail.checked)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="documentTextOutline" color="primary" />
+          <ion-label>
+            <h2>单独下载歌词文件</h2>
+            <p>在音频同目录保存同名歌词文件</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.tagWriteOptions.downloadLyrics"
+            @ionChange="setTagWriteOption('downloadLyrics', $event.detail.checked)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="languageOutline" color="primary" />
+          <ion-label>
+            <h2>歌词导出格式</h2>
+            <p>{{ tagWriteSummary }}</p>
+          </ion-label>
+          <ion-select
+            :value="settings.tagWriteOptions.lyricFormat"
+            :disabled="!tagLyricsRequested"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="setTagWriteOption('lyricFormat', $event.detail.value)"
+          >
+            <ion-select-option v-for="option in tagLyricFormatOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </ion-select-option>
+          </ion-select>
         </ion-item>
       </ion-list>
 
@@ -1046,6 +1097,7 @@ import {
   eyeOffOutline,
   gitNetworkOutline,
   headsetOutline,
+  imageOutline,
   informationCircleOutline,
   layersOutline,
   notificationsOutline,
@@ -1090,6 +1142,12 @@ import {
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
+import {
+  TAG_LYRIC_FORMAT_LABELS,
+  TAG_LYRIC_FORMATS,
+  describeTagWriteOptions,
+  type TagWriteOptions
+} from '@/services/tagWriteOptions'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
 import type { SettingsSearchItem } from '@/services/settingsSearch'
 import { usePlayerStore } from '@/stores/player'
@@ -1194,6 +1252,23 @@ const preferredQualityDescription = computed(() => {
   const value = settings.settings.preferredQuality
   return value ? getQualityDescription(value) : '插件支持时优先使用，未指定时取插件最高音质'
 })
+
+const tagLyricFormatOptions = TAG_LYRIC_FORMATS.map((value) => ({
+  value,
+  label: TAG_LYRIC_FORMAT_LABELS[value]
+}))
+
+/** 歌词格式只在内嵌或外置歌词任一开启时才有意义。 */
+const tagLyricsRequested = computed(() => {
+  const options = settings.tagWriteOptions
+  return options.lyrics || options.downloadLyrics
+})
+
+const tagWriteSummary = computed(() => describeTagWriteOptions(settings.tagWriteOptions))
+
+function setTagWriteOption<K extends keyof TagWriteOptions>(key: K, value: TagWriteOptions[K]): void {
+  settings.settings.tagWriteOptions = { ...settings.tagWriteOptions, [key]: value }
+}
 
 const pluginPages = computed(() => {
   const pages: Array<{ key: string; title: string; view: string; pluginKey: string; pluginName: string; group?: string }> = []

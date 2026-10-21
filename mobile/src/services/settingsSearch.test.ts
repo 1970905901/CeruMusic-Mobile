@@ -82,8 +82,10 @@ describe('settings search', () => {
 
   it('matches a group name and returns the whole group', () => {
     const results = searchSettings('下载与存储')
-    expect(results.length).toBe(9)
-    expect(results.every((item) => item.id === 'group-storage')).toBe(true)
+    // 断言「整组返回」而不是某个固定条数：新增设置项不应让这条测试失败。
+    const wholeGroup = settingsSearchItems.filter((item) => item.id === 'group-storage')
+    expect(wholeGroup.length).toBeGreaterThan(0)
+    expect(results).toEqual(wholeGroup)
   })
 
   it('trims the query and returns an empty list for blank input', () => {

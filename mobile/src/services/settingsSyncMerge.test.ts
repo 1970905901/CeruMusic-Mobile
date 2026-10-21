@@ -13,7 +13,7 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     deniedPermissions: { p: { files: true } },
     downloadQuality: '',
     downloadFilenameTemplate: '{artist} - {title}',
-    downloadWriteTags: false,
+    tagWriteOptions: { basicInfo: false, cover: false, lyrics: false, downloadLyrics: false, lyricFormat: 'lrc' },
     maxConcurrentDownloads: 2,
     autoPlayOnOpen: false,
     showLyricsInPlayer: true,
