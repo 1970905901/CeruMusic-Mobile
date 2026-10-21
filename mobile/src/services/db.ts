@@ -96,7 +96,19 @@ export async function clearPluginKv(pluginKey: string): Promise<void> {
   const keys = await db.getAllKeys('kv')
   const tx = db.transaction('kv', 'readwrite')
   for (const key of keys) {
-    if (String(key).startsWith(`plugin:${pluginKey}:`)) await tx.store.delete(key)
+    if (isPluginKvKey(String(key), pluginKey)) await tx.store.delete(key)
   }
   await tx.done
+}
+
+/**
+ * 判断某个 kv 键是否属于指定插件。
+ *
+ * 键形如 plugin:<pluginKey>:<userKey>。插件 key 之间可能互为前缀
+ * （例如 a 与 a:b），因此必须按「plugin:<key>:」整段前缀匹配，
+ * 不能只判断 startsWith(pluginKey)。
+ */
+export function isPluginKvKey(key: string, pluginKey: string): boolean {
+  if (!pluginKey) return false
+  return key.startsWith('plugin:' + pluginKey + ':')
 }

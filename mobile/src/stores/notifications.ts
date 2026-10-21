@@ -65,12 +65,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const unread = messages.filter((item) => !item.read)
     if (!unread.length) return
     unread.forEach((item) => (item.read = true))
-    counts.value = {
-      all: Math.max(0, counts.value.all - unread.length),
-      notice: Math.max(0, counts.value.notice - unread.filter((item) => item.category === 'notice').length),
-      interaction: Math.max(0, counts.value.interaction - unread.filter((item) => item.category === 'interaction').length),
-      comment: Math.max(0, counts.value.comment - unread.filter((item) => item.category === 'comment').length)
-    }
+    counts.value = subtractUnread(counts.value, unread.map((item) => item.category))
     try {
       await notificationsApi.read(unread.map((item) => item.id))
     } catch {
@@ -227,3 +222,25 @@ export const useNotificationsStore = defineStore('notifications', () => {
     wakeRealtime
   }
 })
+
+/**
+ * 把已读消息从本地未读计数里扣除。
+ *
+ * 计数可能因并发刷新而落后于列表（刚收到新消息还没同步计数），
+ * 因此每一项都夹到 0 以上，避免出现负数角标；总数与分类分别扣减，
+ * 与后端「标记已读后返回新的未读数」的语义一致。
+ */
+export function subtractUnread(
+  current: UnreadCounts,
+  readCategories: readonly Exclude<MessageCategory, 'all'>[]
+): UnreadCounts {
+  const clamp = (value: number, delta: number) => Math.max(0, Number(value || 0) - delta)
+  const count = (category: Exclude<MessageCategory, 'all'>) =>
+    readCategories.filter((item) => item === category).length
+  return {
+    all: clamp(current.all, readCategories.length),
+    notice: clamp(current.notice, count('notice')),
+    interaction: clamp(current.interaction, count('interaction')),
+    comment: clamp(current.comment, count('comment'))
+  }
+}
