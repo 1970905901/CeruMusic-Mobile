@@ -43,11 +43,25 @@ let initialized = false
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let watchers: Array<() => void> = []
 
-function sanitizedSettings(): Partial<AppSettings> {
-  const settings = useSettingsStore()
-  const copy: Partial<AppSettings> = JSON.parse(JSON.stringify(settings.settings))
+/** 仅保留可跨设备同步的字段；敏感字段一律剔除。 */
+export function toSyncableSettings(settings: AppSettings): Partial<AppSettings> {
+  const copy: Partial<AppSettings> = JSON.parse(JSON.stringify(settings))
   for (const key of SENSITIVE_KEYS) delete copy[key]
   return copy
+}
+
+/**
+ * 把云端设置合并到本机设置。
+ *
+ * 敏感字段（api key、权限、引导状态、搜索历史、本机壁纸）永远以本机为准，
+ * 避免换设备登录后把别人的 key 或权限写进来，也避免本机壁纸被云端空值覆盖。
+ */
+export function mergeCloudSettings(current: AppSettings, cloud: Partial<AppSettings>): AppSettings {
+  const merged: AppSettings = { ...current, ...(cloud || {}) }
+  for (const key of SENSITIVE_KEYS) {
+    ;(merged as unknown as Record<string, unknown>)[key] = current[key]
+  }
+  return merged
 }
 
 function playSettings(): PlaySettings {
@@ -61,7 +75,7 @@ function playSettings(): PlaySettings {
 }
 
 function localPayload(): CloudSettings {
-  return { appSettings: sanitizedSettings(), playSettings: playSettings() }
+  return { appSettings: toSyncableSettings(useSettingsStore().settings), playSettings: playSettings() }
 }
 
 async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -116,18 +130,7 @@ async function applyCloud(cloud: CloudSettings) {
   const player = usePlayerStore()
   applying = true
   try {
-    const current = settings.settings
-    const merged: AppSettings = {
-      ...current,
-      ...(cloud.appSettings || {}),
-      aiApiKey: current.aiApiKey,
-      grantedPermissions: current.grantedPermissions,
-      deniedPermissions: current.deniedPermissions,
-      onboardingDone: current.onboardingDone,
-      searchHistory: current.searchHistory,
-      globalBackground: current.globalBackground
-    }
-    settings.settings = merged
+    settings.settings = mergeCloudSettings(settings.settings, cloud.appSettings)
     if (cloud.playSettings) {
       if (typeof cloud.playSettings.volume === 'number') {
         player.setVolume(Math.max(0, Math.min(1, cloud.playSettings.volume)))
