@@ -79,6 +79,8 @@ export interface AppSettings {
   lyricFontWeight: number
   /** 歌词字号倍率，叠加在字号之上 */
   lyricFontScale: number
+  /** 音频输出设备 id；空或 default 表示跟随系统 */
+  audioOutputDeviceId: string
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -142,7 +144,8 @@ const defaults: AppSettings = {
   ltDanmakuSpeed: 1,
   ltDanmakuFontScale: 1,
   lyricFontWeight: 400,
-  lyricFontScale: 1
+  lyricFontScale: 1,
+  audioOutputDeviceId: 'default'
 }
 
 function load(): AppSettings {

@@ -63,6 +63,7 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     ltDanmakuFontScale: 1,
     lyricFontWeight: 400,
     lyricFontScale: 1,
+    audioOutputDeviceId: 'default',
     ...overrides
   }
 }

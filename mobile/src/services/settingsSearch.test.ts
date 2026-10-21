@@ -15,6 +15,7 @@ const GROUP_ANCHORS = new Set([
   'group-playback',
   'group-cache',
   'group-lyric',
+  'group-output',
   'group-storage',
   'group-local',
   'group-appearance',

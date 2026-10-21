@@ -17,6 +17,7 @@ import {
 } from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
 import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
+import { applyAudioOutput } from '@/services/audioOutput'
 import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
 import { timeDomainRms } from '@/services/crossfadeCurve'
 import {
@@ -601,6 +602,26 @@ export const usePlayerStore = defineStore('player', () => {
     publishState()
   }
 
+  /* ---------------- 音频输出设备 ---------------- */
+
+  /** 供设置页做输出设备枚举/切换；移动端多数 WebView 不支持 sink 选择。 */
+  function audioElement(): HTMLAudioElement {
+    return audio
+  }
+
+  /** 浏览器是否实现了输出设备选择能力。 */
+  function canSelectOutput(): boolean {
+    return typeof (audio as { setSinkId?: unknown }).setSinkId === 'function'
+  }
+
+  /**
+   * 应用输出设备。返回 false 表示当前环境不支持，调用方应提示「跟随系统输出」。
+   * 切换失败时保持原设备不变，不静默吞掉错误。
+   */
+  async function applyOutputDevice(deviceId: string): Promise<boolean> {
+    return applyAudioOutput(audio, deviceId)
+  }
+
   function setPlaybackRate(value: number): void {
     if (!Number.isFinite(value)) return
     playbackRate.value = Math.max(0.5, Math.min(3, Math.round(value * 100) / 100))
@@ -1053,6 +1074,9 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     toggleMute,
     setPlaybackRate,
+    audioElement,
+    canSelectOutput,
+    applyOutputDevice,
     next,
     previous,
     toggleShuffle,

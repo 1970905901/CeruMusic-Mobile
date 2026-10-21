@@ -323,6 +323,42 @@
         </ion-item>
       </ion-list>
 
+      <ion-list id="group-output" class="group">
+        <div class="group-title">音频输出</div>
+        <ion-item button :disabled="outputLoading" @click="refreshOutputDevices">
+          <ion-icon slot="start" :icon="volumeHighOutline" color="primary" />
+          <ion-label>
+            <h2>输出设备</h2>
+            <p>{{ outputSupported ? outputDevices.length + ' 个可用设备' : '当前系统不提供设备选择，跟随系统输出' }}</p>
+          </ion-label>
+          <ion-spinner v-if="outputLoading" name="crescent" />
+          <ion-icon v-else slot="end" :icon="refreshOutline" />
+        </ion-item>
+        <ion-item v-if="outputSupported">
+          <ion-icon slot="start" :icon="headsetOutline" color="primary" />
+          <ion-label>
+            <h2>当前输出</h2>
+            <p>{{ currentOutputLabel }}</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.audioOutputDeviceId"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="changeOutputDevice($event.detail.value)"
+          >
+            <ion-select-option v-for="device in outputDevices" :key="device.deviceId" :value="device.deviceId">
+              {{ device.label }}
+            </ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item v-else lines="none">
+          <ion-icon slot="start" :icon="informationCircleOutline" color="medium" />
+          <ion-label>
+            <p>iOS 与多数 Android WebView 不允许应用自行选择音频路由，请在系统控制中心切换蓝牙或 AirPlay。</p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+
       <ion-list id="group-cache" class="group">
         <div class="group-title">音频缓存</div>
         <ion-item>
@@ -992,6 +1028,7 @@ import {
   moonOutline,
   musicalNotesOutline,
   pricetagOutline,
+  refreshOutline,
   flashOutline,
   pulseOutline,
   shieldCheckmarkOutline,
@@ -1007,6 +1044,12 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
 import { describeDownloadLocation, summarizeDownloadStorage } from '@/services/downloadStorage'
+import {
+  canSwitchAudioOutput,
+  normalizeAudioOutputs,
+  resolveOutputDeviceId,
+  type AudioOutputDevice
+} from '@/services/audioOutput'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
@@ -1221,6 +1264,64 @@ const downloadLocationLabel = computed(() =>
 /** 已完成下载按存储位置的占用，用于「下载与存储」分组展示。 */
 const downloadStorage = computed(() => summarizeDownloadStorage(downloadStore.tasks))
 
+/* ---------------- 音频输出设备 ---------------- */
+const outputDevices = ref<AudioOutputDevice[]>([])
+const outputSupported = ref(false)
+const outputLoading = ref(false)
+
+const currentOutputLabel = computed(() => {
+  const id = settings.settings.audioOutputDeviceId
+  const found = outputDevices.value.find((device) => device.deviceId === id)
+  return found ? found.label : '系统默认输出'
+})
+
+async function refreshOutputDevices() {
+  if (outputLoading.value) return
+  outputLoading.value = true
+  try {
+    const canEnumerate = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.enumerateDevices
+    outputSupported.value = canSwitchAudioOutput({
+      canSetSinkId: player.canSelectOutput(),
+      canEnumerate
+    }) && canEnumerate
+    if (!canEnumerate) {
+      outputDevices.value = []
+      return
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    outputDevices.value = normalizeAudioOutputs(devices)
+    /* 枚举成功但只有系统默认时没有可切换项，按不支持展示 */
+    if (outputDevices.value.length <= 1) {
+      outputSupported.value = false
+      outputLoading.value = false
+      return
+    }
+    /* 设备消失（拔掉耳机/断开蓝牙）后回落到系统默认，并同步设置 */
+    const resolved = resolveOutputDeviceId(settings.settings.audioOutputDeviceId, outputDevices.value)
+    if (resolved !== settings.settings.audioOutputDeviceId) {
+      settings.settings.audioOutputDeviceId = resolved
+      await player.applyOutputDevice(resolved).catch(() => false)
+    } else if (player.canSelectOutput() && resolved) {
+      await player.applyOutputDevice(resolved).catch(() => false)
+    }
+  } catch {
+    outputDevices.value = []
+  } finally {
+    outputLoading.value = false
+  }
+}
+
+async function changeOutputDevice(value: unknown) {
+  const next = String(value ?? '')
+  const resolved = resolveOutputDeviceId(next, outputDevices.value)
+  settings.settings.audioOutputDeviceId = resolved
+  try {
+    const ok = await player.applyOutputDevice(resolved)
+    if (!ok) await toast('当前系统不支持切换输出设备，已跟随系统输出', 'warning')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '切换输出设备失败', 'danger')
+  }
+}
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
   const minutes = Math.ceil(player.sleepRemainingMs / 60000)
@@ -1563,6 +1664,7 @@ async function showLegal() {
 }
 
 void refreshCacheStats()
+void refreshOutputDevices()
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 1800, color })

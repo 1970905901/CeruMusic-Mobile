@@ -135,7 +135,7 @@
 - 缓存音质占比：`services/cacheQuality.ts` + 设置页「音频缓存」新增环形图与图例，对齐桌面端 `Settings/MusicCache.vue`——`getMediaCacheStats` 额外按音质聚合条目数与字节数，排序沿用已安装插件声明的音质顺序（未知音质垫底、中性灰），占比相对音频总量，中心显示音频总占用。移动端用 SVG `stroke-dasharray` 绘制，不引入 echarts，避免为一张环形图增加约 1 MB 依赖。
 - 缓存容量占用与手动清理：设置页「音频缓存」新增容量进度条与超限警告，enforceMediaCacheLimit 的语义明确为「只在手动触发或改上限时清理」——超出上限不会静默删除，而是显示「清理到上限」按钮并提示仍超出部分；占用比例由 `services/cacheQuality.ts` 的 `cacheUsageOf` 计算（上限为 0/非法时视为不限），进度条夹到 0–100 但真实占比保留，便于看出超了多少。
 - 下载目录占用：`services/downloadStorage.ts` 对齐桌面端 `Settings/DirectorySettings.vue` 的目录体积展示——按已完成下载任务的 `directory` 与 `receivedBytes` 聚合出「应用私有目录 / Documents / Android 授权文件夹」各自的文件数与体积，并复用同一条 `describeDownloadLocation` 生成目录说明（原先设置页里另写了一份同义实现，已收敛）。移动端没有跨平台目录遍历 API，因此只统计本应用写入的下载文件，缓存与本地导入不计入，界面明确标注该口径。
-
+- 音频输出设备：设置页新增「音频输出」分组，对齐桌面端 `Settings/AudioOutputSettings.vue` 的设备选择。移动端先探测 `HTMLMediaElement.setSinkId` 与 `enumerateDevices()`：两者都可用且枚举出多于一个输出时才展示真实切换（`services/audioOutput.ts` 负责能力判定、设备归一与回落），否则只展示「跟随系统输出」并说明 iOS/多数 Android WebView 不允许应用改路由，不伪造开关。设备消失（拔耳机/断蓝牙）时自动回落到系统默认并同步设置。
 ### 其他
 - 云账号与 Logto。
 - 通知与系统通知权限。

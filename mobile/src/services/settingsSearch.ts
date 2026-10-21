@@ -43,6 +43,8 @@ const rawItems: RawItem[] = [
   { id: 'group-playback', category: '播放', title: '一起听弹幕', description: '房间聊天飘过播放页', keywords: ['弹幕', 'danmaku', '聊天', '一起听'] },
   { id: 'group-playback', category: '播放', title: '弹幕速度', keywords: ['弹幕', '速度', 'danmaku', 'speed'] },
   { id: 'group-playback', category: '播放', title: '弹幕字号', keywords: ['弹幕', '字号', '字体', 'danmaku', 'font'] },
+  { id: 'group-output', category: '音频输出', title: '输出设备', description: '扬声器 / 耳机 / HDMI，跟随系统时不可切换', keywords: ['输出', '设备', '扬声器', '耳机', 'audio output', 'sink'] },
+  { id: 'group-output', category: '音频输出', title: '当前输出', keywords: ['输出', '当前', 'audio', 'device'] },
   { id: 'group-cache', category: '音频缓存', title: '离线播放缓存', keywords: ['缓存', 'cache', '离线'] },
   { id: 'group-cache', category: '音频缓存', title: '缓存容量上限', description: '超出后按频率与最近使用清理', keywords: ['容量', '大小', 'cache', 'limit'] },
   { id: 'group-cache', category: '音频缓存', title: '缓存音质上限', description: '高于上限的音质不缓存', keywords: ['音质', '缓存', 'quality'] },
