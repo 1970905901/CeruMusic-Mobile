@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import {
   DEFAULT_AUDIO_EFFECTS_STATE,
   EQUALIZER_PRESETS,
+  applyTailEffects,
   audioEffectChain,
   clampEqualizerGains,
   hasActiveEffects,
@@ -75,6 +76,8 @@ export const useAudioEffectsStore = defineStore('audioEffects', () => {
     if (!hasActiveEffects(state.value) && !audioEffectChain.active) return
     if (!audioEffectChain.ensure(audio)) return
     audioEffectChain.apply(state.value)
+    // 尾巴链（无感过渡的旧歌）跟随同一份设置。
+    applyTailEffects(state.value)
   }
 
   function setEqualizerEnabled(enabled: boolean): void {

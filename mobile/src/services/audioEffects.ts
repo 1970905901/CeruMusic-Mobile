@@ -142,21 +142,34 @@ class AudioEffectChain {
   private analyser: AnalyserNode | null = null
   private beatAnalyser: AnalyserNode | null = null
   private listenersBound = false
+  /** 尾巴链共用的上下文（跨实例注入），保证两条链在同一时钟下跑。 */
+  private sharedContext: AudioContext | null = null
+  /** 尾巴链的输出增益：用于淡出，避免与主链包络叠加后过响。 */
+  private outputGain: GainNode | null = null
   private readonly resumeHandler = () => this.resumeContext()
 
   get active(): boolean {
     return !!this.context && this.context.state !== 'closed'
   }
 
-  ensure(element: HTMLAudioElement): boolean {
+  /**
+   * 建立以该元素为源的完整效果链。
+   * 传入 `shared` 时复用其 AudioContext（尾巴链必须与主链同钟），
+   * 传入 `output` 时把最终信号接到该节点而不是扬声器。
+   */
+  ensure(
+    element: HTMLAudioElement,
+    options: { shared?: AudioContext | null; output?: AudioNode | null } = {}
+  ): boolean {
     if (this.element === element && this.active) return true
     if (this.element && this.element !== element) return false
 
+    const shared = options.shared ?? this.sharedContext
     const ContextClass = audioContextConstructor()
-    if (!ContextClass) return false
+    if (!shared && !ContextClass) return false
 
     try {
-      const context = new ContextClass({ latencyHint: 'playback' })
+      const context = shared ?? new ContextClass!({ latencyHint: 'playback' })
       if (isCrossOriginSource(element.src)) {
         console.warn('音频效果：当前音源为跨域直链，可能无法通过 Web Audio 输出声音')
       }
@@ -206,10 +219,19 @@ class AudioEffectChain {
 
       balanceNode.connect(compressor)
       compressor.connect(makeup)
-      makeup.connect(context.destination)
+
+      // 尾巴链多一级输出增益，包络淡出时由调用方直接压它。
+      const outputGain = options.output ? context.createGain() : null
+      if (outputGain) {
+        makeup.connect(outputGain)
+        outputGain.connect(options.output!)
+      } else {
+        makeup.connect(context.destination)
+      }
 
       this.element = element
       this.context = context
+      this.sharedContext = shared ?? null
       this.filters = filters
       this.bassBoost = bassBoost
       this.convolver = convolver
@@ -217,6 +239,7 @@ class AudioEffectChain {
       this.balanceNode = balanceNode
       this.compressor = compressor
       this.makeup = makeup
+      this.outputGain = outputGain
       this.surroundMode = 'off'
 
       if (!this.listenersBound) {
@@ -314,6 +337,27 @@ class AudioEffectChain {
       // The node may already be detached by a closed context.
     }
     this.beatAnalyser = null
+  }
+
+  /** 尾巴链复用主链的 AudioContext，保证两条链同钟。 */
+  getContext(): AudioContext | null {
+    return this.context && this.context.state !== 'closed' ? this.context : null
+  }
+
+  /** 断开尾巴链的引用，允许元素被回收。 */
+  detach(): void {
+    this.element = null
+    this.filters = []
+    this.bassBoost = null
+    this.convolver = null
+    this.surroundGain = null
+    this.balanceNode = null
+    this.compressor = null
+    this.makeup = null
+    this.outputGain = null
+    this.analyser = null
+    this.beatAnalyser = null
+    this.surroundMode = 'off'
   }
 
   private resumeContext(): void {
@@ -431,6 +475,34 @@ export function peekEnvelopeAnalyser(): AnalyserNode | null {
  * Desktop parity for the background beat: its own analyser so the effect works
  * even when the bar visualizer is off and keeps a 4096-point FFT.
  */
+/**
+ * 无感过渡的尾巴链：让旧歌尾段也经过同一条 EQ / 低音 / 环绕 / 响度处理。
+ *
+ * 只有主链已经建立（说明音源可被 Web Audio 接管）时才接尾巴链，
+ * 且复用主链的 AudioContext，避免两条链各跑一个时钟导致对不齐。
+ * 尾巴元素本身仍在主链舞台上淡出，这里只负责让它的音色与主链一致。
+ */
+const tailChain = new AudioEffectChain()
+
+export function ensureTailEffectChain(tail: HTMLAudioElement): boolean {
+  if (!audioEffectChain.active) return false
+  const source = tail.currentSrc || tail.src
+  if (!source.startsWith('blob:') && !source.startsWith('data:')) return false
+  const context = audioEffectChain.getContext()
+  if (!context) return false
+  return tailChain.ensure(tail, { shared: context })
+}
+
+/** 把当前效果设置同步到尾巴链；主链每次 apply 后调用。 */
+export function applyTailEffects(state: AudioEffectsState): void {
+  if (tailChain.active) tailChain.apply(state)
+}
+
+export function releaseTailEffectChain(): void {
+  if (!tailChain.active) return
+  tailChain.detach()
+}
+
 export function ensureBeatAnalyser(): AnalyserNode | null {
   if (!visualizerEnabled || !visualizerElement) return null
   const source = visualizerElement.currentSrc || visualizerElement.src

@@ -20,6 +20,7 @@
  * 淡出中的旧歌尾段不带音效；该段音量本身在归零，听感影响有限。
  */
 import { reactive } from 'vue'
+import { ensureTailEffectChain, releaseTailEffectChain } from './audioEffects'
 import type { Track } from '@/types/music'
 import {
   OBSERVATION_WINDOW_SEC,
@@ -184,6 +185,7 @@ function destroyTail(): void {
   const element = tail
   tail = null
   if (!element) return
+  releaseTailEffectChain()
   try {
     element.pause()
   } catch {
@@ -273,6 +275,8 @@ function armTail(): boolean {
     // 预载失败仍可能在触发时正常起播，不因此放弃过渡。
   }
   tail = tailElement
+  // 主链已接管音频时，让尾巴也走同一条效果链，音色才不会在交接瞬间跳变。
+  ensureTailEffectChain(tailElement as unknown as HTMLAudioElement)
   return true
 }
 
