@@ -22,6 +22,7 @@ import { deleteSafDocument, writeSafFromApp } from '@/services/safImport'
 import { parseLyrics } from '@/services/lyrics'
 import { blobToDataUrl } from '@/services/imageUtils'
 import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
+import { selectTasksToStart } from '@/services/downloadPump'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -525,6 +526,18 @@ export const useDownloadStore = defineStore('downloads', () => {
     return enqueued
   }
 
+  /**
+   * 并发位空出来后补位。
+   *
+   * 暂停/取消一个正在运行的任务会腾出一个位置，但此前没有任何人接手，
+   * 队列里剩下的歌要等到下一次有任务结束才会动——`pauseAll` 后恢复、
+   * 或取消一个任务时尤其明显。这里在状态变化后统一拉起可开始的任务。
+   */
+  function pumpQueue(): void {
+    const ids = selectTasksToStart(tasks.value, settings.settings.maxConcurrentDownloads)
+    for (const id of ids) void runTask(id)
+  }
+
   async function runTask(id: string): Promise<void> {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
@@ -570,6 +583,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       activeRequests.delete(id)
       if (task.status === 'running' || task.status === 'queued') updateTask(id, { status: 'paused' })
     }
+    pumpQueue()
   }
 
   function resume(ids: string[]): void {
@@ -580,6 +594,8 @@ export const useDownloadStore = defineStore('downloads', () => {
       updateTask(id, { status: 'queued' })
       void runTask(id)
     }
+    // 恢复的这些任务可能因为并发已满而退回 queued，补位一次让它们按顺序排上。
+    pumpQueue()
   }
 
   function cancel(ids: string[]): void {
@@ -588,6 +604,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       activeRequests.delete(id)
       updateTask(id, { status: 'cancelled' })
     }
+    pumpQueue()
   }
 
   function retry(ids: string[]): void {
@@ -721,6 +738,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     pauseAll,
     resumeAll,
     clearQueue,
-    clearFailed
+    clearFailed,
+    pumpQueue
   }
 })

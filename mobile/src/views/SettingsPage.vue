@@ -751,7 +751,7 @@
             :min="1"
             :max="4"
             :step="1"
-            @ionInput="settings.settings.maxConcurrentDownloads = Number($event.detail.value)"
+            @ionChange="changeMaxConcurrentDownloads(Number($event.detail.value))"
           />
         </ion-item>
         <ion-item>
@@ -1435,6 +1435,13 @@ async function changeOutputDevice(value: unknown) {
     await toast(error instanceof Error ? error.message : '切换输出设备失败', 'danger')
   }
 }
+/** 调高并发数后，队列里等待的任务应立即补上，而不是等下一次有任务结束。 */
+function changeMaxConcurrentDownloads(value: number): void {
+  const next = Number.isFinite(value) ? Math.min(4, Math.max(1, Math.round(value))) : 1
+  settings.settings.maxConcurrentDownloads = next
+  downloadStore.pumpQueue()
+}
+
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
   return `约 ${displayMinutes(player.sleepRemainingMs)} 分钟后暂停`
