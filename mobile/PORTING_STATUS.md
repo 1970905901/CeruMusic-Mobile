@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39603020112`（功能提交 `e6788ee`），Android/iOS 均成功
+- 最新 CI：`39621908160`（功能提交 `d6a6775`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -76,6 +76,7 @@
 - Android SAF 导入音频。
 - Android SAF 下载目录。
 - 下载管理与批量操作：支持下载全部暂停、全部开始、清空队列（含部分已下载临时文件清理）与清空失败/取消记录，配套二次确认弹窗。
+- 下载标签写入：对齐桌面版 `tagWriteOptions`，把原先单一的 `downloadWriteTags` 开关拆成「基础信息 / 封面 / 歌词 / 单独下载歌词文件 / 歌词导出格式」五项，设置页「下载与存储」逐项可调。此前只有布尔开关，只写标题、艺术家与专辑——下载时拉到的封面与歌词都被丢弃。现在封面会经过 `CapacitorHttp` 拉取并转 data URL 内嵌到 MP3 / FLAC / M4A；歌词由 `services/tagWriteOptions.ts` 统一序列化，内嵌与外置共用同一份文本；「单独下载歌词文件」在音频同目录写同名歌词，应用私有目录与 Android SAF 两种落点都支持，且内容为空时绝不写空文件。与桌面版 downloadWorker 同口径：封面或歌词获取失败只记警告并跳过，不会把已完成的下载变成失败。歌词格式只提供 LRC 与 TTML 两项——桌面版的 9 种格式依赖 AMLL 内置导出器，移动端未打包该依赖，非交互的下载流程也无法弹出插件转换器；LRC 只保留逐行时间，TTML 额外保留翻译与音译。旧布尔值在读取时迁移为「基础信息」，升级后行为不变，直到用户主动开启更多。
 - Android SAF 文件分享。
 - iOS 文件分享。
 - 本地标签编辑：标题、艺术家、专辑、年份、流派、歌词与封面；ID3 / FLAC / MP4 标签写入。
@@ -160,9 +161,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：85 个测试文件，484 个测试全部通过
+- `npm run test`：86 个测试文件，497 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39552191989，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39621908160）
 
 ## 当前未完成
 
