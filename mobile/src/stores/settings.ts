@@ -75,6 +75,10 @@ export interface AppSettings {
   ltDanmakuSpeed: number
   /** 弹幕字号倍率 */
   ltDanmakuFontScale: number
+  /** 歌词字重（100–900） */
+  lyricFontWeight: number
+  /** 歌词字号倍率，叠加在字号之上 */
+  lyricFontScale: number
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -136,7 +140,9 @@ const defaults: AppSettings = {
   ltMentionStrong: true,
   ltDanmakuEnabled: true,
   ltDanmakuSpeed: 1,
-  ltDanmakuFontScale: 1
+  ltDanmakuFontScale: 1,
+  lyricFontWeight: 400,
+  lyricFontScale: 1
 }
 
 function load(): AppSettings {

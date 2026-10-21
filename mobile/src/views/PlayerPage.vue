@@ -204,7 +204,12 @@
                 'lyric-jump': settings.settings.lyricJump,
                 'lyric-apple': settings.settings.lyricAppleStyle
               }"
-              :style="{ '--lyric-size': settings.settings.lyricFontSize + 'px', '--lyric-accent': lyricAccent }"
+              :style="{
+                '--lyric-size':
+                  Math.round(settings.settings.lyricFontSize * settings.settings.lyricFontScale) + 'px',
+                '--lyric-weight': String(settings.settings.lyricFontWeight),
+                '--lyric-accent': lyricAccent
+              }"
             >
               <p
                 v-for="(line, index) in displayLyrics.lines"
@@ -1547,10 +1552,10 @@ onBeforeUnmount(() => {
 }
 .lyric-line {
   font-size: var(--lyric-size, 22px);
+  font-weight: var(--lyric-weight, 400);
   margin: 0;
   padding: 10px 6px;
   color: rgba(245, 248, 251, 0.28);
-  font-size: 16px;
   line-height: 1.45;
   transition: color 0.25s ease, transform 0.25s ease, filter 0.3s ease;
 }

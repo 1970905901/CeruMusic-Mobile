@@ -48,6 +48,8 @@ const rawItems: RawItem[] = [
   { id: 'group-cache', category: '音频缓存', title: '缓存音质上限', description: '高于上限的音质不缓存', keywords: ['音质', '缓存', 'quality'] },
   { id: 'group-cache', category: '音频缓存', title: '已用空间', description: '查看与清理已缓存的音频', keywords: ['清理', '空间', 'cache', 'clear'] },
   { id: 'group-lyric', category: '歌词', title: '歌词字号', keywords: ['字体', '大小', 'font', 'size'] },
+  { id: 'group-lyric', category: '歌词', title: '歌词字号倍率', keywords: ['倍率', '缩放', 'font', 'scale'] },
+  { id: 'group-lyric', category: '歌词', title: '歌词字重', keywords: ['字重', '粗体', 'font', 'weight'] },
   { id: 'group-lyric', category: '歌词', title: '显示翻译', keywords: ['翻译', 'translation'] },
   { id: 'group-lyric', category: '歌词', title: '显示音译', keywords: ['音译', '罗马音', 'romanization'] },
   { id: 'group-lyric', category: '歌词', title: '歌词动效', keywords: ['动画', '发光', 'animate'] },

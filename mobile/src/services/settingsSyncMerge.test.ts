@@ -61,6 +61,8 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     ltDanmakuEnabled: true,
     ltDanmakuSpeed: 1,
     ltDanmakuFontScale: 1,
+    lyricFontWeight: 400,
+    lyricFontScale: 1,
     ...overrides
   }
 }

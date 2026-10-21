@@ -131,6 +131,7 @@
 - 一起听分享卡片：`components/ChatShareCard.vue` + `services/chatShareCards.ts` 对齐桌面端 `MessageCard` 的骨架 / 失效 / 内容三态，单曲卡展示封面、歌名、歌手与分享者，歌单卡额外预览前 3 首并显示总曲数；详情按 id 做内存缓存（失败同样缓存为 null，避免重复请求），点击进入 `/shared/song|playlist/:id`。
 - 一起听后台通知：`services/listenTogetherNotify.ts` 对齐桌面端 `notifier.ts`——App 在前台不打扰，后台首条立即推送、冷却 4s 内聚合为「房间名 · N 条新消息」，缓冲区上限 50；被 @（`meta.mentions` 命中或引用的原消息是我发的）走强提示并绕过节流；管理员只对「他人新增」的点歌请求提醒（按 `reqId` 差量、排除自己）。文案把贴纸转成 `[贴纸] 描述`，单条预览截断 28 字。开关在设置 → 播放：「一起听通知」「被 @ 时强提醒」。
 - 一起听弹幕：`components/LtDanmakuLayer.vue` + `services/ltDanmaku.ts` 对齐桌面端 `LtDanmakuLayer`——只把 text / emoji 消息飘过播放页歌词区，8 条轨道按「最早可用前 5 条随机」分配并带 1s 轨道冷却，单条飞行 6.5–11s 随机、字号 12–14px 抖动，速度与字号倍率可在设置里调；进房时已有历史不重放，离房清空，关开关立即清掉在飞的弹幕。随机源可注入，轨道/时长/裁剪规则均有单测。
+- 歌词字号设置修复：`PlayerPage.vue` 的 `.lyric-line` 里 `font-size` 被重复声明（`var(--lyric-size)` 之后又写死 `16px`），导致「歌词字号」滑杆实际无效；现在保留变量并补上对齐桌面端 `LyricFontSettings` 的「歌词字号倍率」「歌词字重」两项设置，字重通过 `--lyric-weight` 变量下发。
 
 ### 其他
 - 云账号与 Logto。

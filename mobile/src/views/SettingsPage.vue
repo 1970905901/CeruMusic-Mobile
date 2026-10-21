@@ -403,6 +403,44 @@
           <ion-range :value="settings.settings.lyricFontSize" :min="16" :max="34" :step="1" @ionInput="settings.settings.lyricFontSize = Number($event.detail.value)" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>歌词字号倍率</h2>
+            <p>{{ Math.round(settings.settings.lyricFontScale * 100) }}%</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.lyricFontScale"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.lyricFontScale = Number($event.detail.value)"
+          >
+            <ion-select-option :value="0.8">80%</ion-select-option>
+            <ion-select-option :value="0.9">90%</ion-select-option>
+            <ion-select-option :value="1">100%</ion-select-option>
+            <ion-select-option :value="1.1">110%</ion-select-option>
+            <ion-select-option :value="1.25">125%</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
+            <h2>歌词字重</h2>
+            <p>{{ settings.settings.lyricFontWeight }}</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.lyricFontWeight"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.lyricFontWeight = Number($event.detail.value)"
+          >
+            <ion-select-option :value="300">300 细体</ion-select-option>
+            <ion-select-option :value="400">400 常规</ion-select-option>
+            <ion-select-option :value="500">500 中等</ion-select-option>
+            <ion-select-option :value="600">600 半粗</ion-select-option>
+            <ion-select-option :value="700">700 粗体</ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="languageOutline" color="primary" />
           <ion-label>
             <h2>显示翻译</h2>
