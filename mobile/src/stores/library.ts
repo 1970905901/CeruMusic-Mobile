@@ -13,10 +13,38 @@ import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
 import { blobToDataUrl } from '@/services/imageUtils'
 
+/** 播放历史上限，与桌面版 GlobalPlayStatus 保持一致。 */
+export const HISTORY_LIMIT = 200
+
+/**
+ * 把新记录并入历史：同 key 只保留最新一条，并裁剪到上限。
+ * 抽成纯函数，是为了让「去重 + 上限」这条规则可以被断言，而不是埋在 store 里。
+ */
+export function mergeHistoryEntry<T extends { id: string; track: { key: string } }>(
+  current: readonly T[],
+  entry: T,
+  limit: number = HISTORY_LIMIT
+): T[] {
+  const rest = current.filter((item) => item.track.key !== entry.track.key)
+  return [entry, ...rest].slice(0, Math.max(1, limit))
+}
+
+/**
+ * 找出应删除的历史记录 id：同一首歌除最新一条外都要清掉。
+ * existing 的顺序即写入顺序，保留最后一个。
+ */
+export function planHistoryCleanup<T extends { id: string; track: { key: string } }>(
+  existing: readonly T[],
+  key: string
+): string[] {
+  const matches = existing.filter((item) => item.track.key === key)
+  if (matches.length <= 1) return []
+  return matches.slice(0, matches.length - 1).map((item) => item.id)
+}
+
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
-
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -343,10 +371,12 @@ export const useLibraryStore = defineStore('library', () => {
     }
     const db = await getDb()
     const existing = await db.getAll('history')
-    const duplicate = existing.filter((item) => item.track.key === track.key).slice(0, 3)
-    for (const item of duplicate) await db.delete('history', item.id)
+    // 历史只保留每首歌最新一条（与桌面版 GlobalPlayStatus 同口径），多余记录一并清理，
+    // 避免旧实现「先删 3 条再按 key 去重」两套规则互相矛盾。
+    const stale = planHistoryCleanup(existing, track.key)
+    for (const id of stale) await db.delete('history', id)
     await db.put('history', toPlain(entry))
-    history.value = [entry, ...history.value.filter((item) => item.track.key !== track.key)].slice(0, 300)
+    history.value = mergeHistoryEntry(history.value, entry) as HistoryEntry[]
   }
 
   async function clearHistory(): Promise<void> {
