@@ -14,6 +14,28 @@ import { isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } fr
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { deleteSafDocument, writeSafFromApp } from '@/services/safImport'
 
+export function isQueuedOrRunning(task: { status: string }): boolean {
+  return task.status === 'running' || task.status === 'queued'
+}
+
+export function selectBatchDownloadCandidates<T extends { key: string; localUri?: string }>(
+  items: readonly T[],
+  existing: readonly { trackKey: string; status: string }[]
+): T[] {
+  const queued = new Set(existing.filter(isQueuedOrRunning).map((task) => task.trackKey))
+  const seen = new Set<string>()
+  return items.filter((track) => {
+    if (track.localUri) return false
+    if (queued.has(track.key) || seen.has(track.key)) return false
+    seen.add(track.key)
+    return true
+  })
+}
+
+export function retryPatch(): { status: 'queued'; error: undefined; receivedBytes: 0 } {
+  return { status: 'queued', error: undefined, receivedBytes: 0 }
+}
+
 function normalizeSubfolder(value: string): string {
   const parts = String(value || '')
     .replace(/\\/g, '/')
@@ -365,16 +387,11 @@ export const useDownloadStore = defineStore('downloads', () => {
   }
 
   async function createBatchDownloads(items: Track[], quality?: string): Promise<number> {
-    const candidates = items.filter((track) => !track.localUri)
+    const candidates = selectBatchDownloadCandidates(items, tasks.value)
     let enqueued = 0
     for (const track of candidates) {
-      const existing = tasks.value.find(
-        (t) => t.trackKey === track.key && (t.status === 'running' || t.status === 'queued')
-      )
-      if (!existing) {
-        await createDownload(track, quality)
-        enqueued++
-      }
+      await createDownload(track, quality)
+      enqueued++
     }
     return enqueued
   }
@@ -445,7 +462,12 @@ export const useDownloadStore = defineStore('downloads', () => {
   }
 
   function retry(ids: string[]): void {
-    resume(ids)
+    for (const id of ids) {
+      const task = tasks.value.find((item) => item.id === id)
+      if (!task || task.status === 'completed') continue
+      updateTask(id, retryPatch())
+      void runTask(id)
+    }
   }
 
   async function remove(id: string, deleteFile = true): Promise<void> {
