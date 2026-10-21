@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39545137529`（功能提交 `263ba31`），Android/iOS 均成功
+- 最新 CI：`39546021764`（功能提交 `1ed0c39`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -113,6 +113,7 @@
 - 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
 - 自伤援助提示唯一实现：`services/communitySupport.ts` 收敛了原先在社区列表与帖子详情各写一份的 `showSupport`；发帖、编辑、评论三处发布成功后统一调用 `showSupportNotice`，弹窗展示标题、正文与心理援助热线。
 - 分享歌单分页防死循环：`services/sharedPlaylist.ts` 改为按「新增歌曲数」累计进度，并沿用桌面版口径——连续两页没有新增歌曲即停止；此前重复页会让 `loaded` 虚增而提前结束，或在异常音源上空转。
+- 路由预加载：`services/routePreload.ts` 在首屏挂载后按「底部标签顺序 → 播放页 → 设置 → 插件 → 详情页」在空闲时逐个拉取页面分包；用户交互后冷却 600ms，应用切后台暂停，设置页可关闭。队列构建与调度均可单测。
 
 ### 其他
 - 云账号与 Logto。
@@ -138,13 +139,13 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：59 个测试文件，313 个测试全部通过
+- `npm run test`：60 个测试文件，321 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39545137529，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39546021764，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
-- HTTP/SOCKS5 代理与自定义 CA。
+- 自定义 HTTP/SOCKS5 代理：Android `ProxyController` 与 iOS `WKWebView` 均不允许应用自设代理，原生 HTTP 也只走系统网络栈；移动端只能跟随系统代理，界面上不提供无效开关。自定义 CA 需在系统层面安装。
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件；当前仍是 Ionic iOS 模式 + `ios-14` … `ios-26` 版本化样式。
 - iPad Stage Manager / iOS 原生多窗口完整能力；当前只保证分屏与大窗口布局可用。
 - 后端歌单分享的网页在线播放（需服务端解析模块导出）；App 内歌单分享链接创建已支持。
