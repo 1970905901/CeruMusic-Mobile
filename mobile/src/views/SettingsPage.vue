@@ -721,6 +721,20 @@
           </ion-label>
           <ion-spinner v-if="choosingSafDownload" name="crescent" />
         </ion-item>
+        <ion-item lines="none">
+          <ion-icon slot="start" :icon="pulseOutline" color="primary" />
+          <ion-label>
+            <h2>下载占用</h2>
+            <p>{{ formatCacheSize(downloadStorage.totalBytes) }} · {{ downloadStorage.totalCount }} 个文件</p>
+          </ion-label>
+        </ion-item>
+        <div v-if="downloadStorage.entries.length" class="storage-usage">
+          <div v-for="entry in downloadStorage.entries" :key="entry.mode" class="storage-usage-row">
+            <span class="storage-usage-name">{{ entry.label }}</span>
+            <span class="storage-usage-value">{{ entry.count }} 个 · {{ formatCacheSize(entry.bytes) }}</span>
+          </div>
+          <p class="storage-usage-hint">仅统计本应用写入的下载文件；缓存与本地导入不计入。</p>
+        </div>
         <ion-item button detail @click="$router.push('/downloads')">
           <ion-icon slot="start" :icon="downloadOutline" color="primary" />
           <ion-label>
@@ -992,6 +1006,7 @@ import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
+import { describeDownloadLocation, summarizeDownloadStorage } from '@/services/downloadStorage'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
@@ -1195,12 +1210,16 @@ async function syncNow() {
   await toast(ok ? '设置已同步' : settingsSyncState.message || '同步失败', ok ? 'success' : 'danger')
 }
 
-const downloadLocationLabel = computed(() => {
-  const mode = settings.settings.downloadDirectoryMode
-  if (mode === 'documents') return '文件 App / Documents / ' + settings.settings.downloadSubfolder
-  if (mode === 'saf') return 'Android 授权文件夹 / ' + (settings.settings.safDownloadName || '未选择')
-  return '应用私有目录'
-})
+const downloadLocationLabel = computed(() =>
+  describeDownloadLocation(
+    settings.settings.downloadDirectoryMode,
+    settings.settings.downloadSubfolder,
+    settings.settings.safDownloadName
+  )
+)
+
+/** 已完成下载按存储位置的占用，用于「下载与存储」分组展示。 */
+const downloadStorage = computed(() => summarizeDownloadStorage(downloadStore.tasks))
 
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
@@ -1594,6 +1613,31 @@ async function toast(message: string, color = 'medium') {
   color: var(--ceru-text-secondary);
   letter-spacing: 0.04em;
   padding: 0 18px 8px;
+}
+.storage-usage {
+  padding: 4px 16px 14px;
+}
+.storage-usage-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+}
+.storage-usage-name {
+  color: var(--ceru-text);
+  font-weight: 600;
+}
+.storage-usage-value {
+  font-variant-numeric: tabular-nums;
+}
+.storage-usage-hint {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ceru-text-secondary);
+  opacity: 0.8;
 }
 .cache-usage {
   padding: 10px 16px 14px;
