@@ -93,6 +93,13 @@
             <p>{{ pluginStore.plugins.filter((plugin) => plugin.sourceUrl).length }} 个插件可检查</p>
           </ion-label>
         </ion-item>
+        <ion-item v-if="capabilityGroups.length" button detail @click="openCapabilityRouting">
+          <ion-icon slot="start" :icon="chatbubblesOutline" color="primary" />
+          <ion-label>
+            <h2>评论来源</h2>
+            <p>为相同音源选择由哪个插件提供热门/最新评论</p>
+          </ion-label>
+        </ion-item>
         <ion-item v-if="pluginStore.sources.length" button detail @click="openSourceRouting">
           <ion-icon slot="start" :icon="gitNetworkOutline" color="primary" />
           <ion-label>
@@ -1045,6 +1052,12 @@ import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
 import { describeDownloadLocation, summarizeDownloadStorage } from '@/services/downloadStorage'
 import {
+  buildCapabilityGroups,
+  resolveCapabilityOwner,
+  type CapabilityRow,
+  type CapabilitySourceGroup
+} from '@/services/capabilityRouting'
+import {
   canSwitchAudioOutput,
   normalizeAudioOutputs,
   resolveOutputDeviceId,
@@ -1600,6 +1613,76 @@ async function checkPluginUpdates() {
   }
 }
 
+/* ---------------- 能力路由（评论来源） ---------------- */
+
+const capabilityGroups = computed(() =>
+  buildCapabilityGroups({
+    sources: pluginStore.sources,
+    actionsOf: (pluginKey) => pluginStore.pluginActions(pluginKey)
+  })
+)
+
+async function openCapabilityRouting() {
+  const sheet = await actionSheetController.create({
+    header: '评论来源',
+    buttons: [
+      ...capabilityGroups.value.map((group) => ({
+        text: group.name,
+        handler: () => {
+          void chooseCapabilitySource(group)
+        }
+      })),
+      { text: '关闭', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
+async function chooseCapabilitySource(group: CapabilitySourceGroup) {
+  const sheet = await actionSheetController.create({
+    header: group.name,
+    buttons: [
+      ...group.rows.map((row) => ({
+        text: row.label,
+        handler: () => {
+          void chooseCapabilityImplementation(group.source, row)
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
+async function chooseCapabilityImplementation(source: string, row: CapabilityRow) {
+  const current = resolveCapabilityOwner(
+    row.implementations,
+    settings.capabilityOwner(source, row.capability)
+  )
+  const sheet = await actionSheetController.create({
+    header: `${row.label}实现`,
+    buttons: [
+      ...row.implementations.map((implementation) => ({
+        text:
+          implementation.pluginName +
+          (current?.pluginKey === implementation.pluginKey ? '（当前）' : ''),
+        handler: () => {
+          settings.setCapabilityOwner(source, row.capability, implementation.pluginKey)
+          void toast(`已将${row.label}切换到 ${implementation.pluginName}`)
+        }
+      })),
+      {
+        text: '恢复自动',
+        handler: () => {
+          settings.setCapabilityOwner(source, row.capability, null)
+          void toast('已恢复自动选择')
+        }
+      },
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
 async function openSourceRouting() {
   const sheet = await actionSheetController.create({
     header: '音源实现',

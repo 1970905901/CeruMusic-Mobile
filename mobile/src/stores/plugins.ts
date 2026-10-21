@@ -163,6 +163,11 @@ export const usePluginStore = defineStore('plugins', () => {
     })
   )
 
+  /** 某插件在 Worker 里实际声明的 action 列表，用于能力路由判定。 */
+  function pluginActions(pluginKey: string): string[] {
+    return pluginRuntimeManager.get(pluginKey)?.getInfo().actions ?? []
+  }
+
   function providerImplementations(source: string): ProviderEntry[] {
     return providers.value.filter((provider) => provider.providerId === source)
   }
@@ -595,6 +600,7 @@ export const usePluginStore = defineStore('plugins', () => {
     actions,
     settingsPages,
     menus,
+    pluginActions,
     providerImplementations,
     selectedProvider,
     providerForProtocol,

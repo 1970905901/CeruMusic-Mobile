@@ -26,6 +26,7 @@ const rawItems: RawItem[] = [
   { id: 'group-plugin', category: '音源与插件', title: '插件管理', description: '安装、启用与配置插件', keywords: ['插件', 'plugin', '音源'] },
   { id: 'group-plugin', category: '音源与插件', title: '自动更新插件', keywords: ['更新', '插件', 'update'] },
   { id: 'group-plugin', category: '音源与插件', title: '立即检查插件更新', keywords: ['更新', '检查', 'update'] },
+  { id: 'group-plugin', category: '音源与插件', title: '评论来源', description: '热门/最新评论由哪个插件提供', keywords: ['评论', '能力', '路由', 'comments', 'capability'] },
   { id: 'group-plugin', category: '音源与插件', title: '音源实现', description: '为相同来源选择由哪个插件提供', keywords: ['路由', '能力', 'provider', 'routing'] },
   { id: 'group-playback', category: '播放', title: '播放器样式', description: '经典黑胶 / 沉浸封面', keywords: ['布局', '黑胶', '唱片', 'layout', 'cd', 'cover'] },
   { id: 'group-playback', category: '播放', title: '首选音质', description: '播放时向插件请求的音质', keywords: ['音质', 'quality', '无损', 'flac', 'hires'] },
