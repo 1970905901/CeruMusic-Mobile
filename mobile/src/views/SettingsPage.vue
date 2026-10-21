@@ -390,6 +390,38 @@
             清理
           </ion-button>
         </ion-item>
+        <div v-if="cacheQuality.segments.length" class="cache-quality">
+          <div class="cache-quality-title">音质占比</div>
+          <div class="cache-quality-body">
+            <svg class="cache-donut" viewBox="0 0 120 120" role="img" aria-label="缓存音质占比">
+              <circle cx="60" cy="60" r="50" fill="none" class="donut-track" />
+              <circle
+                v-for="arc in cacheDonutArcs"
+                :key="arc.color + arc.dashOffset"
+                cx="60"
+                cy="60"
+                r="50"
+                fill="none"
+                :stroke="arc.color"
+                stroke-width="12"
+                :stroke-dasharray="arc.dashArray"
+                :stroke-dashoffset="arc.dashOffset"
+                transform="rotate(-90 60 60)"
+              />
+              <text x="60" y="58" text-anchor="middle" class="donut-total">{{ cacheQuality.audioFormatted }}</text>
+              <text x="60" y="72" text-anchor="middle" class="donut-caption">音频</text>
+            </svg>
+            <ul class="cache-legend">
+              <li v-for="segment in cacheQuality.segments" :key="segment.quality">
+                <span class="legend-dot" :style="{ background: segment.color }" />
+                <span class="legend-name">{{ segment.label }}</span>
+                <span class="legend-count">{{ segment.count }} 首</span>
+                <span class="legend-size">{{ segment.sizeFormatted }}</span>
+                <span class="legend-pct">{{ segment.percent.toFixed(0) }}%</span>
+              </li>
+            </ul>
+          </div>
+        </div>
       </ion-list>
 
       <ion-list id="group-lyric" class="group">
@@ -934,6 +966,7 @@ import {
 import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
+import { buildDonutArcs, summarizeCacheQualities } from '@/services/cacheQuality'
 import { usePluginStore } from '@/stores/plugins'
 import PluginSlot from '@/components/PluginSlot.vue'
 import GlobalBackgroundSettings from '@/components/GlobalBackgroundSettings.vue'
@@ -977,7 +1010,16 @@ const notifications = useNotificationsStore()
 const safAvailable = safImportSupported()
 const safImporting = ref(false)
 const safProgress = ref('')
-const cacheStats = ref<MediaCacheStats>({ supported: false, entries: 0, sizeBytes: 0 })
+const cacheStats = ref<MediaCacheStats>({ supported: false, entries: 0, sizeBytes: 0, qualities: [] })
+
+/** 音质占比：排序沿用已安装插件声明的音质顺序（与上方音质下拉同源）。 */
+const cacheQuality = computed(() =>
+  summarizeCacheQualities(
+    cacheStats.value.qualities,
+    collectQualityTypes(pluginStore.providers.map((provider) => provider.qualities))
+  )
+)
+const cacheDonutArcs = computed(() => buildDonutArcs(cacheQuality.value.segments))
 const clearingCache = ref(false)
 const choosingSafDownload = ref(false)
 
@@ -1303,7 +1345,7 @@ async function refreshCacheStats() {
   try {
     cacheStats.value = await getMediaCacheStats()
   } catch {
-    cacheStats.value = { supported: false, entries: 0, sizeBytes: 0 }
+    cacheStats.value = { supported: false, entries: 0, sizeBytes: 0, qualities: [] }
   }
 }
 
@@ -1505,6 +1547,78 @@ async function toast(message: string, color = 'medium') {
   color: var(--ceru-text-secondary);
   letter-spacing: 0.04em;
   padding: 0 18px 8px;
+}
+.cache-quality {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--ceru-border);
+}
+.cache-quality-title {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ceru-text-secondary);
+  letter-spacing: 0.04em;
+}
+.cache-quality-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cache-donut {
+  flex: 0 0 auto;
+  width: 108px;
+  height: 108px;
+}
+.donut-track {
+  stroke: var(--ceru-bg-soft);
+  stroke-width: 12;
+}
+.donut-total {
+  fill: var(--ceru-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.donut-caption {
+  fill: var(--ceru-text-secondary);
+  font-size: 9px;
+}
+.cache-legend {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cache-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+}
+.legend-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.legend-name {
+  flex: 0 0 auto;
+  color: var(--ceru-text);
+  font-weight: 600;
+}
+.legend-count,
+.legend-size {
+  flex: 0 0 auto;
+}
+.legend-pct {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--ceru-text);
+  font-variant-numeric: tabular-nums;
 }
 ion-item h2 {
   font-size: 15px;

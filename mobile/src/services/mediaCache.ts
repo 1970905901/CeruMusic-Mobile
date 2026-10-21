@@ -17,6 +17,8 @@ export interface MediaCacheStats {
   supported: boolean
   entries: number
   sizeBytes: number
+  /** 各音质占用的条目与字节数，供设置页画音质占比图 */
+  qualities: Array<{ quality: string; count: number; sizeBytes: number }>
 }
 
 export interface CachedAudio {
@@ -206,12 +208,26 @@ async function downloadAudio(
 }
 
 export async function getMediaCacheStats(): Promise<MediaCacheStats> {
-  if (!isMediaCacheSupported()) return { supported: false, entries: 0, sizeBytes: 0 }
+  if (!isMediaCacheSupported()) {
+    return { supported: false, entries: 0, sizeBytes: 0, qualities: [] }
+  }
   const entries = await readIndex()
+  const buckets = new Map<string, { count: number; sizeBytes: number }>()
+  let sizeBytes = 0
+  for (const entry of entries) {
+    const size = Number(entry.sizeBytes) || 0
+    sizeBytes += size
+    const quality = String(entry.quality || '').trim()
+    const bucket = buckets.get(quality) ?? { count: 0, sizeBytes: 0 }
+    bucket.count += 1
+    bucket.sizeBytes += size
+    buckets.set(quality, bucket)
+  }
   return {
     supported: true,
     entries: entries.length,
-    sizeBytes: entries.reduce((total, entry) => total + (Number(entry.sizeBytes) || 0), 0)
+    sizeBytes,
+    qualities: [...buckets.entries()].map(([quality, bucket]) => ({ quality, ...bucket }))
   }
 }
 
