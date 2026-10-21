@@ -1148,6 +1148,7 @@ import {
   describeTagWriteOptions,
   type TagWriteOptions
 } from '@/services/tagWriteOptions'
+import { displayMinutes } from '@/services/sleepTimer'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
 import type { SettingsSearchItem } from '@/services/settingsSearch'
 import { usePlayerStore } from '@/stores/player'
@@ -1436,8 +1437,7 @@ async function changeOutputDevice(value: unknown) {
 }
 const sleepLabel = computed(() => {
   if (!player.sleepRemainingMs) return '关闭'
-  const minutes = Math.ceil(player.sleepRemainingMs / 60000)
-  return `约 ${minutes} 分钟后暂停`
+  return `约 ${displayMinutes(player.sleepRemainingMs)} 分钟后暂停`
 })
 
 const backgroundRendererDescription = computed(() => {

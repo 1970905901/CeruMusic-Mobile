@@ -26,6 +26,7 @@ import {
   nextShuffleKey,
   previousShuffleKey
 } from '@/services/shuffleOrder'
+import { displayMinutes, planSleepTimer, resumeSleepTimer } from '@/services/sleepTimer'
 import {
   type CrossfadeElement,
   cancelCrossfade,
@@ -128,7 +129,9 @@ export const usePlayerStore = defineStore('player', () => {
       repeat: repeat.value,
       shuffle: shuffle.value,
       // 洗牌顺序一起持久化：否则重启后顺序丢失，用户正在听的一轮会被重洗。
-      shuffleOrder: shuffleOrder.value
+      shuffleOrder: shuffleOrder.value,
+      // 睡眠定时存绝对截止时间，重启后才能按原计划结束而不是重新计时。
+      sleepDeadline: sleepDeadline || null
     }
   }
 
@@ -158,6 +161,16 @@ export const usePlayerStore = defineStore('player', () => {
       // 否则丢弃，由 ensureShuffleOrder 重洗。
       const savedOrder = Array.isArray(saved.shuffleOrder) ? saved.shuffleOrder.map(String) : []
       shuffleOrder.value = isShuffleOrderValid(savedOrder, queueKeys()) ? savedOrder : []
+      // 恢复睡眠定时：只认仍然有效的截止时间；已过期的直接丢弃（不暂停当前播放，
+      // 因为此时音频还没就绪）。
+      const resumed = resumeSleepTimer(saved.sleepDeadline, Date.now())
+      if (resumed.active) {
+        armSleepTimer(resumed.deadline, displayMinutes(resumed.remainingMs))
+      } else if (settings.settings.sleepTimerMinutes) {
+        // 旧版本只留下分钟数、没有截止时间，或定时早已到期——无法判断还剩多久，
+        // 清掉避免界面显示一个并不存在的倒计时。
+        settings.settings.sleepTimerMinutes = null
+      }
       audio.volume = volume.value
       audio.muted = muted.value
     } catch {
@@ -869,22 +882,49 @@ export const usePlayerStore = defineStore('player', () => {
     publishState()
   }
 
-  function setSleepTimer(minutes: number | null): void {
+  /**
+   * 睡眠定时内部实现，接收一个绝对截止时间。
+   *
+   * 存绝对时间而不是「还剩多少分钟」：应用被切后台再回来、或进程被系统回收后
+   * 重建，按剩余时长重新计时会把截止时间越推越晚。
+   */
+  function armSleepTimer(deadline: number, minutes: number | null): void {
     if (sleepTimer) clearTimeout(sleepTimer)
     if (sleepInterval) clearInterval(sleepInterval)
     sleepTimer = null
     sleepInterval = null
     sleepRemainingMs.value = null
     settings.settings.sleepTimerMinutes = minutes
-    if (!minutes || minutes <= 0) return
-    sleepDeadline = Date.now() + minutes * 60_000
+    sleepDeadline = deadline
+    if (!minutes || minutes <= 0) {
+      sleepDeadline = 0
+      return
+    }
+    const remaining = Math.max(0, deadline - Date.now())
+    if (remaining <= 0) {
+      // 到期了就直接暂停，不要挂一个立即触发的定时器。
+      sleepDeadline = 0
+      settings.settings.sleepTimerMinutes = null
+      pause()
+      return
+    }
     sleepTimer = setTimeout(() => {
       pause()
       setSleepTimer(null)
-    }, minutes * 60_000)
+    }, remaining)
+    sleepRemainingMs.value = remaining
     sleepInterval = setInterval(() => {
       sleepRemainingMs.value = Math.max(0, sleepDeadline - Date.now())
     }, 1000)
+  }
+
+  function setSleepTimer(minutes: number | null): void {
+    const plan = planSleepTimer(minutes, Date.now())
+    if (!plan.deadline) {
+      armSleepTimer(0, null)
+      return
+    }
+    armSleepTimer(plan.deadline, minutes)
   }
 
   async function restoreIfAvailable(): Promise<void> {
@@ -1060,6 +1100,9 @@ export const usePlayerStore = defineStore('player', () => {
     queue.value = keys.map((key) => map.get(key)).filter((track): track is Track => !!track)
     const nextIndex = currentKey ? queue.value.findIndex((track) => track.key === currentKey) : -1
     currentIndex.value = nextIndex >= 0 ? nextIndex : Math.min(currentIndex.value, queue.value.length - 1)
+    // 拖动排序只改队列展现顺序；洗牌顺序是独立的，成员没变就不该重洗，
+    // 但要确保它与新队列仍然对得上（例如队列被截断）。
+    ensureShuffleOrder()
     publishQueue()
   }
 
@@ -1078,6 +1121,8 @@ export const usePlayerStore = defineStore('player', () => {
     resetAudio()
     queue.value = []
     currentIndex.value = -1
+    // 队列清空后旧洗牌顺序全是失效 key，留着会让下一次播放拿到不存在的歌。
+    ensureShuffleOrder()
     publishQueue()
   }
 
