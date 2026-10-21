@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39431713893`（功能提交 `d82b457`），Android/iOS 均成功
+- 最新 CI：`39541688697`（功能提交 `33bbfed`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -34,6 +34,7 @@
 - iPad 分屏/Stage Manager 响应式布局；最短边 ≥ 744px 启用 `ios-tablet`。
 - Android 平板/大窗布局；最短边 ≥ 600dp 启用 `android-tablet`。
 - 后台播放：iOS `audio` background mode + AVAudioSession；Android 前台媒体服务。
+- 后台降载：`services/appVisibility.ts` 合并原生 `appStateChange` 与 `document.hidden`，切后台时停掉播放页背景呼吸动画、低频鼓点采样、音频可视化与全局视频壁纸解码，回前台自动恢复；音频播放与媒体会话不受影响（桌面端 `useAppBackground` 的移动端等价实现）。
 - 锁屏/通知媒体控制。
 - iOS/Android 主题、品牌色、深色模式、安全区。
 - 基础页面：发现、搜索、音乐库、下载、识别、歌单转换、播放器、设置、插件管理。
@@ -134,9 +135,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：56 个测试文件，301 个测试全部通过
+- `npm run test`：57 个测试文件，303 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39431713893，产物 ceru-music-android 5.17 MB / ceru-music-ios 3.01 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39541688697，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
