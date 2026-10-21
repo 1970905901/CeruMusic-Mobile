@@ -61,15 +61,24 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  /**
+   * 标记已读：先本地扣减让角标立刻变化，再回写后端。
+   *
+   * 回写失败时把本地读状态与计数回滚并刷新真实计数，避免出现「界面显示已读、
+   * 下次进入又变未读」的错觉（桌面端 flushRead 失败后同样以服务端为准）。
+   */
   async function markRead(messages: InboxMessage[]) {
     const unread = messages.filter((item) => !item.read)
     if (!unread.length) return
     unread.forEach((item) => (item.read = true))
+    const previous = counts.value
     counts.value = subtractUnread(counts.value, unread.map((item) => item.category))
     try {
       await notificationsApi.read(unread.map((item) => item.id))
     } catch {
-      // Local read state remains; the next refresh reconciles it.
+      unread.forEach((item) => (item.read = false))
+      counts.value = previous
+      await refreshCounts()
     }
   }
 

@@ -139,7 +139,7 @@
 - 评论来源路由：`services/capabilityRouting.ts` 把桌面端 `Settings/PluginRoutingPanel.vue` 收敛成移动端真正生效的子集——目前只有评论链路会读 `settings.capabilityOwner`，所以只暴露「热门评论 / 最新评论」两项，避免出现选了不生效的摆设开关。设置页「音源与插件」新增「评论来源」入口：按音源分组 → 能力 → 插件逐级选择，标出当前实现并支持「恢复自动」；实现列表按插件实际声明的 action 判定并去重，选中插件被卸载时自动回落到首个实现。### 其他
 - 播放页打开行为接线：`autoPlayOnOpen` / `showLyricsInPlayer` 此前只有设置字段、没有任何消费方（桌面端也没有这两个开关），属于「有开关没行为」。现在由 `services/playerEntry.ts` 的 `planPlayerEntry` 统一判定：歌词面板按设置默认展开；自动播放只在「已有歌曲且处于 paused」时触发，idle/loading/playing/ended/error 一律不打扰，避免抢用户操作或反复重试错误。设置页「播放」分组新增对应两个开关，并登记进设置搜索。- 云账号与 Logto。
 - 音源路由状态可见：`services/providerRouting.ts` 补上桌面端 `PluginRoutingPanel` 的「当前实现」语义——设置页「音源实现」行显示「N 个音源可切换实现」，选择器列出候选并在当前项标注「（当前）」，选中后提示具体插件名。保存的插件被卸载时按宿主实际行为回落到首个实现，副标题明确显示「自动（插件名）」而不是假的「当前使用」。- 通知与系统通知权限。
-- 设置同步。
+- 通知跳转与已读一致性：`services/notificationTarget.ts` 对齐桌面端 `NotificationCenter.openMessage`——回复/评论类通知带 `?comment=` 深链进入帖子并提示定位到谁，赞类通知只开帖子，无 `postId` 则不跳转；`markRead` 失败时回滚本地已读状态并重新拉取计数，避免「显示已读、下次又变未读」；切换分类后顺带对齐一次未读计数。- 设置同步。
 - 社区。
 - AI 助手。
 - 一起听。

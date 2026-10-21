@@ -75,6 +75,7 @@ import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, I
 import { mailOpenOutline, notificationsOffOutline } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar } from '@/services/ossImage'
+import { resolveNotificationTarget } from '@/services/notificationTarget'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import type { InboxMessage } from '@/services/notificationsApi'
@@ -96,11 +97,18 @@ async function reload() {
 
 async function changeCategory() {
   await notifications.load(true)
+  /* 分类切换后角标可能落后于服务端（例如别处已读），顺带对齐一次 */
+  await notifications.refreshCounts()
 }
 
 async function openItem(item: InboxMessage) {
   await notifications.markRead([item])
-  if (item.postId) router.push('/community/' + item.postId)
+  const target = resolveNotificationTarget(item)
+  if (!target) return
+  router.push(target.path)
+  if (target.reply && target.replyToName) {
+    await toast('已定位到 ' + target.replyToName + ' 的评论')
+  }
 }
 
 async function clearRead() {
