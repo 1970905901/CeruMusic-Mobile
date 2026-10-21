@@ -156,8 +156,8 @@ export function dominantColorFromPixels(data: ArrayLike<number>): RgbColor {
   if (!colors.length) return DEFAULT_DOMINANT_COLOR
   const clusters = kMeansCluster(colors, ACCENT_CLUSTERS)
   const filtered = clusters.filter((color) => !isExtreme(color))
-  const picked = filtered.length ? mostSaturated(filtered) : clusters[0]
-  return enhanceColor(picked ?? DEFAULT_DOMINANT_COLOR)
+  if (!filtered.length) return { ...DEFAULT_DOMINANT_COLOR }
+  return enhanceColor(mostSaturated(filtered))
 }
 
 /**
