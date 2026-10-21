@@ -92,7 +92,7 @@
                     :aria-label="'查看评论图片 ' + (imageIndex + 1)"
                     @click="openViewer(comment.images, imageIndex)"
                   >
-                    <img :src="image" alt="" loading="lazy" />
+                    <img :src="ossCard(image)" alt="" loading="lazy" />
                   </button>
                 </div>
 
@@ -161,7 +161,7 @@
       >
         <ion-icon :icon="chevronBackOutline" />
       </button>
-      <img :src="viewer.images[viewer.index]" alt="评论图片" />
+      <img :src="ossDetail(viewer.images[viewer.index])" alt="评论图片" />
       <button
         v-if="viewer.images.length > 1"
         type="button"
@@ -192,6 +192,7 @@ import {
 import CoverImage from '@/components/CoverImage.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { createRequestGuard } from '@/services/requestGuard'
+import { ossCard, ossDetail } from '@/services/ossImage'
 import {
   COMMENT_PAGE_SIZE,
   commentKindLabel,

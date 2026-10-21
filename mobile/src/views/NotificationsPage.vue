@@ -41,7 +41,7 @@
             @click="openItem(item)"
           >
             <div class="notice-avatar">
-              <CoverImage :src="item.actorAvatar || item.cover || ''" :size="44" :radius="22" :alt="item.actorName || item.title" />
+              <CoverImage :src="ossAvatar(item.actorAvatar || item.cover)" :size="44" :radius="22" :alt="item.actorName || item.title" />
             </div>
             <div class="notice-copy">
               <div class="notice-title ceru-truncate">{{ item.title || item.actorName || '系统通知' }}</div>
@@ -74,6 +74,7 @@ import { onMounted } from 'vue'
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSegment, IonSegmentButton, IonSpinner, IonTitle, IonToolbar, toastController, useIonRouter } from '@ionic/vue'
 import { mailOpenOutline, notificationsOffOutline } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
+import { ossAvatar } from '@/services/ossImage'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import type { InboxMessage } from '@/services/notificationsApi'

@@ -38,7 +38,7 @@
           <article v-for="post in posts" :key="post.id" class="post-card" @click="openPost(post)">
             <header class="post-head">
               <CoverImage
-                :src="post.userAvatar || ''"
+                :src="ossAvatar(post.userAvatar)"
                 :size="38"
                 :radius="19"
                 :alt="post.username"
@@ -59,12 +59,12 @@
                 class="image-cell"
                 @click.stop="openPost(post)"
               >
-                <img :src="imageUrl(image)" alt="" loading="lazy" />
+                <img :src="ossCard(imageUrl(image))" alt="" loading="lazy" />
               </button>
             </div>
 
             <div v-if="attachmentCover(post)" class="attachment" @click.stop="openPost(post)">
-              <CoverImage :src="attachmentCover(post)" :size="52" :radius="10" :alt="attachmentTitle(post)" />
+              <CoverImage :src="ossCard(attachmentCover(post))" :size="52" :radius="10" :alt="attachmentTitle(post)" />
               <div class="attachment-copy">
                 <div class="attachment-title ceru-truncate">{{ attachmentTitle(post) }}</div>
                 <div class="attachment-sub">{{ attachmentSubtitle(post) }}</div>
@@ -162,7 +162,7 @@
           <input ref="imageInput" class="file-input" type="file" accept="image/*" multiple @change="pickImages" />
 
           <div v-if="draftAttachment" class="draft-attachment">
-            <CoverImage :src="attachmentCoverValue" :size="46" :radius="9" :alt="attachmentTitleValue" />
+            <CoverImage :src="ossCard(attachmentCoverValue)" :size="46" :radius="9" :alt="attachmentTitleValue" />
             <div class="attachment-copy">
               <div class="attachment-title ceru-truncate">{{ attachmentTitleValue }}</div>
               <div class="attachment-sub">{{ attachmentSubtitleValue }}</div>
@@ -238,6 +238,7 @@ import {
 } from '@/services/communityApi'
 import type { Track } from '@/types/music'
 import { createRequestGuard } from '@/services/requestGuard'
+import { ossAvatar, ossCard } from '@/services/ossImage'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 

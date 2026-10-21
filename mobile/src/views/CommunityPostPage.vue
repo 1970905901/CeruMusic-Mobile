@@ -30,7 +30,7 @@
       <template v-else-if="post">
         <div class="post-main ceru-pad">
           <header class="author-row">
-            <CoverImage :src="post.userAvatar || ''" :size="44" :radius="22" :alt="post.username" />
+            <CoverImage :src="ossAvatar(post.userAvatar)" :size="44" :radius="22" :alt="post.username" />
             <div class="author-copy">
               <div class="author-name">{{ post.username || '音乐同好' }}</div>
               <div class="post-time">{{ formatTime(post.createdAt) }}<span v-if="post.ipLocation"> · {{ post.ipLocation }}</span></div>
@@ -48,12 +48,12 @@
               class="detail-image"
               @click="openViewer(index)"
             >
-              <img :src="imageUrl(image)" alt="" loading="lazy" />
+              <img :src="ossCard(imageUrl(image))" alt="" loading="lazy" />
             </button>
           </div>
 
           <div v-if="attachment" class="attachment-card" @click="playAttachment">
-            <CoverImage :src="attachmentCover" :size="62" :radius="12" :alt="attachmentTitle" />
+            <CoverImage :src="ossCard(attachmentCover)" :size="62" :radius="12" :alt="attachmentTitle" />
             <div class="attachment-copy">
               <div class="attachment-title">{{ attachmentTitle }}</div>
               <div class="attachment-sub">{{ attachmentSubtitle }}</div>
@@ -80,7 +80,7 @@
 
         <div v-if="rootComments.length" class="comments ceru-pad">
           <article v-for="comment in rootComments" :key="comment.id" class="comment">
-            <CoverImage :src="comment.userAvatar || ''" :size="36" :radius="18" :alt="comment.username" />
+            <CoverImage :src="ossAvatar(comment.userAvatar)" :size="36" :radius="18" :alt="comment.username" />
             <div class="comment-body">
               <div class="comment-name">
                 {{ comment.username || '音乐同好' }}
@@ -100,7 +100,7 @@
 
               <div v-if="repliesFor(comment).length" class="replies">
                 <article v-for="reply in repliesFor(comment)" :key="reply.id" class="reply">
-                  <CoverImage :src="reply.userAvatar || ''" :size="30" :radius="15" :alt="reply.username" />
+                  <CoverImage :src="ossAvatar(reply.userAvatar)" :size="30" :radius="15" :alt="reply.username" />
                   <div class="comment-body">
                     <div class="comment-name">
                       {{ reply.username || '音乐同好' }}
@@ -205,7 +205,7 @@
 
     <ion-modal :is-open="viewerOpen" @didDismiss="viewerOpen = false" class="viewer-modal">
       <ion-content class="viewer-content" @click="viewerOpen = false">
-        <img :src="viewerUrl" alt="" class="viewer-image" />
+        <img :src="ossDetail(viewerUrl)" alt="" class="viewer-image" />
       </ion-content>
     </ion-modal>
   </ion-page>
@@ -245,6 +245,7 @@ import {
 } from 'ionicons/icons'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
