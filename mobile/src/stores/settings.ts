@@ -65,6 +65,10 @@ export interface AppSettings {
   localScanFilterMinSizeKb: number
   localScanFilterMinDurationSec: number
   routePreloadEnabled: boolean
+  /** 一起听：后台时推送聊天与新点歌请求的系统通知 */
+  ltNotifyEnabled: boolean
+  /** 一起听：被 @ 或被引用时绕过普通通知开关强提示 */
+  ltMentionStrong: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -121,7 +125,9 @@ const defaults: AppSettings = {
   audioCacheMaxQuality: 'flac',
   localScanFilterMinSizeKb: 100,
   localScanFilterMinDurationSec: 30,
-  routePreloadEnabled: true
+  routePreloadEnabled: true,
+  ltNotifyEnabled: true,
+  ltMentionStrong: true
 }
 
 function load(): AppSettings {

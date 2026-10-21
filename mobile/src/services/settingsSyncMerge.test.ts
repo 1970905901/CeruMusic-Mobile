@@ -56,6 +56,8 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     localScanFilterMinSizeKb: 100,
     localScanFilterMinDurationSec: 30,
     routePreloadEnabled: true,
+    ltNotifyEnabled: true,
+    ltMentionStrong: true,
     ...overrides
   }
 }

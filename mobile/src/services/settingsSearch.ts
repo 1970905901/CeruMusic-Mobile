@@ -38,6 +38,8 @@ const rawItems: RawItem[] = [
   { id: 'group-playback', category: '播放', title: '音频可视化', description: '播放页显示实时频谱', keywords: ['频谱', '可视化', 'visualizer'] },
   { id: 'group-playback', category: '播放', title: '自动隐藏控制栏', keywords: ['隐藏', '控制栏', 'auto hide'] },
   { id: 'group-playback', category: '播放', title: '系统媒体控件高清封面', keywords: ['锁屏', '通知', '封面', 'smtc', 'hires'] },
+  { id: 'group-playback', category: '播放', title: '一起听通知', description: '后台时推送房间聊天与新点歌', keywords: ['一起听', '通知', '后台', 'listen together', 'notify'] },
+  { id: 'group-playback', category: '播放', title: '被 @ 时强提醒', keywords: ['提及', 'mention', '强提醒', '通知'] },
   { id: 'group-cache', category: '音频缓存', title: '离线播放缓存', keywords: ['缓存', 'cache', '离线'] },
   { id: 'group-cache', category: '音频缓存', title: '缓存容量上限', description: '超出后按频率与最近使用清理', keywords: ['容量', '大小', 'cache', 'limit'] },
   { id: 'group-cache', category: '音频缓存', title: '缓存音质上限', description: '高于上限的音质不缓存', keywords: ['音质', '缓存', 'quality'] },

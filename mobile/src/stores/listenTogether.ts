@@ -4,9 +4,16 @@ import { io, type Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
+import { useSettingsStore } from '@/stores/settings'
 import { CERU_API_RESOURCE } from '@/services/authClient'
 import { getAccessToken } from '@/services/ceruApi'
 import { setListenTogetherPlaybackActive } from '@/services/playbackContext'
+import {
+  isMentionedSelf,
+  notifyRoomChat,
+  notifyRoomPending,
+  resetListenTogetherNotifications
+} from '@/services/listenTogetherNotify'
 import {
   extractRoomCode,
   listenTogetherApi,
@@ -135,6 +142,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
 
   function resetRoomState() {
     setListenTogetherPlaybackActive(false)
+    resetListenTogetherNotifications()
     room.value = null
     members.value = []
     current.value = emptySnapshot()
@@ -317,10 +325,21 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
       queue.value = payload?.queue || []
     })
     sock.on(SERVER.PENDING_UPDATE, (payload: { pending: PendingItem[] }) => {
-      pending.value = payload?.pending || []
+      /* PENDING_UPDATE 是全量替换，只有 canControl 的一方需要审批提醒；
+       * 新出现的 reqId 用旧列表做差集，自己的点歌不提醒自己。 */
+      const next = payload?.pending || []
+      if (canControl.value) {
+        const previousIds = new Set(pending.value.map((item) => item.reqId))
+        const added = next.filter(
+          (item) => !previousIds.has(item.reqId) && item.requesterId !== userId.value
+        )
+        if (added.length) notifyRoomPending(added, room.value?.name || '一起听', notifyPrefs())
+      }
+      pending.value = next
     })
     sock.on(SERVER.CHAT_MSG, (message: ChatMsg) => {
       appendChat(message)
+      notifyChatIfNeeded(message)
     })
     sock.on(SERVER.CHAT_SYSTEM, (message: ChatMsg) => {
       appendChat(message)
@@ -353,6 +372,30 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
   function appendChat(message: ChatMsg) {
     if (!message?.id || chat.value.some((item) => item.id === message.id)) return
     chat.value = [...chat.value.slice(-199), message]
+  }
+
+  /** 设置项每次现读，改完立即生效（与桌面端 getPrefs 语义一致）。 */
+  function notifyPrefs() {
+    const settings = useSettingsStore()
+    return {
+      notifyEnabled: settings.settings.ltNotifyEnabled,
+      mentionStrong: settings.settings.ltMentionStrong
+    }
+  }
+
+  /**
+   * 只在收到别人的消息时提示：自己的消息由服务端回显，不该再弹一次；
+   * 系统消息（成员进出/点歌结果）不推送，避免刷屏。
+   */
+  function notifyChatIfNeeded(message: ChatMsg) {
+    if (!message || message.type === 'system') return
+    if (message.from?.userId && message.from.userId === userId.value) return
+    notifyRoomChat(
+      message,
+      room.value?.name || '一起听',
+      isMentionedSelf(message, userId.value, chat.value),
+      notifyPrefs()
+    )
   }
 
   function schedulePings(sock: Socket) {

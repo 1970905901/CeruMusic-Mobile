@@ -248,6 +248,29 @@
           </ion-label>
           <ion-toggle :checked="settings.settings.smtcHiresCover" @ionChange="settings.settings.smtcHiresCover = $event.detail.checked" />
         </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="chatbubblesOutline" color="primary" />
+          <ion-label>
+            <h2>一起听通知</h2>
+            <p>App 切到后台时推送房间聊天与新点歌请求</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.ltNotifyEnabled"
+            @ionChange="settings.settings.ltNotifyEnabled = $event.detail.checked"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="atOutline" color="primary" />
+          <ion-label>
+            <h2>被 @ 时强提醒</h2>
+            <p>被点名或被引用时单独提示，关闭后连普通通知也不再提示</p>
+          </ion-label>
+          <ion-toggle
+            :checked="settings.settings.ltMentionStrong"
+            :disabled="!settings.settings.ltNotifyEnabled"
+            @ionChange="settings.settings.ltMentionStrong = $event.detail.checked"
+          />
+        </ion-item>
       </ion-list>
 
       <ion-list id="group-cache" class="group">
@@ -779,7 +802,9 @@ import {
 } from '@ionic/vue'
 import {
   albumsOutline,
+  atOutline,
   bookOutline,
+  chatbubblesOutline,
   createOutline,
   cloudDownloadOutline,
   documentTextOutline,
