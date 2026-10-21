@@ -238,15 +238,12 @@
                       >
                     </template>
                   </div>
-                  <button
+                  <ChatShareCard
                     v-if="shareLinkOf(message)"
-                    type="button"
-                    class="chat-share"
-                    @click="openShareLink(message)"
-                  >
-                    <ion-icon :icon="shareLinkOf(message)?.cardType === 'playlist' ? albumsOutline : musicalNotesOutline" />
-                    <span>{{ shareLinkOf(message)?.cardType === 'playlist' ? '打开歌单分享' : '打开单曲分享' }}</span>
-                  </button>
+                    :card-type="shareLinkOf(message)!.cardType"
+                    :card-id="shareLinkOf(message)!.cardId"
+                    @open="openShareLink(message)"
+                  />
                 </div>
               </template>
             </div>
@@ -376,7 +373,6 @@ import {
 } from '@ionic/vue'
 import {
   addOutline,
-  albumsOutline,
   chevronForwardOutline,
   copyOutline,
   exitOutline,
@@ -394,6 +390,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import ChatShareCard from '@/components/ChatShareCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useListenTogetherStore } from '@/stores/listenTogether'
@@ -1303,22 +1300,6 @@ onBeforeUnmount(() => {
 }
 .chat-mention.self {
   text-decoration: underline;
-}
-.chat-share {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 6px 9px;
-  border: 1px dashed currentColor;
-  border-radius: 9px;
-  background: transparent;
-  color: inherit;
-  font-size: 11px;
-  opacity: 0.9;
-}
-.chat-share ion-icon {
-  font-size: 15px;
 }
 .chat-composer {
   display: flex;

@@ -128,6 +128,7 @@
 - 路由预加载：`services/routePreload.ts` 在首屏挂载后按「底部标签顺序 → 播放页 → 设置 → 插件 → 详情页」在空闲时逐个拉取页面分包；用户交互后冷却 600ms，应用切后台暂停，设置页可关闭。队列构建与调度均可单测。
 - 无感过渡音效一致：`services/audioEffects.ts` 的 `AudioEffectChain` 改为可共享 `AudioContext` 并用 `output` 节点接入，尾巴元素在交接前建立第二条同参数效果链，EQ/低音/环绕/响度与主链一致，切歌瞬间不再出现音色跳变；尾巴淡出仍由包络直接写 `volume`，不会与主链增益叠加过响。
 - 一起听聊天对齐桌面端：`services/listenTogetherChat.ts` 收敛了系统消息模板、@ 提及切片、meta 组装、分享链接识别与贴纸描述。移动端现在支持 @ 提及（输入 `@` 弹成员候选，发送时只保留正文仍存在的昵称）、引用回复（引用条可点击跳回原消息并高亮）、长按/右键菜单的回复与复制、分享链接识别（`ceru.share.shiqianjiang.cn/<id>`、`/p/<id>`、`/share/song|playlist/<id>`）后跳转对应分享页，并按桌面端白名单透传 `mentions / replyTo* / cardType+cardId`。贴纸消息按桌面端 id 表显示中文描述，不额外打包 2.3 MB 贴纸图片。
+- 一起听分享卡片：`components/ChatShareCard.vue` + `services/chatShareCards.ts` 对齐桌面端 `MessageCard` 的骨架 / 失效 / 内容三态，单曲卡展示封面、歌名、歌手与分享者，歌单卡额外预览前 3 首并显示总曲数；详情按 id 做内存缓存（失败同样缓存为 null，避免重复请求），点击进入 `/shared/song|playlist/:id`。
 
 ### 其他
 - 云账号与 Logto。
