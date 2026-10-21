@@ -70,13 +70,13 @@ function pluginStorageKey(pluginKey: string, key: string) {
   return `plugin:${pluginKey}:${key}`
 }
 
-function jsonHeaders(headers?: Record<string, string>): Record<string, string> {
+export function jsonHeaders(headers?: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(headers ?? {}).map(([key, value]) => [key.toLowerCase(), String(value)])
   )
 }
 
-function buildUrl(input: any): string {
+export function buildUrl(input: any): string {
   const url = new URL(input.url)
   const query = input.query
   if (query && typeof query === 'object') {
@@ -198,6 +198,17 @@ async function showToast(message: string, color?: string) {
     color
   })
   await toast.present()
+}
+
+/**
+ * 插件能力的权限判定。
+ *
+ * permissionKey 由插件侧传入，插件可以给任意字符串；这里必须把「缺省」视为拒绝，
+ * 而不是像旧实现那样 `if (!key) return` 直接放行——否则插件只要不传 key 就能免授权。
+ */
+export function resolvePermissionKey(key: string | undefined | null): string | null {
+  const value = typeof key === 'string' ? key.trim() : ''
+  return value ? value : null
 }
 
 export class PluginRuntime {
@@ -955,9 +966,10 @@ export class PluginRuntime {
     }
   }
 
+
   private async requirePermission(key: string | undefined, group: string): Promise<void> {
-    if (!key) return
-    const status = await requestPermission(this.record.key, key)
+    const resolved = resolvePermissionKey(key)
+    const status = resolved ? await requestPermission(this.record.key, resolved) : 'denied'
     if (status !== 'granted') {
       throw new Error('此功能尚未获得授权，请在插件权限中允许“' + group + '”后重试')
     }
