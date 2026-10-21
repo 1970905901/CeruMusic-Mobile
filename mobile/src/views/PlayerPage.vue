@@ -224,7 +224,13 @@
                 <span v-if="settings.settings.lyricShowRomanization && line.romanization" class="lyric-romanization">{{ line.romanization }}</span>
               </p>
             </div>
-            <div v-else class="plain-lyrics">{{ displayLyrics.plainText || '暂无歌词' }}</div>
+            <div v-else class="plain-lyrics">
+              <template v-if="lyricError">
+                <span>{{ lyricError }}</span>
+                <button class="lyric-retry" type="button" @click="retryLyrics">重试</button>
+              </template>
+              <template v-else>{{ displayLyrics.plainText || '暂无歌词' }}</template>
+            </div>
           </div>
         </template>
       </div>
@@ -350,6 +356,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
+import { getLyricCache, putLyricCache } from '@/services/lyricProvider'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { createIdleControls } from '@/services/idleControls'
 import { lyricJumpStyle } from '@/services/lyricJump'
@@ -444,6 +451,8 @@ const queueOpen = ref(false)
 const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
+/** 歌词加载失败/为空时的提示文案；空字符串表示没有错误。 */
+const lyricError = ref('')
 /**
  * 歌词请求守卫：换歌后旧响应可能晚于新请求返回，若直接写入会覆盖当前歌曲的歌词。
  * 命中缓存或本地歌词是同步分支，不参与竞态。
@@ -654,7 +663,7 @@ async function loadLyrics() {
       : { lines: [], plainText: '本地文件暂未匹配歌词', format: 'plain' }
     return
   }
-  const cached = lyricCache.get(item.key)
+  const cached = getLyricCache(lyricCache, item.key)
   if (cached) {
     lyricsDoc.value = cached
     return
@@ -662,19 +671,34 @@ async function loadLyrics() {
   // 同一首歌的重复加载只认最后一次结果；换歌会作废在途请求。
   const token = lyricRequests.beginLatest(item.key)
   lyricsLoading.value = true
+  // 失败或空结果都允许再次拉取，所以每次重新加载前清掉上一次的占位符。
+  lyricError.value = ''
   try {
     const raw = await pluginStore.lyrics(item)
     const parsed = parseLyrics(raw)
-    lyricCache.set(item.key, parsed)
     if (!lyricRequests.isCurrent(token, track.value?.key)) return
+    // 空结果不缓存：插件「暂时取不到」时返回空文档，缓存后这首歌会一直没歌词。
+    // 但空结果本身是正常状态（有些歌就是没有歌词），不该弹成错误——只是不缓存，
+    // 下次进来还能重试。
+    putLyricCache(lyricCache, item.key, parsed)
     lyricsDoc.value = parsed
-  } catch {
+  } catch (error) {
     if (!lyricRequests.isCurrent(token, track.value?.key)) return
-    lyricsDoc.value = { lines: [], plainText: '暂无歌词', format: 'plain' }
+    lyricsDoc.value = { lines: [], format: 'plain' }
+    // 失败不进缓存，用户可以点「重试」重新拉取。
+    lyricError.value = error instanceof Error ? error.message : '歌词加载失败'
   } finally {
     // 过期请求不得关闭新请求的加载态。
     if (lyricRequests.isCurrent(token, track.value?.key)) lyricsLoading.value = false
   }
+}
+
+/** 手动重试：跳过缓存直接再拉一次（失败与空结果本来就不在缓存里）。 */
+function retryLyrics(): void {
+  const item = track.value
+  if (!item) return
+  lyricCache.delete(item.key)
+  void loadLyrics()
 }
 
 function toggleLyrics() {
@@ -894,6 +918,7 @@ watch(
     // 换歌即作废旧请求，避免旧响应写回并覆盖新歌歌词或残留加载态。
     lyricRequests.invalidate()
     lyricsLoading.value = false
+    lyricError.value = ''
     lyricsDoc.value = { lines: [], format: 'plain' }
     if (showLyrics.value) void loadLyrics()
   }
@@ -1650,6 +1675,17 @@ onBeforeUnmount(() => {
   font-size: 14px;
   line-height: 1.7;
   padding: 20px 12px;
+}
+.lyric-retry {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.6;
 }
 .queue-content {
   --background: var(--ceru-bg);
