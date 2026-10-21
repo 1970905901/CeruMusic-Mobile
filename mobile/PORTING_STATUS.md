@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39542117292`（功能提交 `33bbfed`），Android/iOS 均成功
+- 最新 CI：`39542928997`（功能提交 `87302d3`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -110,6 +110,7 @@
 - 插件 Socket，支持原生 WebSocket 与 Socket.IO。
 - 插件主机事件 `ctx.events.on`，已覆盖 `settings.changed`、`theme.changed`。
 - 插件设置访问限制：只能读写公开设置白名单，不能读 AI API key、权限表等内部状态。
+- 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
 
 ### 其他
 - 云账号与 Logto。
@@ -135,9 +136,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：57 个测试文件，303 个测试全部通过
+- `npm run test`：58 个测试文件，308 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39542117292，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39542928997，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
