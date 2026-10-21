@@ -127,6 +127,7 @@ esizeableActivity 与大屏支持。
 - 请求竞态守卫：新增 `services/requestGuard.ts`，播放页切歌、评论面板分页、搜索与发现页联想/榜单、社区分类切换、分类页与远程歌单详情共用同一套「结果是否仍有效」判定，慢返回的旧请求不再覆盖当前内容。
 - 后台降载：新增 `services/appVisibility.ts`，合并原生 `appStateChange` 与 `document.hidden` 判定应用前后台；切后台时暂停播放页背景呼吸动画、低频鼓点采样、音频可视化与全局视频壁纸解码，回到前台自动恢复。后台播放与系统媒体控件不受影响。
 - 社区图片按需缩放：新增 `services/ossImage.ts`（与桌面端同源），社区列表与评论图片走 `ossCard`、详情大图走 `ossDetail`、头像走 `ossAvatar`，减少移动网络下的原图流量；非 OSS 域名保持原样。
+- 援助提示统一：新增 `services/communitySupport.ts`，发帖、编辑与评论命中自伤风险信号时统一弹窗（含心理援助热线），不再在两个页面各写一份。
 
 > 说明：iOS 版本差异化目前是 Ionic 外壳上的版本类名与样式分支，不是 SwiftUI/UIKit 原生控件级的逐版本实现。其余剩余边界见下方“当前版本边界”。
 
