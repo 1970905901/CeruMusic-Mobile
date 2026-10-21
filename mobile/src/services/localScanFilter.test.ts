@@ -163,4 +163,39 @@ describe('Local Music Scan & Filter', () => {
     expect(normalResult).toBeTruthy()
     expect(normalResult?.title).toBe('Normal Song')
   })
+
+  it('reports why a file was skipped so callers can tell filtering from duplicates', async () => {
+    // SAF 导入需要把「被时长过滤」和「已存在」分开统计，否则界面只能笼统报
+    // 「跳过/过滤」，用户看不出过滤规则到底有没有生效。
+    const { useLibraryStore } = await import('@/stores/library')
+    const library = useLibraryStore()
+    await library.init()
+
+    const smallFile = new File([new Blob([new Uint8Array(20 * 1024)])], 'tiny.mp3', {
+      type: 'audio/mpeg'
+    })
+    expect((await library.importLocalFileWithReason(smallFile, { minSizeKb: 100 })).reason).toBe(
+      'size'
+    )
+
+    const shortFile = new File([new Blob([new Uint8Array(2 * 1024 * 1024)])], 'short.mp3', {
+      type: 'audio/mpeg'
+    })
+    const short = await library.importLocalFileWithReason(shortFile, { minDurationSec: 30 })
+    expect(short.record).toBeNull()
+    expect(short.reason).toBe('duration')
+
+    const normalFile = new File([new Blob([new Uint8Array(3 * 1024 * 1024)])], 'ok.mp3', {
+      type: 'audio/mpeg'
+    })
+    const sourcePath = 'saf:content://tree/ok.mp3'
+    const first = await library.importLocalFileWithReason(normalFile, { sourcePath })
+    expect(first.record).toBeTruthy()
+    expect(first.reason).toBeUndefined()
+
+    // 同一个来源再次导入同一个文件 → 重复，而不是「过滤」。
+    const again = await library.importLocalFileWithReason(normalFile, { sourcePath })
+    expect(again.record).toBeNull()
+    expect(again.reason).toBe('duplicate')
+  })
 })

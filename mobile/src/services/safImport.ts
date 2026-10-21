@@ -152,12 +152,17 @@ export async function importSafFolder(
         continue
       }
       const file = new File([bytes], entry.name, { type: mimeForAudio(entry.name) })
-      const record = await library.importLocalFile(file, {
+      // 重复文件与「时长过短被过滤」都返回 null，这里分不清就会把过滤数量漏掉，
+      // 界面只能笼统显示「跳过/过滤」。先用同一个判据判一次，把过滤单独计数。
+      const outcome = await library.importLocalFileWithReason(file, {
         sourcePath: 'saf:' + entry.uri,
         minDurationSec
       })
-      if (record) {
+      if (outcome.record) {
         imported++
+      } else if (outcome.reason === 'duration') {
+        filteredDuration++
+        skipped++
       } else {
         skipped++
       }

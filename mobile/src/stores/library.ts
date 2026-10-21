@@ -424,17 +424,39 @@ export const useLibraryStore = defineStore('library', () => {
     return values[ext] || 'audio/mpeg'
   }
 
+  /**
+   * 导入单个本地文件，并说明「没导入」的原因。
+   *
+   * `importLocalFile` 历史上只返回 null，调用方分不清「重复」与「被时长过滤」，
+   * 于是 SAF 导入只能笼统报「跳过/过滤」。需要区分的调用方用这个版本。
+   */
+  async function importLocalFileWithReason(
+    file: File,
+    options: ImportLocalOptions = {}
+  ): Promise<{ record: LocalTrackRecord | null; reason?: 'size' | 'duration' | 'duplicate' }> {
+    return importLocalFileCore(file, options)
+  }
+
   async function importLocalFile(
     file: File,
     options: ImportLocalOptions = {}
   ): Promise<LocalTrackRecord | null> {
+    return (await importLocalFileCore(file, options)).record
+  }
+
+  async function importLocalFileCore(
+    file: File,
+    options: ImportLocalOptions = {}
+  ): Promise<{ record: LocalTrackRecord | null; reason?: 'size' | 'duration' | 'duplicate' }> {
     if (options.minSizeKb && options.minSizeKb > 0 && file.size > 0 && file.size < options.minSizeKb * 1024) {
-      return null
+      return { record: null, reason: 'size' }
     }
     const existing = options.sourcePath
       ? localRecords.value.find((item) => item.sourcePath === options.sourcePath)
       : undefined
-    if (existing && existing.size === file.size && file.size > 0) return null
+    if (existing && existing.size === file.size && file.size > 0) {
+      return { record: null, reason: 'duplicate' }
+    }
 
     let title = options.preParsed?.title || file.name.replace(/\.[^.]+$/, '')
     let artist = options.preParsed?.artist || '未知艺术家'
@@ -472,7 +494,7 @@ export const useLibraryStore = defineStore('library', () => {
       durationMs !== undefined &&
       durationMs < options.minDurationSec * 1000
     ) {
-      return null
+      return { record: null, reason: 'duration' }
     }
 
     const key = uid('local')
@@ -507,7 +529,7 @@ export const useLibraryStore = defineStore('library', () => {
     await db.put('localTracks', toPlain(record))
     localRecords.value = [record, ...localRecords.value]
     tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
-    return record
+    return { record }
   }
 
   async function importLocalFiles(files: File[]): Promise<LocalTrackRecord[]> {
@@ -1064,6 +1086,7 @@ export const useLibraryStore = defineStore('library', () => {
     removeFromHistory,
     pickLocalFiles,
     importLocalFile,
+    importLocalFileWithReason,
     importLocalFiles,
     scanLocalMusic,
     deleteLocalTrack,

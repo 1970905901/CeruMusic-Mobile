@@ -1669,13 +1669,19 @@ async function importSaf() {
     const result = await importSafFolder((message) => {
       safProgress.value = message
     })
-    if (result.imported || result.failed) {
-      const parts = [`已导入 ${result.imported} 首`]
-      if (result.skipped) parts.push(`跳过/过滤 ${result.skipped} 首`)
-      if (result.failed) parts.push(`失败 ${result.failed} 首`)
-      await toast(parts.join('，'), result.failed ? 'danger' : 'medium')
-    } else if (result.skipped) {
-      await toast(`所选文件夹没有新的歌曲 (已跳过/过滤 ${result.skipped} 首)`)
+    // 把「已存在」与「被过滤」分开说：笼统一句「跳过/过滤」会让用户
+    // 以为短音频被当成重复给吞了，反之也看不出过滤规则是否生效。
+    const filtered = (result.filteredSize || 0) + (result.filteredDuration || 0)
+    const duplicates = Math.max(0, result.skipped - filtered)
+    const details: string[] = []
+    if (duplicates) details.push(`已存在 ${duplicates} 首`)
+    if (filtered) details.push(`过滤 ${filtered} 首`)
+    if (result.failed) details.push(`失败 ${result.failed} 首`)
+    if (result.imported) {
+      const suffix = details.length ? `（${details.join('，')}）` : ''
+      await toast(`已导入 ${result.imported} 首${suffix}`, result.failed ? 'danger' : 'medium')
+    } else if (details.length) {
+      await toast(`所选文件夹没有新的歌曲（${details.join('，')}）`)
     } else {
       await toast('所选文件夹没有新的音频文件')
     }
