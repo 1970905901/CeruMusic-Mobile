@@ -607,10 +607,23 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     socket?.emit(CLIENT.MEMBER_KICK, { userId: userIdValue })
   }
 
-  function sendChat(content: string, type: 'text' | 'emoji' | 'sticker' = 'text') {
+  /**
+   * 发送聊天。meta 仅在非空时透传（桌面端同款语义）：后端按白名单转发
+   * mentions / replyTo* / cardType+cardId，空对象不发，避免无意义字段。
+   */
+  function sendChat(
+    content: string,
+    type: 'text' | 'emoji' | 'sticker' = 'text',
+    meta?: Record<string, string>
+  ) {
     const value = content.trim()
     if (!value || !socket?.connected) return false
-    socket.emit(CLIENT.CHAT_SEND, { type, content: value })
+    const payload: { type: typeof type; content: string; meta?: Record<string, string> } = {
+      type,
+      content: value
+    }
+    if (meta && Object.keys(meta).length > 0) payload.meta = meta
+    socket.emit(CLIENT.CHAT_SEND, payload)
     return true
   }
 

@@ -189,35 +189,102 @@
         </ion-segment>
 
         <div v-if="panel === 'chat'" class="panel chat-panel">
-          <div ref="chatList" class="chat-list">
+          <div
+            ref="chatList"
+            class="chat-list"
+            @scroll="onChatScroll"
+          >
             <div v-if="!lt.chat.length" class="panel-empty">还没有聊天，打个招呼吧</div>
             <div
               v-for="message in lt.chat"
               :key="message.id"
+              :data-msg-id="message.id"
               class="chat-message"
-              :class="{ mine: message.from?.userId === lt.userId, system: message.type === 'system' }"
+              :class="{
+                mine: message.from?.userId === lt.userId,
+                system: message.type === 'system',
+                highlighted: message.id === highlightedMessageId
+              }"
+              @contextmenu.prevent="openMessageActions(message)"
+              @touchstart.passive="startPress(message)"
+              @touchend="endPress"
+              @touchcancel="endPress"
+              @touchmove="endPress"
             >
               <template v-if="message.type === 'system'">
-                <span>{{ message.content }}</span>
+                <span>{{ systemText(message) }}</span>
               </template>
               <template v-else>
                 <CoverImage :src="message.from?.avatar || ''" :size="30" :radius="15" :alt="message.from?.nickname || ''" />
                 <div class="chat-bubble">
                   <div class="chat-name">{{ message.from?.nickname || '音乐同好' }}</div>
-                  <div class="chat-text">{{ message.content }}</div>
+                  <button
+                    v-if="message.meta?.replyToId"
+                    type="button"
+                    class="chat-quote"
+                    @click="jumpToQuoted(message)"
+                  >
+                    <span class="quote-from">{{ message.meta.replyToFrom || '回复' }}</span>
+                    <span class="quote-text">{{ message.meta.replyToPreview || '' }}</span>
+                  </button>
+                  <div class="chat-text">
+                    <template v-if="message.type === 'sticker'">[贴纸] {{ describeChatSticker(message.content) }}</template>
+                    <template v-else>
+                      <span
+                        v-for="(segment, index) in segmentsOf(message)"
+                        :key="index"
+                        :class="segment.type === 'mention' ? ['chat-mention', { self: segment.isSelf }] : ''"
+                        >{{ segment.text }}</span
+                      >
+                    </template>
+                  </div>
+                  <button
+                    v-if="shareLinkOf(message)"
+                    type="button"
+                    class="chat-share"
+                    @click="openShareLink(message)"
+                  >
+                    <ion-icon :icon="shareLinkOf(message)?.cardType === 'playlist' ? albumsOutline : musicalNotesOutline" />
+                    <span>{{ shareLinkOf(message)?.cardType === 'playlist' ? '打开歌单分享' : '打开单曲分享' }}</span>
+                  </button>
                 </div>
               </template>
             </div>
           </div>
           <div class="chat-composer">
-            <ion-textarea
-              v-model="chatDraft"
-              auto-grow
-              :maxlength="500"
-              placeholder="聊聊这首歌…"
-              class="chat-input"
-              @keydown.enter.exact.prevent="sendChat"
-            />
+            <div class="composer-stack">
+              <div v-if="mentionCandidates.length" class="mention-popup">
+                <button
+                  v-for="member in mentionCandidates"
+                  :key="member.userId"
+                  type="button"
+                  class="mention-option"
+                  @pointerdown.prevent
+                  @click="pickMention(member)"
+                >
+                  <CoverImage :src="member.avatar || ''" :size="22" :radius="11" :alt="member.nickname" />
+                  <span class="ceru-truncate">{{ member.nickname || '音乐同好' }}</span>
+                </button>
+              </div>
+              <div v-if="replyTo" class="reply-chip">
+                <div class="reply-chip-copy">
+                  <span class="reply-chip-title">回复 {{ replyTo.from }}</span>
+                  <span class="reply-chip-preview ceru-truncate">{{ replyTo.preview }}</span>
+                </div>
+                <button type="button" class="reply-chip-close" aria-label="取消回复" @click="clearReply">✕</button>
+              </div>
+              <ion-textarea
+                ref="chatInput"
+                v-model="chatDraft"
+                auto-grow
+                :maxlength="500"
+                placeholder="聊聊这首歌…"
+                class="chat-input"
+                @ionInput="onChatInput"
+                @ionBlur="onChatBlur"
+                @keydown.enter.exact.prevent="sendChat"
+              />
+            </div>
             <ion-button :disabled="!chatDraft.trim()" @click="sendChat">
               <ion-icon :icon="sendOutline" />
             </ion-button>
@@ -304,10 +371,12 @@ import {
   IonToolbar,
   actionSheetController,
   alertController,
-  toastController
+  toastController,
+  useIonRouter
 } from '@ionic/vue'
 import {
   addOutline,
+  albumsOutline,
   chevronForwardOutline,
   copyOutline,
   exitOutline,
@@ -328,20 +397,41 @@ import CoverImage from '@/components/CoverImage.vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useListenTogetherStore } from '@/stores/listenTogether'
-import { extractRoomCode, type RoomMember, type RoomRole } from '@/services/listenTogetherApi'
+import {
+  extractRoomCode,
+  type ChatMsg,
+  type RoomMember,
+  type RoomRole
+} from '@/services/listenTogetherApi'
+import {
+  buildChatMeta,
+  describeChatSticker,
+  findMentionQuery,
+  parseChatShareLink,
+  replyPreview,
+  renderSystemMessage,
+  splitMentions,
+  type ChatSegment
+} from '@/services/listenTogetherChat'
 
 const auth = useAuthStore()
 const player = usePlayerStore()
 const lt = useListenTogetherStore()
 const route = useRoute()
+const ionRouter = useIonRouter()
 
 const entryMode = ref<'create' | 'join'>('create')
 const panel = ref<'chat' | 'queue' | 'members'>('chat')
 const joinInput = ref(String(route.query.code || ''))
 const chatDraft = ref('')
 const chatList = ref<HTMLElement | null>(null)
+const chatInput = ref<any>(null)
 const nowTick = ref(Date.now())
 const previousRoom = ref<{ code: string; name: string } | null>(null)
+const selectedMentions = ref<Array<{ userId: string; nickname: string }>>([])
+const mentionQuery = ref<string | null>(null)
+const replyTo = ref<{ id: string; from: string; preview: string } | null>(null)
+const highlightedMessageId = ref('')
 const createForm = reactive({
   mode: 'group' as 'intimate' | 'group',
   name: '',
@@ -349,8 +439,22 @@ const createForm = reactive({
 })
 
 let tickTimer: ReturnType<typeof setInterval> | undefined
+let pressTimer: ReturnType<typeof setTimeout> | undefined
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+/** 用户停留在列表底部时才自动跟随新消息，翻历史时不打断。 */
+const stickToBottom = ref(true)
 
 const detectedCode = computed(() => extractRoomCode(joinInput.value))
+/** @ 候选：仅在输入 `@` 后活跃，排除自己，最多 6 条。 */
+const mentionCandidates = computed<RoomMember[]>(() => {
+  const query = mentionQuery.value
+  if (query === null) return []
+  const keyword = query.toLowerCase()
+  return lt.members
+    .filter((member) => member.userId !== lt.userId)
+    .filter((member) => !keyword || String(member.nickname || '').toLowerCase().includes(keyword))
+    .slice(0, 6)
+})
 const roomPosition = computed(() => {
   void nowTick.value
   if (!lt.current.song) return 0
@@ -480,11 +584,205 @@ function requestCurrentTrack() {
   void toast('点歌请求已发送')
 }
 
+/* ============================================================
+ *  聊天：@ 提及 / 引用 / 复制 / 分享链接
+ *  规则集中在 services/listenTogetherChat.ts，页面只负责交互与渲染。
+ * ============================================================ */
+
+/** IonTextarea 的宿主元素里才有真正的 <textarea>（光标位置要靠它）。 */
+function textareaElement(): HTMLTextAreaElement | null {
+  const host = chatInput.value?.$el as HTMLElement | undefined
+  return host?.querySelector?.('textarea') ?? null
+}
+
+function refreshMentionContext(): void {
+  const element = textareaElement()
+  const cursor = element ? element.selectionStart : chatDraft.value.length
+  const found = findMentionQuery(chatDraft.value, cursor)
+  mentionQuery.value = found ? found.query : null
+}
+
+function onChatInput() {
+  refreshMentionContext()
+}
+
+/** 候选项在 blur 之后才收到点击，延后关闭浮层，否则点不到人。 */
+function onChatBlur() {
+  setTimeout(() => {
+    mentionQuery.value = null
+  }, 160)
+}
+
+function onChatScroll(event: Event) {
+  const element = event.target as HTMLElement
+  stickToBottom.value =
+    element.scrollHeight - element.scrollTop - element.clientHeight < 80
+}
+
+function pickMention(member: RoomMember) {
+  const nickname = String(member.nickname || '')
+  if (!nickname) return
+  const element = textareaElement()
+  const cursor = element ? element.selectionStart : chatDraft.value.length
+  const found = findMentionQuery(chatDraft.value, cursor)
+  const at = found ? found.at : chatDraft.value.length
+  const before = chatDraft.value.slice(0, at)
+  const after = chatDraft.value.slice(cursor)
+  const insert = '@' + nickname + ' '
+  chatDraft.value = before + insert + after
+  if (!selectedMentions.value.some((item) => item.userId === member.userId)) {
+    selectedMentions.value = [
+      ...selectedMentions.value,
+      { userId: member.userId, nickname }
+    ]
+  }
+  mentionQuery.value = null
+  void nextTick(() => {
+    const target = textareaElement()
+    if (!target) return
+    const position = before.length + insert.length
+    target.setSelectionRange(position, position)
+    target.focus()
+  })
+}
+
+function segmentsOf(message: ChatMsg): ChatSegment[] {
+  const ids = String(message.meta?.mentions || '')
+    .split(',')
+    .filter(Boolean)
+  return splitMentions(message.content, ids, lt.members, lt.userId)
+}
+
+function systemText(message: ChatMsg): string {
+  return renderSystemMessage(message.content, message.meta)
+}
+
+function shareLinkOf(message: ChatMsg) {
+  if (message.type === 'system') return null
+  const declared = message.meta?.cardType
+  const id = message.meta?.cardId
+  if ((declared === 'song' || declared === 'playlist') && id) {
+    return { cardType: declared, cardId: id }
+  }
+  return parseChatShareLink(message.content)
+}
+
+function openShareLink(message: ChatMsg) {
+  const link = shareLinkOf(message)
+  if (!link) return
+  const route =
+    link.cardType === 'playlist'
+      ? '/shared/playlist/' + encodeURIComponent(link.cardId)
+      : '/shared/song/' + encodeURIComponent(link.cardId)
+  void ionRouter.push(route)
+}
+
+function startReply(message: ChatMsg) {
+  if (message.type === 'system') return
+  replyTo.value = {
+    id: message.id,
+    from: message.from?.nickname || '某人',
+    preview: replyPreview(message.content, message.type, describeChatSticker(message.content))
+  }
+  void nextTick(() => textareaElement()?.focus())
+}
+
+function clearReply() {
+  replyTo.value = null
+}
+
+function mentionMessageSender(message: ChatMsg) {
+  const member = lt.members.find((item) => item.userId === message.from?.userId)
+  if (!member) {
+    void toast('该成员已不在房间', 'warning')
+    return
+  }
+  const separator = chatDraft.value && !/\s$/.test(chatDraft.value) ? ' ' : ''
+  chatDraft.value += separator + '@' + member.nickname + ' '
+  if (!selectedMentions.value.some((item) => item.userId === member.userId)) {
+    selectedMentions.value = [
+      ...selectedMentions.value,
+      { userId: member.userId, nickname: String(member.nickname || '') }
+    ]
+  }
+  void nextTick(() => textareaElement()?.focus())
+}
+
+function jumpToQuoted(message: ChatMsg) {
+  const targetId = message.meta?.replyToId
+  if (!targetId) return
+  if (!lt.chat.some((item) => item.id === targetId)) {
+    void toast('原消息已不可见', 'warning')
+    return
+  }
+  const container = chatList.value
+  const target = container?.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(targetId)}"]`)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  highlightedMessageId.value = targetId
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => {
+    highlightedMessageId.value = ''
+    highlightTimer = undefined
+  }, 1600)
+}
+
+async function copyMessage(message: ChatMsg) {
+  const text =
+    message.type === 'sticker'
+      ? `[贴纸] ${describeChatSticker(message.content)}`
+      : message.content
+  try {
+    await Clipboard.write({ string: text })
+    await toast('已复制')
+  } catch {
+    await toast('复制失败', 'danger')
+  }
+}
+
+/** 长按/右键菜单：移动端没有 hover，长按是唯一可发现的入口。 */
+async function openMessageActions(message: ChatMsg) {
+  if (message.type === 'system') return
+  const buttons: any[] = [
+    { text: '回复', handler: () => startReply(message) },
+    { text: '复制', handler: () => void copyMessage(message) }
+  ]
+  if (message.from?.userId && message.from.userId !== lt.userId) {
+    buttons.unshift({ text: '提及 ' + (message.from.nickname || 'TA'), handler: () => mentionMessageSender(message) })
+  }
+  buttons.push({ text: '取消', role: 'cancel' })
+  const sheet = await actionSheetController.create({ header: '消息操作', buttons })
+  await sheet.present()
+}
+
+function startPress(message: ChatMsg) {
+  endPress()
+  pressTimer = setTimeout(() => {
+    pressTimer = undefined
+    void openMessageActions(message)
+  }, 480)
+}
+
+function endPress() {
+  if (!pressTimer) return
+  clearTimeout(pressTimer)
+  pressTimer = undefined
+}
+
 function sendChat() {
   const content = chatDraft.value.trim()
   if (!content) return
-  if (lt.sendChat(content)) {
+  const meta = buildChatMeta({
+    content,
+    mentions: selectedMentions.value,
+    reply: replyTo.value
+  })
+  if (lt.sendChat(content, 'text', meta)) {
     chatDraft.value = ''
+    selectedMentions.value = []
+    replyTo.value = null
+    mentionQuery.value = null
+    stickToBottom.value = true
   } else {
     void toast('尚未连接房间', 'warning')
   }
@@ -573,6 +871,7 @@ onMounted(() => {
 watch(
   () => lt.chat.length,
   async () => {
+    if (!stickToBottom.value) return
     await nextTick()
     const element = chatList.value
     if (element) element.scrollTop = element.scrollHeight
@@ -581,6 +880,8 @@ watch(
 
 onBeforeUnmount(() => {
   if (tickTimer) clearInterval(tickTimer)
+  endPress()
+  if (highlightTimer) clearTimeout(highlightTimer)
 })
 </script>
 
@@ -962,14 +1263,132 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.chat-message.highlighted .chat-bubble {
+  box-shadow: 0 0 0 2px var(--ceru-brand);
+}
+.chat-quote {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  margin-top: 5px;
+  padding: 5px 7px;
+  border: 0;
+  border-left: 2px solid currentColor;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.12);
+  color: inherit;
+  font-size: 10px;
+  text-align: left;
+  opacity: 0.85;
+}
+.quote-from {
+  flex: 0 0 auto;
+  font-weight: 650;
+}
+.quote-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+.chat-mention {
+  color: var(--ceru-brand);
+  font-weight: 650;
+}
+.chat-message.mine .chat-mention {
+  color: inherit;
+  text-decoration: underline;
+}
+.chat-mention.self {
+  text-decoration: underline;
+}
+.chat-share {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px dashed currentColor;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  opacity: 0.9;
+}
+.chat-share ion-icon {
+  font-size: 15px;
+}
 .chat-composer {
   display: flex;
   align-items: flex-end;
   gap: 8px;
   margin-top: 12px;
 }
-.chat-input {
+.composer-stack {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mention-popup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 12px;
+  background: var(--ceru-bg-elevated);
+}
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 140px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 999px;
+  background: var(--ceru-bg-soft);
+  color: var(--ceru-text);
+  font-size: 11px;
+}
+.reply-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-left: 2px solid var(--ceru-brand);
+  border-radius: 8px;
+  background: var(--ceru-bg-soft);
+}
+.reply-chip-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.reply-chip-title {
+  color: var(--ceru-brand);
+  font-size: 10px;
+  font-weight: 650;
+}
+.reply-chip-preview {
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+}
+.reply-chip-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.chat-input {
+  width: 100%;
   max-height: 100px;
   --background: var(--ceru-bg-elevated);
   --padding-start: 11px;
