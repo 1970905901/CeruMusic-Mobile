@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39546021764`（功能提交 `1ed0c39`），Android/iOS 均成功
+- 最新 CI：`39546747748`（功能提交 `1be6a17`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -114,6 +114,7 @@
 - 自伤援助提示唯一实现：`services/communitySupport.ts` 收敛了原先在社区列表与帖子详情各写一份的 `showSupport`；发帖、编辑、评论三处发布成功后统一调用 `showSupportNotice`，弹窗展示标题、正文与心理援助热线。
 - 分享歌单分页防死循环：`services/sharedPlaylist.ts` 改为按「新增歌曲数」累计进度，并沿用桌面版口径——连续两页没有新增歌曲即停止；此前重复页会让 `loaded` 虚增而提前结束，或在异常音源上空转。
 - 路由预加载：`services/routePreload.ts` 在首屏挂载后按「底部标签顺序 → 播放页 → 设置 → 插件 → 详情页」在空闲时逐个拉取页面分包；用户交互后冷却 600ms，应用切后台暂停，设置页可关闭。队列构建与调度均可单测。
+- 无感过渡音效一致：`services/audioEffects.ts` 的 `AudioEffectChain` 改为可共享 `AudioContext` 并用 `output` 节点接入，尾巴元素在交接前建立第二条同参数效果链，EQ/低音/环绕/响度与主链一致，切歌瞬间不再出现音色跳变；尾巴淡出仍由包络直接写 `volume`，不会与主链增益叠加过响。
 
 ### 其他
 - 云账号与 Logto。
@@ -139,9 +140,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：60 个测试文件，321 个测试全部通过
+- `npm run test`：61 个测试文件，324 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39546021764，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39546747748，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
@@ -149,7 +150,7 @@ npm run build
 - 每个 iOS 版本一套 SwiftUI/UIKit 原生控件；当前仍是 Ionic iOS 模式 + `ios-14` … `ios-26` 版本化样式。
 - iPad Stage Manager / iOS 原生多窗口完整能力；当前只保证分屏与大窗口布局可用。
 - 后端歌单分享的网页在线播放（需服务端解析模块导出）；App 内歌单分享链接创建已支持。
-- 无感过渡的旧歌尾段不经过 Web Audio 效果链（可视化与均衡器只作用于主元素）；如需一致音效需改为双槽 + 共享效果图。
+- 无感过渡的尾巴链只在主链已接管音频（音源为 blob/data）时建立；跨域直链时尾巴仍走原生输出，音色可能与主链不同。
 - 真机回归仍未系统性完成。
 
 ## 真机回归清单
