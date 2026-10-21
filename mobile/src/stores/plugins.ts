@@ -175,11 +175,9 @@ export const usePluginStore = defineStore('plugins', () => {
   }
 
   function providerForProtocol(protocol: string, preferredSource?: string): ProviderEntry | undefined {
-    if (preferredSource) {
-      const selected = selectedProvider(preferredSource)
-      if (selected) return selected
-    }
-    return providers.value.find((provider) => provider.protocols.includes(protocol)) ?? providers.value[0]
+    return pickProviderByProtocol(providers.value, protocol, preferredSource, (source) =>
+      settings.providerOwner(source)
+    )
   }
 
   async function init(): Promise<void> {
@@ -632,3 +630,29 @@ export const usePluginStore = defineStore('plugins', () => {
     publishTheme
   }
 })
+
+/**
+ * 按协议挑 provider。
+ *
+ * 旧实现找不到匹配协议时会回落到 providers[0]，等于把请求发给一个明确声明
+ * 不支持该协议的插件；这里改为返回 undefined，由调用方决定是否报错。
+ */
+export function pickProviderByProtocol<
+  T extends { providerId: string; protocols: string[]; pluginKey: string }
+>(
+  entries: readonly T[],
+  protocol: string,
+  preferredSource?: string,
+  ownerFor?: (source: string) => string | undefined
+): T | undefined {
+  const matches = entries.filter((entry) => entry.protocols.includes(protocol))
+  if (!matches.length) return undefined
+  if (preferredSource) {
+    const preferred = matches.filter((entry) => entry.providerId === preferredSource)
+    const owner = ownerFor?.(preferredSource)
+    const owned = owner ? preferred.find((entry) => entry.pluginKey === owner) : undefined
+    if (owned) return owned
+    if (preferred.length) return preferred[0]
+  }
+  return matches[0]
+}
