@@ -107,13 +107,43 @@ jobs:
       - name: Typecheck and build web assets
         run: npm run build
 
+      # 所有 pod 都是 node_modules 下的本地路径依赖，失败几乎都发生在
+      # CocoaPods 首次拉取 trunk 规格索引（cdn.cocoapods.org 抖动）。
+      # 缓存规格仓库 + 本地缓存即可挡掉这类偶发失败。
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos
+            ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-pods-${{ hashFiles('mobile/ios/App/Podfile') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
       - name: Sync Capacitor iOS
-        run: npx cap sync ios
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npx cap sync ios; then
+              exit 0
+            fi
+            echo "cap sync ios failed (attempt $attempt)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Install CocoaPods
         run: |
+          set -euo pipefail
           cd ios/App
-          pod install
+          for attempt in 1 2 3; do
+            if pod install; then
+              exit 0
+            fi
+            echo "pod install failed (attempt $attempt)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Build unsigned iPhone and iPad app
         run: |
