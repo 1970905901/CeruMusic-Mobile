@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39543508347`（功能提交 `b6a2309`），Android/iOS 均成功
+- 最新 CI：`39545137529`（功能提交 `263ba31`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - 最新产物命名：
@@ -112,6 +112,7 @@
 - 插件设置访问限制：只能读写公开设置白名单，不能读 AI API key、权限表等内部状态。
 - 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
 - 自伤援助提示唯一实现：`services/communitySupport.ts` 收敛了原先在社区列表与帖子详情各写一份的 `showSupport`；发帖、编辑、评论三处发布成功后统一调用 `showSupportNotice`，弹窗展示标题、正文与心理援助热线。
+- 分享歌单分页防死循环：`services/sharedPlaylist.ts` 改为按「新增歌曲数」累计进度，并沿用桌面版口径——连续两页没有新增歌曲即停止；此前重复页会让 `loaded` 虚增而提前结束，或在异常音源上空转。
 
 ### 其他
 - 云账号与 Logto。
@@ -137,9 +138,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：59 个测试文件，311 个测试全部通过
+- `npm run test`：59 个测试文件，313 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39543508347，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39545137529，产物 ceru-music-android 5.43 MB / ceru-music-ios 3.16 MB）
 
 ## 当前未完成
 
