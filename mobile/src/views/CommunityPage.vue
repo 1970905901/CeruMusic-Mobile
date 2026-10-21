@@ -239,6 +239,7 @@ import {
 import type { Track } from '@/types/music'
 import { createRequestGuard } from '@/services/requestGuard'
 import { ossAvatar, ossCard } from '@/services/ossImage'
+import { showSupportNotice } from '@/services/communitySupport'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 
@@ -507,7 +508,7 @@ async function publish() {
     })
     creating.value = false
     await toast('已发布')
-    if (result.support) await showSupport(result.support)
+    if (result.support) await showSupportNotice(result.support)
     feedMode.value = 'latest'
     await load(true)
     router.push('/community/' + result.id)
@@ -518,14 +519,6 @@ async function publish() {
   }
 }
 
-async function showSupport(support: { title: string; text: string; hotline?: string }) {
-  const alert = await alertController.create({
-    header: support.title,
-    message: support.text + (support.hotline ? '\n\n心理援助热线：' + support.hotline : ''),
-    buttons: ['我知道了']
-  })
-  await alert.present()
-}
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })

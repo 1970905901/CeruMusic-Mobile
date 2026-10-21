@@ -246,6 +246,7 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
+import { showSupportNotice } from '@/services/communitySupport'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
@@ -483,7 +484,7 @@ async function submitComment() {
     post.value.commentCount += 1
     commentDraft.value = ''
     cancelReply()
-    if (created.support) await showSupport(created.support)
+    if (created.support) await showSupportNotice(created.support)
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '评论失败', 'danger')
   } finally {
@@ -699,7 +700,7 @@ async function saveEdit() {
     post.value = updated
     editing.value = false
     await toast('已保存')
-    if (updated.support) await showSupport(updated.support)
+    if (updated.support) await showSupportNotice(updated.support)
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '保存失败', 'danger')
   } finally {
@@ -707,14 +708,6 @@ async function saveEdit() {
   }
 }
 
-async function showSupport(support: { title: string; text: string; hotline?: string }) {
-  const alert = await alertController.create({
-    header: support.title,
-    message: support.text + (support.hotline ? '\n\n心理援助热线：' + support.hotline : ''),
-    buttons: ['我知道了']
-  })
-  await alert.present()
-}
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })
