@@ -164,6 +164,39 @@ describe('shared playlist pagination', () => {
     expect(stuck.songs).toHaveLength(1)
   })
 
+  it('stops after two pages that add no new songs', async () => {
+    let calls = 0
+    const progress: number[] = []
+    const result = await fetchSharedPlaylistSongs(
+      'share-loop',
+      async (_limit: number, pos?: number): Promise<any> => {
+        calls++
+        // 音源返回重复页：pos 一直前进，内容却始终是同一首。
+        return { playlist: { total: 500, songs: [{ songmid: '1', source: 'wy', pos: (pos ?? 0) + 1 }] } }
+      },
+      { pageSize: 1, onProgress: (loaded) => progress.push(loaded) }
+    )
+
+expect(calls).toBe(3)
+    expect(result.songs).toHaveLength(1)
+expect(progress).toEqual([1, 1, 1])
+  })
+
+  it('counts only newly added songs toward the reported total', async () => {
+    const progress: number[] = []
+    const result = await fetchSharedPlaylistSongs(
+      'share-dup',
+      async (_limit: number, pos?: number): Promise<any> =>
+        pos === undefined
+          ? { playlist: { total: 4, songs: [{ songmid: '1', source: 'wy', pos: 1 }, { songmid: '2', source: 'wy', pos: 2 }] } }
+          : { playlist: { total: 4, songs: [{ songmid: '2', source: 'wy', pos: 3 }, { songmid: '3', source: 'wy', pos: 4 }] } },
+      { pageSize: 2, onProgress: (loaded) => progress.push(loaded) }
+    )
+
+    expect(result.songs).toHaveLength(3)
+expect(progress).toEqual([2, 3, 3])
+  })
+
   it('rejects a missing playlist payload', async () => {
     await expect(fetchSharedPlaylistSongs('share-4', async () => ({}) as any)).rejects.toThrow(
       '歌单分享不存在'

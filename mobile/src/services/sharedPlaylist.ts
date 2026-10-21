@@ -219,6 +219,13 @@ export async function fetchSharedPlaylistSongs<T extends SharedPlaylistPageData>
   let pos: number | undefined
   let loaded = 0
   let total: number | undefined
+  const seen = new Set<string>()
+  /**
+   * 音源分页异常保护（与桌面版 list.vue 同一口径）：整页都是已存在的歌曲时，
+   * 只累加 loaded 会让它追平 total 而提前结束，或让循环空转。
+   * 连续两页没有新增歌曲即判定分页异常并停止。
+   */
+  let barrenPages = 0
 
   for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
     const page = await loadPage(pageSize, pos)
@@ -226,11 +233,20 @@ export async function fetchSharedPlaylistSongs<T extends SharedPlaylistPageData>
     if (!detail) detail = page
     const songs = (page.playlist.songs ?? []) as PlaylistShareSongInfo[]
     pages.push(songs)
-    loaded += songs.length
+    let added = 0
+    for (const song of songs) {
+      const key = sharedPlaylistSongKey(song)
+      if (seen.has(key)) continue
+      seen.add(key)
+      added += 1
+    }
+    loaded += added
+    barrenPages = added === 0 ? barrenPages + 1 : 0
     const pageTotal = Number(page.playlist.total)
     if (Number.isFinite(pageTotal) && pageTotal > 0) total = pageTotal
     options.onProgress?.(loaded, total)
     if (!songs.length) break
+    if (barrenPages >= 2) break
     if (total !== undefined && loaded >= total) break
     const next = sharedPlaylistNextPos(songs)
     if (next === undefined || next === pos) break
