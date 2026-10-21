@@ -104,7 +104,7 @@
           <ion-icon slot="start" :icon="gitNetworkOutline" color="primary" />
           <ion-label>
             <h2>音源实现</h2>
-            <p>为相同来源选择由哪个插件提供</p>
+            <p>{{ sourceRoutingSummary }}</p>
           </ion-label>
         </ion-item>
       </ion-list>
@@ -1074,6 +1074,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
 import { describeDownloadLocation, summarizeDownloadStorage } from '@/services/downloadStorage'
+import { describeSourceRouting, summarizeSourceRouting } from '@/services/providerRouting'
 import {
   buildCapabilityGroups,
   resolveCapabilityOwner,
@@ -1706,14 +1707,24 @@ async function chooseCapabilityImplementation(source: string, row: CapabilityRow
   })
   await sheet.present()
 }
+/** 每个音源当前生效的实现与副标题（自动/指定/无实现）。 */
+const sourceRoutingSummary = computed(() => summarizeSourceRouting(sourceRoutingViews.value))
+
+const sourceRoutingViews = computed(() =>
+  pluginStore.sources.map((source) =>
+    describeSourceRouting(source, settings.providerOwner(source.id))
+  )
+)
+
 async function openSourceRouting() {
   const sheet = await actionSheetController.create({
     header: '音源实现',
     buttons: [
-      ...pluginStore.sources.map((source) => ({
-        text: `${source.name}${source.implementations.length > 1 ? ` (${source.implementations.length})` : ''}`,
+      ...sourceRoutingViews.value.map((view) => ({
+        text: view.name + ' · ' + view.subtitle,
         handler: () => {
-          void chooseImplementation(source)
+          const source = pluginStore.sources.find((item) => item.id === view.id)
+          if (source) void chooseImplementation(source)
         }
       })),
       { text: '关闭', role: 'cancel' }
@@ -1723,14 +1734,17 @@ async function openSourceRouting() {
 }
 
 async function chooseImplementation(source: any) {
+  const view = describeSourceRouting(source, settings.providerOwner(source.id))
   const sheet = await actionSheetController.create({
     header: source.name,
     buttons: [
       ...source.implementations.map((implementation: any) => ({
-        text: implementation.pluginName,
+        text:
+          implementation.pluginName +
+          (view.current?.pluginKey === implementation.pluginKey ? '（当前）' : ''),
         handler: () => {
           settings.setProviderOwner(source.id, implementation.pluginKey)
-          void toast('已切换音源实现')
+          void toast('已切换到 ' + implementation.pluginName)
         }
       })),
       { text: '取消', role: 'cancel' }
@@ -1738,7 +1752,6 @@ async function chooseImplementation(source: any) {
   })
   await sheet.present()
 }
-
 async function clearDownloads() {
   const alert = await alertController.create({
     header: '清除已完成下载？',
