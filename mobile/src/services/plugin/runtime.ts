@@ -84,6 +84,23 @@ function pluginStorageKey(pluginKey: string, key: string) {
  * 必须剥掉路径分隔符与 `..`，否则插件能把文件写到 `exports/` 之外，
  * 覆盖应用目录里的其它文件（桌面版走的是系统保存对话框，没有这个问题）。
  */
+/** Socket 单条消息的负载上限（JSON 序列化后的字节数）。 */
+export const MAX_SOCKET_PAYLOAD_BYTES = 1024 * 1024
+
+/** 发送前校验 socket 负载；不可序列化或过大的数据直接拒绝。 */
+export function assertSocketPayload(data: unknown): void {
+  if (data === undefined) return
+  let text: string
+  try {
+    text = JSON.stringify(data) ?? ''
+  } catch {
+    throw new Error('Socket 消息无法序列化')
+  }
+  if (new TextEncoder().encode(text).length > MAX_SOCKET_PAYLOAD_BYTES) {
+    throw new Error('Socket 消息超过 1 MiB')
+  }
+}
+
 /**
  * 队列操作的数量上限。
  *
@@ -1293,15 +1310,19 @@ export class PluginRuntime {
         const socket = await this.connectSocket(options)
         return { id: socket.id }
       }
+      // 发送前限制负载大小：一条几十 MB 的 JSON 会把 worker 与主线程之间的
+      // 结构化克隆卡住，界面跟着一起僵住。
       case 'sockets.send': {
         const socket = this.sockets.get(String(params?.id ?? ''))
         if (!socket) throw new Error('Socket 不存在或已断开')
+        assertSocketPayload(params?.data)
         await socket.send(params?.data)
         return null
       }
       case 'sockets.emit': {
         const socket = this.sockets.get(String(params?.id ?? ''))
         if (!socket) throw new Error('Socket 不存在或已断开')
+        assertSocketPayload(params?.data)
         await socket.emit(String(params?.event ?? ''), params?.data)
         return null
       }

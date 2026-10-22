@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_QUEUE_MUTATION_ITEMS,
+  MAX_SOCKET_PAYLOAD_BYTES,
   assertDownloadIds,
   assertQueueSize,
+  assertSocketPayload,
   buildUrl,
   jsonHeaders,
   safeExportName
@@ -129,5 +131,23 @@ describe('queue mutation size', () => {
 
   it('rejects a non-array argument', () => {
     expect(() => assertQueueSize('not-a-list')).toThrow('队列操作参数无效')
+  })
+})
+
+describe('socket payload limits', () => {
+  it('accepts a normal payload and undefined', () => {
+    expect(() => assertSocketPayload({ type: 'ping' })).not.toThrow()
+    expect(() => assertSocketPayload(undefined)).not.toThrow()
+  })
+
+  it('rejects an oversized payload before it reaches the socket', () => {
+    const big = { data: 'x'.repeat(MAX_SOCKET_PAYLOAD_BYTES + 10) }
+    expect(() => assertSocketPayload(big)).toThrow('超过 1 MiB')
+  })
+
+  it('rejects a payload that cannot be serialised', () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    expect(() => assertSocketPayload(circular)).toThrow('无法序列化')
   })
 })
