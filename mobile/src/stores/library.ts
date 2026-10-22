@@ -768,17 +768,26 @@ export const useLibraryStore = defineStore('library', () => {
     tracks.value = next
   }
 
-  function asHostPlaylists() {
-    return {
-      items: playlists.value.map((playlist) => ({
+  /**
+   * 分页返回本地歌单。
+   *
+   * 与曲目列表同一套游标语义：此前同样忽略 cursor、每次返回全部，
+   * 插件按 `nextCursor` 翻页时要么停在第一页、要么无限重复。
+   */
+  function asHostPlaylists(cursor?: string, limit?: number) {
+    const page = paginate(
+      playlists.value.map((playlist) => ({
         ref: { id: playlist.id, location: 'local' as const },
         name: playlist.name,
         description: playlist.description,
         trackCount: playlist.trackKeys.length,
         writable: true
       })),
-      totalEstimate: playlists.value.length
-    }
+      cursor,
+      limit
+    )
+    if (!page) throw new Error('分页游标无效')
+    return page
   }
 
   /** 分页返回歌单曲目；游标非法时抛错，避免插件翻页死循环。 */

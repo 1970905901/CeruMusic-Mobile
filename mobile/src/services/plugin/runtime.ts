@@ -930,7 +930,7 @@ export class PluginRuntime {
       case 'library.playlists.list': {
         await this.requirePermission(params?.call?.permissionKey, 'library.read')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().asHostPlaylists()
+        return useLibraryStore().asHostPlaylists(params?.cursor, params?.limit)
       }
       case 'library.playlists.getTracks': {
         await this.requirePermission(params?.call?.permissionKey, 'library.read')
