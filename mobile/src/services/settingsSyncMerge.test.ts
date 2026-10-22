@@ -202,3 +202,22 @@ describe('settings sync type guard', () => {
     expect(merged.maxConcurrentDownloads).toBe(4)
   })
 })
+
+describe('device-local settings never travel', () => {
+  it('does not upload a folder grant, subfolder or output device', () => {
+    // 这些值在另一台设备上没有意义：SAF 目录授权根本不存在，
+    // 输出设备 id 也不是那边硬件，子目录名可能与那边布局不符。
+    const payload = toSyncableSettings(
+      localSettings({
+        safDownloadUri: 'content://tree/abc',
+        safDownloadName: 'Music',
+        downloadSubfolder: 'CeruMusic/Mobile',
+        audioOutputDeviceId: 'speaker-2'
+      })
+    )
+    expect(payload.safDownloadUri).toBeUndefined()
+    expect(payload.safDownloadName).toBeUndefined()
+    expect(payload.downloadSubfolder).toBeUndefined()
+    expect(payload.audioOutputDeviceId).toBeUndefined()
+  })
+})

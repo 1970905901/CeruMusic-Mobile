@@ -15,7 +15,14 @@ const SENSITIVE_KEYS: Array<keyof AppSettings> = [
   'onboardingDone',
   'searchHistory',
   // The wallpaper points at a device-local file, so it must not travel.
-  'globalBackground'
+  'globalBackground',
+  // 下面几项同理：它们标识的是**这台设备上的位置或硬件**。
+  // 同步到另一台设备后，SAF 目录授权在新设备上根本不存在（下载会直接失败），
+  // 输出设备 id 也不是那边的设备，子目录名则可能与那边的目录布局不符。
+  'safDownloadUri',
+  'safDownloadName',
+  'downloadSubfolder',
+  'audioOutputDeviceId'
 ]
 
 interface PlaySettings {
