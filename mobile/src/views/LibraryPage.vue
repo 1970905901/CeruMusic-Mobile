@@ -300,6 +300,12 @@
     />
 
     <PlaylistImportSheet :open="importOpen" @close="importOpen = false" />
+    <LocalTagEditorSheet
+      :open="tagEditorOpen"
+      :track="tagEditorTrack"
+      @close="tagEditorOpen = false"
+      @saved="onTagsSaved"
+    />
     <SharedPlaylistImportSheet :open="sharedImportOpen" @close="sharedImportOpen = false" />
   </ion-page>
 </template>
@@ -346,6 +352,7 @@ import TrackRow from '@/components/TrackRow.vue'
 import TrackBatchBar from '@/components/TrackBatchBar.vue'
 import CoverImage from '@/components/CoverImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import LocalTagEditorSheet from '@/components/LocalTagEditorSheet.vue'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import type { Playlist } from '@/types/music'
@@ -577,6 +584,9 @@ const coverInput = ref<HTMLInputElement | null>(null)
 let coverTarget: Track | null = null
 const importOpen = ref(false)
 const sharedImportOpen = ref(false)
+/** 整页标签编辑器：本地歌曲的封面、信息与歌词都在这里改。 */
+const tagEditorOpen = ref(false)
+const tagEditorTrack = ref<Track | null>(null)
 const showPlaylistImport = computed(() =>
   collectPlaylistImporters(pluginStore.enabledPlugins, {
     runtimeInfo: pluginStore.runtimeInfo
@@ -829,70 +839,15 @@ async function scanLocal() {
   }
 }
 
-async function editLocalTags(track: Track) {
-  const record = library.localTags(track)
-  const alert = await alertController.create({
-    header: '编辑本地信息',
-    inputs: [
-      { name: 'title', type: 'text', placeholder: '标题', value: track.title },
-      { name: 'artist', type: 'text', placeholder: '艺术家', value: track.artists.join(' / ') },
-      { name: 'album', type: 'text', placeholder: '专辑', value: track.album || '' },
-      {
-        name: 'year',
-        type: 'number',
-        placeholder: '年份',
-        value: record?.year ? String(record.year) : '',
-        attributes: { min: 0, max: 9999 }
-      },
-      { name: 'genre', type: 'text', placeholder: '流派', value: record?.genre || '' },
-      {
-        name: 'lyrics',
-        type: 'textarea',
-        placeholder: '歌词（支持 LRC 或纯文本）',
-        value: record?.lyrics || '',
-        attributes: { rows: 6 }
-      }
-    ],
-    buttons: [
-      { text: '取消', role: 'cancel' },
-      { text: '保存', role: 'confirm' }
-    ]
-  })
-  await alert.present()
-  const { role, data } = await alert.onDidDismiss()
-  if (role !== 'confirm') return
-  const title = String(data?.values?.title ?? '').trim()
-  if (!title) {
-    await showToast('标题不能为空', 'danger')
-    return
-  }
-  try {
-    const artist = String(data?.values?.artist ?? '').trim()
-    const album = String(data?.values?.album ?? '').trim()
-    const yearText = String(data?.values?.year ?? '').trim()
-    const year = yearText ? Number(yearText) : null
-    if (yearText && (!Number.isFinite(year) || Number(year) <= 0)) {
-      await showToast('年份格式不正确', 'danger')
-      return
-    }
-    const genre = String(data?.values?.genre ?? '').trim()
-    const lyrics = String(data?.values?.lyrics ?? '')
-    const result = await library.writeLocalTags(track, {
-      title,
-      artists: artist ? [artist] : [],
-      album,
-      year,
-      genre,
-      lyrics
-    })
-    if (result.fileTagWarning) {
-      await showToast('应用内信息已保存；音频文件标签写入失败', 'warning')
-    } else {
-      await showToast(result.fileTagWritten ? '已保存并写入音频标签' : '应用内信息已保存')
-    }
-  } catch (error) {
-    await showToast(error instanceof Error ? error.message : String(error), 'danger')
-  }
+/** 打开整页标签编辑器（桌面版 LocalTagEditor 的移动端等价）。 */
+function editLocalTags(track: Track) {
+  tagEditorTrack.value = track
+  tagEditorOpen.value = true
+}
+
+/** 保存成功后歌曲对象已更新，列表会跟着刷新；这里只做一次提示。 */
+function onTagsSaved() {
+  void showToast('标签已更新', 'success')
 }
 
 function loadImage(source: string): Promise<HTMLImageElement> {
