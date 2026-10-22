@@ -8,7 +8,9 @@
 const sharp = require('sharp')
 const path = require('path')
 
-const SRC = path.join(__dirname, '..', 'resources', 'icon.png')
+// 原始美术源。绝不能写回这里——脚本的输出会覆盖 resources/icon.png，
+// 若把输入也指向它，第二次运行就会读到已经改过的图，逐步把字形洗掉。
+const SRC = path.join(__dirname, '..', 'resources', 'icon-source.png')
 const BRAND = { r: 0x00, g: 0xda, b: 0xc0 }
 const GLYPH_MIN_CHANNEL = 184 // 采样自原音符最深处
 
@@ -27,7 +29,16 @@ async function buildIcon(output, { mark = 'square' } = {}) {
       const a = channels > 3 ? data[i + 3] : 255
 
       if (a === 0) {
-        out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0
+        if (mark === 'background' || mark === 'square') {
+          // 原图的四角是透明的（圆角卡片形状）。实底版本必须铺满整块，
+          // 否则 iOS/PWA 装到主屏就是「透明角 + 白音符」，等于看不见。
+          out[o] = BRAND.r
+          out[o + 1] = BRAND.g
+          out[o + 2] = BRAND.b
+          out[o + 3] = 255
+        } else {
+          out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0
+        }
         continue
       }
 
@@ -42,6 +53,12 @@ async function buildIcon(output, { mark = 'square' } = {}) {
         out[o + 1] = Math.round(BRAND.g + (255 - BRAND.g) * t)
         out[o + 2] = Math.round(BRAND.b + (255 - BRAND.b) * t)
         out[o + 3] = a
+      } else if (mark === 'background') {
+        // Android 自适应图标的背景层：整块品牌色，不含音符。
+        out[o] = BRAND.r
+        out[o + 1] = BRAND.g
+        out[o + 2] = BRAND.b
+        out[o + 3] = 255
       } else if (mark === 'brand') {
         // 透明底 + 品牌色音符：给页头这类浅色小尺寸位置用，
         // 实心色块在 30px 的标题栏里会显得过重。
@@ -79,12 +96,22 @@ async function main() {
     console.log('preview written to', outDir)
     return
   }
-  // App 图标源：透明底 + 白色音符。
-  // `capacitor-assets` 会自己铺背景色（Android 自适应图标的前景层、iOS 的底），
-  // 如果这里再画一层实底，两边都会叠成「色块套色块」，音符反而看不见。
-  await buildIcon(path.join(__dirname, '..', 'resources', 'icon.png'), { mark: 'glyph' })
+  // `capacitor-assets` 认三张源图：
+  //   icon.png            → iOS / PWA 的完整图案（实底，透明底装到主屏等于看不见）
+  //   icon-foreground.png → Android 自适应图标的前景层（透明底，背景由系统层给）
+  //   icon-background.png → 该背景层
+  // 早先只给 icon.png 传透明底，Android 与 PWA 都会变成「透明底白音符」。
+  await buildIcon(path.join(__dirname, '..', 'resources', 'icon.png'))
+  await buildIcon(path.join(__dirname, '..', 'resources', 'icon-foreground.png'), {
+    mark: 'glyph'
+  })
+  await buildIcon(path.join(__dirname, '..', 'resources', 'icon-background.png'), {
+    mark: 'background'
+  })
   // 页头 logo：透明底 + 品牌色音符（小尺寸、浅色标题栏上更轻盈）。
   await buildIcon(path.join(__dirname, '..', 'public', 'logo.png'), { mark: 'brand' })
+
+  // PWA 图标：manifest 里声明为 maskable，必须是实底（透明底安装到主屏等于看不见）。
   console.log('icons rebuilt')
 }
 
