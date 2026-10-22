@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -119,6 +119,7 @@ import {
 } from '@/services/sharedPlaylist'
 import { openTrackActions } from '@/services/trackActions'
 import { dedupeByKey } from '@/services/listMerge'
+import { createRequestGuard } from '@/services/requestGuard'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
@@ -145,6 +146,15 @@ const loadingMore = ref(false)
  * 连续两页没有新增即停止。
  */
 let barrenPages = 0
+/**
+ * 分享链接之间的竞态。
+ *
+ * 从一个分享跳到另一个分享时，`watch(id)` 会重新加载。旧实现用
+ * `if (loading.value) return` 挡住重入——第二次加载直接不执行，随后第一次请求
+ * 返回、把**上一条分享**的歌曲写进页面：地址是新的，内容却是旧的，而且不会自愈。
+ * 现在按链接 id 作废旧请求，只接受当前链接的结果。
+ */
+const shareRequests = createRequestGuard()
 const importing = ref(false)
 const importProgress = ref('')
 const error = ref('')
@@ -169,8 +179,8 @@ async function load(reset: boolean) {
     error.value = '歌单分享缺少 ID'
     return
   }
+  const token = reset ? shareRequests.beginLatest(id.value) : shareRequests.capture(id.value)
   if (reset) {
-    if (loading.value) return
     loading.value = true
     error.value = ''
     detail.value = null
@@ -184,6 +194,7 @@ async function load(reset: boolean) {
   }
   try {
     const page = await shareApi.getPlaylistById(id.value, PAGE_SIZE, nextPos.value)
+    if (!shareRequests.isCurrent(token, id.value)) return
     if (!page?.playlist) throw new Error('歌单分享不存在')
     detail.value = page
     const mapped = sharedPlaylistTracks(page.playlist.songs ?? [], {
@@ -206,12 +217,16 @@ async function load(reset: boolean) {
       (page.playlist.songs ?? []).length > 0 &&
       tracks.value.length < total
   } catch (cause) {
+    if (!shareRequests.isCurrent(token, id.value)) return
     error.value = cause instanceof Error ? cause.message : '歌单分享不存在或已过期'
     if (reset) tracks.value = []
     hasMore.value = false
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    // 过期请求不得关闭新请求的加载态。
+    if (shareRequests.isCurrent(token, id.value)) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 
@@ -278,6 +293,7 @@ async function importPlaylist() {
 }
 
 watch(id, () => void load(true), { immediate: true })
+onBeforeUnmount(() => shareRequests.dispose())
 </script>
 
 <style scoped>
