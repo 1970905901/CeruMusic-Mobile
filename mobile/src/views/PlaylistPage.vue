@@ -735,6 +735,42 @@ async function loadMore(event: any) {
   }
 }
 
+/**
+ * 把当前本地歌单上传 / 同步到云端（桌面版 `uploadToCloud` / `syncToCloud`）。
+ *
+ * 必须在操作前确认一次：同步会用本机内容覆盖云端副本，云端若在别的设备上
+ * 改过，那些改动会丢。上传只跳过不可分享的本地歌曲，不让人以为整单都传了。
+ */
+async function syncPlaylistToCloud(): Promise<void> {
+  const playlist = localPlaylist.value
+  if (!playlist) return
+  const shareable = tracks.value.filter((track) => !track.localUri && !track.downloadedPath).length
+  if (!shareable) {
+    await toast('歌单里没有可上传的在线歌曲', 'warning')
+    return
+  }
+  const updating = Boolean(playlist.cloudId)
+  const alert = await alertController.create({
+    header: updating ? '同步到云端' : '上传到云端',
+    message: updating
+      ? `将用本机内容覆盖云端副本（${shareable} 首在线歌曲），其它设备上的改动会被替换。`
+      : `将把 ${shareable} 首在线歌曲上传到云端；本地文件与已下载副本不会上传。`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: updating ? '同步' : '上传', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  try {
+    await library.syncPlaylistToCloud(playlist.id)
+    await toast(updating ? '已同步到云端' : '已上传到云端', 'success')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '云端操作失败', 'danger')
+  }
+}
+
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })
   await element.present()
@@ -884,6 +920,14 @@ async function openPlaylistMenu() {
         text: '更换歌单封面',
         handler: () => {
           void openCoverActions()
+        }
+      },
+      {
+        // 桌面版「上传到云端 / 同步到云端」：本地歌单此前只有分享时才会隐式上传，
+        // 用户没法主动备份或更新云端副本。
+        text: localPlaylist.value.cloudId ? '同步到云端' : '上传到云端',
+        handler: () => {
+          void syncPlaylistToCloud()
         }
       },
       ...playlistMenus.value.map((menu) => ({
