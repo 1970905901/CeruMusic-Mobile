@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUrl, jsonHeaders, safeExportName } from './runtime'
+import { assertDownloadIds, buildUrl, jsonHeaders, safeExportName } from './runtime'
 
 describe('plugin http url building', () => {
   it('only allows http and https, normalising case and host', () => {
@@ -80,5 +80,30 @@ describe('export file names', () => {
 
   it('caps very long names', () => {
     expect(safeExportName('x'.repeat(400)).length).toBeLessThanOrEqual(120)
+  })
+})
+
+describe('download task ids', () => {
+  const tasks = [{ id: 'dl-1' }, { id: 'dl-2' }]
+
+  it('accepts ids that exist', () => {
+    expect(assertDownloadIds(tasks, ['dl-1'])).toEqual(['dl-1'])
+    expect(assertDownloadIds(tasks, ['dl-1', 'dl-2'])).toEqual(['dl-1', 'dl-2'])
+  })
+
+  it('rejects unknown ids instead of silently skipping them', () => {
+    // 静默跳过会让插件以为自己操作成功了。
+    expect(() => assertDownloadIds(tasks, ['dl-9'])).toThrow('下载任务不存在')
+  })
+
+  it('rejects an empty or malformed list', () => {
+    expect(() => assertDownloadIds(tasks, [])).toThrow('下载任务列表无效')
+    expect(() => assertDownloadIds(tasks, 'dl-1')).toThrow('下载任务列表无效')
+    expect(() => assertDownloadIds(tasks, [42])).toThrow('下载任务不存在')
+  })
+
+  it('caps a single batch', () => {
+    const many = Array.from({ length: 201 }, () => 'dl-1')
+    expect(() => assertDownloadIds(tasks, many)).toThrow('一次最多操作 200 个下载任务')
   })
 })

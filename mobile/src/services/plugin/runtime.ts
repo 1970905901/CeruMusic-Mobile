@@ -83,6 +83,26 @@ function pluginStorageKey(pluginKey: string, key: string) {
  * 必须剥掉路径分隔符与 `..`，否则插件能把文件写到 `exports/` 之外，
  * 覆盖应用目录里的其它文件（桌面版走的是系统保存对话框，没有这个问题）。
  */
+/**
+ * 校验插件传来的下载任务 id：必须是非空字符串数组，且每个 id 都真实存在。
+ * 桌面 `services.downloads.*` 对不存在的任务会直接抛错，移动端此前静默跳过。
+ */
+export function assertDownloadIds(
+  tasks: readonly { id: string }[],
+  value: unknown
+): string[] {
+  if (!Array.isArray(value) || value.length === 0) throw new Error('下载任务列表无效')
+  if (value.length > 200) throw new Error('一次最多操作 200 个下载任务')
+  const known = new Set(tasks.map((task) => task.id))
+  const ids: string[] = []
+  for (const item of value) {
+    const id = typeof item === 'string' ? item.trim() : ''
+    if (!id || !known.has(id)) throw new Error('下载任务不存在')
+    ids.push(id)
+  }
+  return ids
+}
+
 export function safeExportName(value: unknown): string {
   const raw = String(value ?? '').trim() || 'ceru-export.txt'
   const base = raw.split(/[\\/]/).pop() ?? ''
@@ -953,34 +973,47 @@ export class PluginRuntime {
         const { useDownloadStore } = await import('@/stores/downloads')
         return useDownloadStore().createHostDownloads(request)
       }
+      // 与桌面同口径：先确认每个 id 都真实存在，再执行操作。
+      // 此前直接把插件给的 id 数组交给 store，不存在的 id 会被静默跳过，
+      // 插件无从得知自己传错了，用户也看不到任何反馈。
       case 'downloads.pause': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
-        useDownloadStore().pause(params?.ids ?? [])
+        const store = useDownloadStore()
+        const ids = assertDownloadIds(store.tasks, params?.ids)
+        store.pause(ids)
         return null
       }
       case 'downloads.resume': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
-        useDownloadStore().resume(params?.ids ?? [])
+        const store = useDownloadStore()
+        const ids = assertDownloadIds(store.tasks, params?.ids)
+        store.resume(ids)
         return null
       }
       case 'downloads.cancel': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
-        useDownloadStore().cancel(params?.ids ?? [])
+        const store = useDownloadStore()
+        const ids = assertDownloadIds(store.tasks, params?.ids)
+        store.cancel(ids)
         return null
       }
       case 'downloads.retry': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
-        useDownloadStore().retry(params?.ids ?? [])
+        const store = useDownloadStore()
+        const ids = assertDownloadIds(store.tasks, params?.ids)
+        store.retry(ids)
         return null
       }
       case 'downloads.reveal': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
-        await useDownloadStore().share(params?.id)
+        const store = useDownloadStore()
+        const [id] = assertDownloadIds(store.tasks, [params?.id])
+        await store.share(id)
         return null
       }
       case 'files.pick':
