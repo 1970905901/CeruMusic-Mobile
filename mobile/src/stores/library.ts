@@ -11,6 +11,7 @@ import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
+import { playlistKeyCandidates } from '@/services/playlistKeys'
 import { blobToDataUrl } from '@/services/imageUtils'
 
 /** 播放历史上限，与桌面版 GlobalPlayStatus 保持一致。 */
@@ -814,24 +815,33 @@ export const useLibraryStore = defineStore('library', () => {
     if (!playlist) return { removed: 0, notFound: entities?.length ?? 0 }
     let removed = 0
     for (const entity of entities ?? []) {
-      const key = `${entity.ref?.providerId}:${entity.ref?.id}`
+      // 队列 key 有两种形状：公共 provider 资源是 `providerId:id`，
+      // 插件私有资源是 `pluginId:providerId:id`。此前只拼前一种，
+      // 私有歌曲在歌单里永远删不掉（界面提示成功、列表却没变化）。
+      const candidates = playlistKeyCandidates(entity?.ref, entity?.key)
       const before = playlist.trackKeys.length
-      playlist.trackKeys = playlist.trackKeys.filter((item) => item !== key)
+      playlist.trackKeys = playlist.trackKeys.filter((item) => !candidates.includes(item))
       if (playlist.trackKeys.length < before) removed++
     }
-    playlist.updatedAt = Date.now()
-    const db = await getDb()
-    await db.put('playlists', toPlain(playlist))
+    if (removed > 0) {
+      playlist.updatedAt = Date.now()
+      const db = await getDb()
+      await db.put('playlists', toPlain(playlist))
+      // 插件改了歌单，其它插件与界面都要知道（桌面 PluginHost 改完同样发 library.changed）。
+      pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
+    }
     return { removed, notFound: (entities?.length ?? 0) - removed }
   }
 
   async function clearHostPlaylist(reference: any) {
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return
+    if (!playlist.trackKeys.length) return
     playlist.trackKeys = []
     playlist.updatedAt = Date.now()
     const db = await getDb()
     await db.put('playlists', toPlain(playlist))
+    pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
   }
 
   function localMusicPage(cursor?: string) {
