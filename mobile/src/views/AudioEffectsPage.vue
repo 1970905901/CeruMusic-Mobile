@@ -37,6 +37,8 @@
       <template v-else>
         <ion-list class="group">
           <div class="group-title">均衡器</div>
+          <!-- 桌面版 EqualizerSettings 顶部的实时频谱 -->
+          <EqSpectrum v-if="state.equalizerEnabled" />
           <ion-item>
             <ion-icon slot="start" :icon="optionsOutline" color="primary" />
             <ion-label>
@@ -244,6 +246,7 @@ import {
 import { optionsOutline, volumeHighOutline } from 'ionicons/icons'
 import { EQ_FREQUENCIES, type LoudnessTarget, type SurroundMode } from '@/services/audioEffects'
 import { BASS_PRESETS, bassPresetFromGain, bassPresetGain } from '@/services/bassPresets'
+import EqSpectrum from '@/components/EqSpectrum.vue'
 import { EQ_CUSTOM_PRESET } from '@/services/eqPresets'
 import { saveAndShareFile } from '@/services/fileExport'
 import { useAudioEffectsStore } from '@/stores/audioEffects'
