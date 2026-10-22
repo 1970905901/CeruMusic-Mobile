@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39719186203`（功能提交 `f081238`），Android/iOS 均成功
+- 最新 CI：`39720393574`（功能提交 `d9b7249`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -44,6 +44,7 @@
 - 播放、暂停、上一首、下一首、拖动进度、音量、静音、倍速。
 - 播放队列、随机、循环模式。
 - 播放队列管理：播放页队列支持拖动排序、单曲移除与一键清空；移除当前歌曲时自动切换相邻歌曲，清空时停止播放。
+- 插件音源标签：对齐桌面版 `Settings/plugins.vue` 的 `supportedSources` 展示。移动端插件列表此前只有「N 个音源」这个数字，装了多个同类插件时无法从列表分辨谁是谁，只能逐个点进去看。现在每行显示最多 3 个音源名标签，其余折叠成「+N」（`services/pluginSources.ts`）。标签直接读 manifest 的 `contributes.providers` 而不是 `pluginStore.providers`——后者只含已启用插件，而列表需要如实展示已禁用插件声明了哪些音源。
 - 音质交集：对齐桌面版 `MusicSourceSection.vue` 的「全局音质（支持交集）」。桌面版允许按音源分别设音质，并给出「所有音源都支持」的交集下拉；移动端只有一个全局 `preferredQuality`（对所有音源生效），所以不需要每源映射，但同样需要交集这个信号——`services/qualityIntersection.ts` 计算所有已启用音源的共同音质（按第一个音源声明顺序、大小写与空白归一化），首选音质下拉把这些档位标注为「（通用）」，当保存的值不被全部音源支持时，说明文字会补一句「N 个音源不支持该音质，切换到它们时会自动降级」。提示只在真的会降级时出现。
 - 歌单统计：对齐桌面版 `Settings/PlaylistSettings.vue` 的「播放列表统计」，歌单页头部此前只显示「N 首」，现在补上**总时长与歌手数**（`services/playlistStats.ts`）。时长同时吃结构化 `durationMs` 与旧接口的 `interval` 字符串（`"05:41"`、`"1:05:41"`、毫秒数字串都支持），因此导入歌单与云端歌单表现一致；无法识别的值按 0 计，一首脏数据不会让整单统计变成 NaN。歌手名按 `/ 、 & ， ·` 与结构化数组两种来源去重计数。
 - 播放队列导出与导入：对齐桌面版「播放列表管理」（`Settings/PlaylistSettings.vue`）的导出/导入能力，移动端此前队列只能拖动、移除、清空。队列标题栏新增「导出 / 导入」，复用与歌单页完全相同的 `.cmpl` 格式（`services/playlistFiles.ts`），因此队列可以在手机与桌面版之间自由搬运。导出会剔除本地文件与已下载副本——它们只存在于本机，带进文件只会变成坏引用——并在提示里说明剔除了几首；导入是**追加**到当前队列，不会打断正在播放的歌。
@@ -175,9 +176,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：94 个测试文件，589 个测试全部通过
+- `npm run test`：95 个测试文件，596 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39719186203）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39720393574）
 
 ## 当前未完成
 
