@@ -22,3 +22,24 @@ describe('lyrics', () => {
     expect(doc.plainText).toBe('just lyrics')
   })
 })
+
+describe('LRC bracket handling', () => {
+  it('keeps brackets that belong to the lyric text', () => {
+    // 整行删掉所有方括号会把歌词内容也删掉：只剩一句「」。
+    const document = parseLyrics('[00:12.00]「[笑]」\n[00:15.00]普通歌词')
+    expect(document.lines[0].text).toBe('「[笑]」')
+    expect(document.lines[1].text).toBe('普通歌词')
+  })
+
+  it('still strips metadata tags', () => {
+    const document = parseLyrics('[ar:歌手]\n[ti:歌名]\n[00:01.00]第一句')
+    expect(document.lines).toHaveLength(1)
+    expect(document.lines[0].text).toBe('第一句')
+  })
+
+  it('removes every time tag on a multi-timestamp line', () => {
+    const document = parseLyrics('[00:01.00][00:31.00]重复副歌')
+    expect(document.lines.map((line) => line.text)).toEqual(['重复副歌', '重复副歌'])
+    expect(document.lines.map((line) => line.startMs)).toEqual([1000, 31000])
+  })
+})

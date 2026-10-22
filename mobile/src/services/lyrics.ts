@@ -38,7 +38,11 @@ function parseLrc(text: string): LyricLine[] {
   for (const rawLine of text.split(/\r?\n/)) {
     const tags = [...rawLine.matchAll(/\[(\d{1,2}:\d{1,2}(?:[.,]\d{1,3})?)\]/g)]
     if (!tags.length) continue
-    const content = rawLine.replace(/\[[^\]]*\]/g, '').trim()
+    // 只去掉已识别的时间标签与元信息标签。整行 `replace(/\[[^\]]*\]/g, '')`
+    // 会把歌词正文里的方括号一并吃掉——`[00:12.00]「[笑]」` 最后只剩书名号。
+    let content = rawLine
+    for (const tag of tags) content = content.split(tag[0]).join('')
+    content = content.replace(/\[(?:ar|ti|al|by|re|ve|length|offset):[^\]]*\]/gi, '').trim()
     if (!content) continue
     for (const tag of tags) {
       const startMs = parseTime(tag[1])
