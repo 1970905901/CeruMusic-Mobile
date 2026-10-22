@@ -211,6 +211,23 @@
             {{ uploading ? '上传中…' : '添加图片' }}
           </button>
           <input ref="editImageInput" class="file-input" type="file" accept="image/*" multiple @change="pickEditImages" />
+
+          <!-- 音乐附件：编辑时必须能看见与移除，否则用户改了封面/文案却删不掉旧附件 -->
+          <div v-if="editAttachment" class="edit-attachment">
+            <CoverImage
+              :src="ossCard(attachmentCoverOf(editAttachment))"
+              :size="46"
+              :radius="9"
+              :alt="attachmentTitleOf(editAttachment)"
+            />
+            <div class="attachment-copy">
+              <div class="attachment-title ceru-truncate">{{ attachmentTitleOf(editAttachment) }}</div>
+              <div class="attachment-sub">{{ attachmentSubtitleOf(editAttachment) }}</div>
+            </div>
+            <button type="button" class="remove-attachment" aria-label="移除音乐附件" @click="editAttachment = null">
+              <ion-icon :icon="closeCircle" />
+            </button>
+          </div>
         </div>
       </ion-content>
     </ion-modal>
@@ -258,6 +275,11 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
+import {
+  attachmentCover as attachmentCoverOf,
+  attachmentSubtitle as attachmentSubtitleOf,
+  attachmentTitle as attachmentTitleOf
+} from '@/services/postAttachment'
 import { COMMENT_HIGHLIGHT_MS, locateComment } from '@/services/commentLocate'
 import { showSupportNotice } from '@/services/communitySupport'
 import { useAuthStore } from '@/stores/auth'
@@ -1106,6 +1128,24 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   margin-top: 12px;
+}
+.edit-attachment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--ceru-card-bg, rgba(255, 255, 255, 0.06));
+}
+.remove-attachment {
+  border: 0;
+  background: transparent;
+  color: var(--ceru-text-secondary);
+  font-size: 22px;
+  display: grid;
+  place-items: center;
+  padding: 4px;
 }
 .edit-image {
   position: relative;
