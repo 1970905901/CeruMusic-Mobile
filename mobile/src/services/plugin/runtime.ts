@@ -548,9 +548,32 @@ export class PluginRuntime {
         return null
       }
       case 'ui.playlistImport.open': {
+        // 与桌面同口径：只允许插件声明的导入器，参数长度有上限。
+        const importers = this.manifest.contributes?.playlistImporters ?? []
+        const importerId = String(params?.importerId ?? '')
+        if (!importers.length || !importers.some((item) => item.id === importerId)) {
+          throw new Error('插件未声明此歌单导入能力')
+        }
+        const initial = String(params?.value ?? params?.initialValue ?? '')
+        if (initial.length > 8192) throw new Error('歌单导入参数过长')
+        const title = String(params?.title ?? '导入歌单').slice(0, 100)
+        // 方法名是 open：必须先让用户确认内容，不能拿插件传的值直接建歌单。
+        const alert = await alertController.create({
+          header: title,
+          inputs: [{ name: 'value', type: 'text', value: initial, placeholder: '歌单链接或 ID' }],
+          buttons: [
+            { text: '取消', role: 'cancel' },
+            { text: '导入', role: 'confirm' }
+          ]
+        })
+        await alert.present()
+        const { role, data } = await alert.onDidDismiss()
+        if (role !== 'confirm') return null
+        const value = String(data?.values?.value ?? '').trim()
+        if (!value) return null
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
-        await library.importPlaylistFromPlugin(this.record.key, params?.pluginId, params?.importerId, params?.value)
+        await library.importPlaylistFromPlugin(this.record.key, params?.pluginId, importerId, value)
         return null
       }
       case 'ui.pluginUpdate.request':
@@ -560,7 +583,10 @@ export class PluginRuntime {
         const { guestStoreFor } = await import('@/services/plugin/guests')
         return guestStoreFor(this.record).list()
       }
+      // 子插件是**嵌在别的插件里运行的第三方脚本**，管理它们要单独授权
+      // （桌面 `guests.manage` / `guests.run`）；此前移动端一项都不校验。
       case 'guests.import': {
+        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         const adapterId = String(params?.adapterId || '')
@@ -569,18 +595,21 @@ export class PluginRuntime {
         return store.importFile(adapterId, file)
       }
       case 'guests.select': {
+        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         await store.select(params?.guestId ? String(params.guestId) : null)
         return null
       }
       case 'guests.remove': {
+        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         await store.remove(String(params?.guestId || ''))
         return null
       }
       case 'guests.invoke': {
+        await this.requirePermission(params?.call?.permissionKey, '子插件运行')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         return store.invoke(
@@ -619,8 +648,19 @@ export class PluginRuntime {
         return null
       }
       case 'app.openExternal': {
+        // 与桌面一致：打开外部链接要授权，且只放行 http(s)、拒绝内嵌凭据的地址。
+        await this.requirePermission(params?.call?.permissionKey, '打开外部链接')
+        let target: URL
+        try {
+          target = new URL(String(params?.url ?? ''))
+        } catch {
+          throw new Error('只能打开 HTTP 或 HTTPS 地址')
+        }
+        if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password) {
+          throw new Error('只能打开 HTTP 或 HTTPS 地址')
+        }
         const { Browser } = await import('@capacitor/browser')
-        await Browser.open({ url: String(params?.url ?? '') })
+        await Browser.open({ url: target.href })
         return null
       }
       case 'account.getSession':
