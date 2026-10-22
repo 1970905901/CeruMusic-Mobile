@@ -172,15 +172,27 @@
             </button>
           </div>
 
-          <button
-            v-if="player.currentTrack && !draftAttachment"
-            type="button"
-            class="attach-current"
-            @click="attachCurrentTrack"
-          >
-            <ion-icon :icon="musicalNotesOutline" />
-            附加正在播放：{{ player.currentTrack.title }}
-          </button>
+          <div class="attach-actions">
+            <button
+              v-if="player.currentTrack && !draftAttachment"
+              type="button"
+              class="attach-current"
+              @click="attachCurrentTrack"
+            >
+              <ion-icon :icon="musicalNotesOutline" />
+              附加正在播放：{{ player.currentTrack.title }}
+            </button>
+            <!-- 桌面版「分享音乐」还支持附加整个歌单；移动端此前只能附加当前播放的单曲 -->
+            <button
+              v-if="!draftAttachment"
+              type="button"
+              class="attach-current"
+              @click="pickPlaylistAttachment"
+            >
+              <ion-icon :icon="albumsOutline" />
+              分享歌单
+            </button>
+          </div>
 
           <p class="composer-tip">发布内容会经过服务端审核；请勿发布侵权或违规内容。</p>
         </div>
@@ -208,12 +220,14 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
+  actionSheetController,
   alertController,
   toastController,
   useIonRouter
 } from '@ionic/vue'
 import {
   addOutline,
+  albumsOutline,
   chatbubbleOutline,
   closeCircle,
   cloudOfflineOutline,
@@ -228,7 +242,9 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
+import { buildPlaylistAttachment } from '@/services/postAttachment'
 import {
   communityApi,
   type CommunityPost,
@@ -245,6 +261,7 @@ type FeedMode = 'recommend' | 'latest' | 'mine'
 
 const auth = useAuthStore()
 const player = usePlayerStore()
+const library = useLibraryStore()
 const router = useIonRouter()
 
 const feedMode = ref<FeedMode>('recommend')
@@ -475,6 +492,41 @@ function attachCurrentTrack() {
   const track = player.currentTrack
   if (!track) return
   draftAttachment.value = { type: 'song', song: songPayload(track) }
+}
+
+/**
+ * 附加整个歌单（桌面版「分享音乐 → 歌单」）。
+ *
+ * 只列出已同步到云端的歌单：没有云端 ID 的歌单服务端解析不了，
+ * 发出去是一张点不开的卡片。歌单里若全是本地文件，`buildPlaylistAttachment`
+ * 会抛错并给出原因，这里直接提示而不是发出空附件。
+ */
+async function pickPlaylistAttachment(): Promise<void> {
+  const candidates = library.playlists.filter((playlist) => playlist.cloudId)
+  if (!candidates.length) {
+    await toast('没有已同步到云端的歌单，可在歌单页先同步', 'warning')
+    return
+  }
+  const sheet = await actionSheetController.create({
+    header: '选择要分享的歌单',
+    buttons: [
+      ...candidates.map((playlist) => ({
+        text: playlist.name,
+        handler: () => {
+          try {
+            draftAttachment.value = buildPlaylistAttachment(
+              playlist,
+              library.playlistTracks(playlist.id)
+            )
+          } catch (error) {
+            void toast(error instanceof Error ? error.message : '无法附加歌单', 'danger')
+          }
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
 }
 
 function songPayload(track: Track): Record<string, any> {
@@ -768,6 +820,11 @@ onBeforeUnmount(() => {
   color: var(--ceru-text-secondary);
   font-size: 22px;
   padding: 6px;
+}
+.attach-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .attach-current {
   display: flex;
