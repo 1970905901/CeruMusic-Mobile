@@ -45,7 +45,8 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'sharing.publish': '发布分享',
   'sharing.revoke': '撤销分享',
   'guests.manage': '子插件管理',
-  'guests.run': '子插件运行'
+  'guests.run': '子插件运行',
+  'notifications.system': '发送系统通知'
 }
 
 export function permissionLabel(name: string): string {

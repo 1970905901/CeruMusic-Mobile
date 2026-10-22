@@ -526,6 +526,11 @@ export class PluginRuntime {
         await showToast(params?.message || String(params ?? ''))
         return null
       case 'ui.notify': {
+        // 后台弹系统通知要单独授权（SDK 的 notifications 组只有
+        // `notifications.system`）；前台只是 toast，不打扰系统通知栏。
+        if (document.visibilityState !== 'visible') {
+          await this.requirePermission(params?.call?.permissionKey, 'notifications.system')
+        }
         const title = String(params?.title || '澜音')
         const body = String(params?.body || params?.message || params?.title || '插件通知')
         if (document.visibilityState === 'visible') {
