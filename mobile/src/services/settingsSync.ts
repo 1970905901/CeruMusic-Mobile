@@ -331,6 +331,17 @@ export function startSettingsSync() {
     watch(
       () => [player.volume, player.playbackRate, player.repeat, player.shuffle],
       scheduleUpload
+    ),
+    // 关闭同步时立刻取消已经排上的那次上传：scheduleUpload 只在**安排**时检查
+    // 开关，5 秒防抖期间用户关掉同步，定时器到时仍会照常上传。
+    watch(
+      () => settings.settings.cloudSyncEnabled,
+      (enabled) => {
+        if (!enabled) {
+          clearTimeout(debounceTimer)
+          debounceTimer = undefined
+        }
+      }
     )
   )
   // 保存引用以便 stop 时移除；每次 start 重新注册同一个函数，不会叠加。
