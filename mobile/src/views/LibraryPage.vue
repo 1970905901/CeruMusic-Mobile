@@ -300,6 +300,12 @@
     />
 
     <PlaylistImportSheet :open="importOpen" @close="importOpen = false" />
+    <!-- 歌单列表里的「分享歌单」：与歌单页共用同一个分享面板 -->
+    <SharePlaylistSheet
+      :open="sharePlaylistOpen"
+      :playlist-id="sharePlaylistId"
+      @close="sharePlaylistOpen = false"
+    />
     <LocalTagEditorSheet
       :open="tagEditorOpen"
       :track="tagEditorTrack"
@@ -312,6 +318,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   IonButton,
   IonButtons,
@@ -365,6 +372,7 @@ import { batchQualityChoices } from '@/services/batchDownloadQuality'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
 import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
+import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
@@ -658,6 +666,10 @@ const playlistFileInput = ref<HTMLInputElement | null>(null)
 const coverInput = ref<HTMLInputElement | null>(null)
 let coverTarget: Track | null = null
 const importOpen = ref(false)
+/** 从歌单列表直接分享：面板需要歌单 id，先存下来再打开。 */
+const sharePlaylistOpen = ref(false)
+const sharePlaylistId = ref('')
+const router = useRouter()
 const sharedImportOpen = ref(false)
 /** 整页标签编辑器：本地歌曲的封面、信息与歌词都在这里改。 */
 const tagEditorOpen = ref(false)
@@ -858,6 +870,19 @@ async function openPlaylistActions(playlist: Playlist) {
     header: playlist.name,
     buttons: [
       {
+        text: '打开歌单',
+        handler: () => {
+          void router.push(`/playlist/${playlist.id}`)
+        }
+      },
+      {
+        text: '分享歌单',
+        handler: () => {
+          sharePlaylistId.value = playlist.id
+          sharePlaylistOpen.value = true
+        }
+      },
+      {
         text: '重命名',
         handler: () => {
           void renamePlaylist(playlist)
@@ -867,13 +892,40 @@ async function openPlaylistActions(playlist: Playlist) {
         text: '删除歌单',
         role: 'destructive',
         handler: () => {
-          void library.deletePlaylist(playlist.id)
+          void confirmDeletePlaylist(playlist)
         }
       },
       { text: '取消', role: 'cancel' }
     ]
   })
   await sheet.present()
+}
+
+/**
+ * 删除歌单前确认：歌单里的歌曲本身不受影响，但歌单无法撤销。
+ * 批量/单曲删除一直有确认，歌单删除却是一点就没，口径不一致。
+ */
+async function confirmDeletePlaylist(playlist: Playlist): Promise<void> {
+  const alert = await alertController.create({
+    header: '删除歌单',
+    message: `确定删除歌单「${playlist.name}」吗？其中的歌曲不会被删除。`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '删除',
+        role: 'destructive',
+        handler: () => {
+          void library
+            .deletePlaylist(playlist.id)
+            .then(() => showToast('歌单已删除', 'success'))
+            .catch((error) =>
+              showToast(error instanceof Error ? error.message : '删除失败', 'danger')
+            )
+        }
+      }
+    ]
+  })
+  await alert.present()
 }
 
 async function renamePlaylist(playlist: Playlist) {
