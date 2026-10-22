@@ -54,6 +54,11 @@ function rawEntityToTrack(entity: any, pluginKey?: string): Track {
     durationMs: Number(entity?.durationMs ?? metadata.durationMs ?? 0) || undefined,
     artworkUrl: metadata.artworkUrl,
     qualities: Array.isArray(metadata.qualities) ? metadata.qualities : [],
+    // 音质档位对应的大小会在播放页音质面板与云端歌单里展示；
+    // 丢掉它之后，从队列/歌单文件导入的歌在音质列表里只剩档位名、没有大小。
+    ...(metadata.qualitySizes && typeof metadata.qualitySizes === 'object'
+      ? { qualitySizes: { ...(metadata.qualitySizes as Record<string, number>) } }
+      : {}),
     playable: entity?.playable !== false,
     raw: JSON.parse(JSON.stringify(entity)),
     source: 'plugin'
