@@ -981,7 +981,11 @@ export const usePlayerStore = defineStore('player', () => {
   function insertNext(track: Track): void {
     library.upsertTrack(track)
     const existing = queue.value.findIndex((item) => item.key === track.key)
+    // 被移动的歌原本排在当前曲之前时，移除它会让当前曲的下标前移一位；
+    // 不同步 currentIndex 的话，「下一首」会插到当前曲**后面两格**。
+    const beforeCurrent = existing >= 0 && existing < currentIndex.value
     if (existing >= 0) queue.value.splice(existing, 1)
+    if (beforeCurrent) currentIndex.value -= 1
     const insertAt = Math.max(0, currentIndex.value + 1)
     queue.value.splice(insertAt, 0, track)
     ensureShuffleOrder()
