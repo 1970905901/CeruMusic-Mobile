@@ -829,7 +829,12 @@ async function confirmKick(member: RoomMember) {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') lt.kick(member.userId)
+  if (role !== 'destructive') return
+  try {
+    lt.kick(member.userId)
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '移出失败', 'danger')
+  }
 }
 
 async function confirmLeave() {
@@ -843,9 +848,13 @@ async function confirmLeave() {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') {
+  if (role !== 'destructive') return
+  try {
     await lt.leave()
     await toast('已离开房间')
+  } catch (error) {
+    // 离房要发网络请求；失败时不能静默——用户会以为已经退出了。
+    await toast(error instanceof Error ? error.message : '离开房间失败', 'danger')
   }
 }
 
