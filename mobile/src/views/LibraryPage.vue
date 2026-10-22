@@ -954,7 +954,9 @@ async function openPlaylistActions(playlist: Playlist) {
 async function confirmDeletePlaylist(playlist: Playlist): Promise<void> {
   const alert = await alertController.create({
     header: '删除歌单',
-    message: `确定删除歌单「${playlist.name}」吗？其中的歌曲不会被删除。`,
+    message: playlist.cloudId
+      ? `确定删除歌单「${playlist.name}」吗？本地与云端副本都会删除，其中的歌曲不会被删除。`
+      : `确定删除歌单「${playlist.name}」吗？其中的歌曲不会被删除。`,
     buttons: [
       { text: '取消', role: 'cancel' },
       {
@@ -963,7 +965,9 @@ async function confirmDeletePlaylist(playlist: Playlist): Promise<void> {
         handler: () => {
           void library
             .deletePlaylist(playlist.id)
-            .then(() => showToast('歌单已删除', 'success'))
+            .then((warning) =>
+              showToast(warning || '歌单已删除', warning ? 'warning' : 'success')
+            )
             .catch((error) =>
               showToast(error instanceof Error ? error.message : '删除失败', 'danger')
             )

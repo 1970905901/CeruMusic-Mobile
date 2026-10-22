@@ -318,10 +318,29 @@ export const useLibraryStore = defineStore('library', () => {
     await updatePlaylist(id, { name })
   }
 
-  async function deletePlaylist(id: string): Promise<void> {
+  /**
+   * 删除本地歌单，并同步删掉云端副本（桌面版 `handleDeleteBoth` 同口径）。
+   *
+   * 云端删除失败时**仍然删本地**（否则用户被一个云端的临时故障卡住，
+   * 连本地都删不掉），但把失败原因返回给调用方提示——静默留下云端副本，
+   * 用户会以为删干净了，换设备登录又看到它。
+   */
+  async function deletePlaylist(id: string): Promise<string | null> {
+    const playlist = playlists.value.find((item) => item.id === id)
+    let warning: string | null = null
+    if (playlist?.cloudId) {
+      try {
+        await cloudSongListApi.deleteUserSongList(playlist.cloudId)
+      } catch (error) {
+        warning =
+          '本地已删除，云端副本删除失败：' +
+          (error instanceof Error ? error.message : String(error))
+      }
+    }
     const db = await getDb()
     await db.delete('playlists', id)
     playlists.value = playlists.value.filter((item) => item.id !== id)
+    return warning
   }
 
   async function addTrackToPlaylist(playlistId: string, track: Track): Promise<void> {

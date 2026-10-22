@@ -215,6 +215,20 @@ export const cloudSongListApi = {
     return ceruApi<CloudSongList>(BASE, { method: 'POST', body: form })
   },
 
+  /**
+   * 删除云端歌单。桌面版 `deleteUserSongList` 同口径（DELETE 带 `listId`）。
+   *
+   * 移动端此前没有这个方法：删除本地歌单只删了 IndexedDB，云端那份永远留着，
+   * 而且手机上没有别的地方能删掉它——用户以为删干净了，换设备登录又冒出来。
+   */
+  deleteUserSongList(listId: string): Promise<unknown> {
+    if (!listId) throw new Error('歌单 ID 不能为空')
+    return ceruApi(BASE, {
+      method: 'DELETE',
+      body: JSON.stringify({ listId })
+    })
+  },
+
   async updateUserSongList(data: UpdateUserSongListDto): Promise<{ id: string; updatedAt: string }> {
     const songlist = data.songlist ? await prepareCloudSongs(data.songlist) : undefined
     const form = new FormData()

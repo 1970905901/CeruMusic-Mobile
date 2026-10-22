@@ -1010,7 +1010,10 @@ async function openPlaylistMenu() {
         handler: () => {
           void library
             .deletePlaylist(remoteId)
-            .then(() => router.replace('/tabs/library'))
+            .then(async (warning) => {
+              if (warning) await toast(warning, 'warning')
+              void router.replace('/tabs/library')
+            })
             .catch((error) =>
               toast(error instanceof Error ? error.message : '删除歌单失败', 'danger')
             )
