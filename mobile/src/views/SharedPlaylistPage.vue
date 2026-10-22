@@ -137,6 +137,14 @@ const nextPos = ref<number | undefined>(undefined)
 const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
+/**
+ * 连续几页没有新歌。
+ *
+ * 服务端分页异常（重复返回同一页、`pos` 不前进）时，`hasMore` 会一直为 true，
+ * 用户一直下拉就一直在请求同一页。与 `fetchSharedPlaylistSongs` 同一口径：
+ * 连续两页没有新增即停止。
+ */
+let barrenPages = 0
 const importing = ref(false)
 const importProgress = ref('')
 const error = ref('')
@@ -169,6 +177,7 @@ async function load(reset: boolean) {
     tracks.value = []
     nextPos.value = undefined
     hasMore.value = true
+    barrenPages = 0
   } else {
     if (loadingMore.value || !hasMore.value) return
     loadingMore.value = true
@@ -182,14 +191,20 @@ async function load(reset: boolean) {
       shareId: id.value
     })
     // 分享歌单按 pos 分页，同样可能重叠；按 track key 去重避免重复行。
+    const before = reset ? 0 : tracks.value.length
     tracks.value = dedupeByKey(
       reset ? mapped : [...tracks.value, ...mapped],
       (track) => track.key
     )
+    const added = tracks.value.length - before
+    barrenPages = added === 0 ? barrenPages + 1 : 0
     const cursor = sharedPlaylistNextPos(page.playlist.songs ?? [])
     nextPos.value = cursor
     const total = Number(page.playlist.total || tracks.value.length)
-    hasMore.value = (page.playlist.songs ?? []).length > 0 && tracks.value.length < total
+    hasMore.value =
+      barrenPages < 2 &&
+      (page.playlist.songs ?? []).length > 0 &&
+      tracks.value.length < total
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '歌单分享不存在或已过期'
     if (reset) tracks.value = []
