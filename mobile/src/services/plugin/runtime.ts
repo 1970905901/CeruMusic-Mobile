@@ -902,7 +902,7 @@ export class PluginRuntime {
       case 'history.list': {
         await this.requirePermission(params?.call?.permissionKey, 'player.read')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().historyPage(params?.cursor)
+        return useLibraryStore().historyPage(params?.cursor, params?.limit)
       }
       case 'downloads.list': {
         await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
@@ -1015,7 +1015,7 @@ export class PluginRuntime {
       case 'localMusic.list': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().localMusicPage(params?.cursor)
+        return useLibraryStore().localMusicPage(params?.cursor, params?.limit)
       }
       case 'localMusic.scan': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')

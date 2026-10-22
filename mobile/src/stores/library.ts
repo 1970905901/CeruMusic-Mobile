@@ -12,6 +12,7 @@ import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writ
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
+import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
 
 /** 播放历史上限，与桌面版 GlobalPlayStatus 保持一致。 */
@@ -844,11 +845,15 @@ export const useLibraryStore = defineStore('library', () => {
     pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
   }
 
-  function localMusicPage(cursor?: string) {
-    return {
-      items: localTracks.value.map((track) => track.raw),
-      totalEstimate: localTracks.value.length
-    }
+  /** 分页返回本地音乐；游标非法时抛错，而不是静默从头再来（会让插件死循环）。 */
+  function localMusicPage(cursor?: string, limit?: number) {
+    const page = paginate(
+      localTracks.value.map((track) => track.raw),
+      cursor,
+      limit
+    )
+    if (!page) throw new Error('分页游标无效')
+    return page
   }
 
   async function applyLocalMetadata(
@@ -940,11 +945,14 @@ export const useLibraryStore = defineStore('library', () => {
     tracks.value = { ...tracks.value, [record.key]: localTrackToTrack(record) }
     return { success: true, fileTagWritten, fileTagWarning }
   }
-  function historyPage(cursor?: string) {
-    return {
-      items: history.value.map((item) => item.track.raw),
-      totalEstimate: history.value.length
-    }
+  function historyPage(cursor?: string, limit?: number) {
+    const page = paginate(
+      history.value.map((item) => item.track.raw),
+      cursor,
+      limit
+    )
+    if (!page) throw new Error('分页游标无效')
+    return page
   }
 
   async function addHostFavorite(track: any) {
