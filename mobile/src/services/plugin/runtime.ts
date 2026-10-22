@@ -9,6 +9,7 @@ import { validateScheduledTask, type PluginScheduledTask } from '@/services/plug
 import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDevices'
+import { assertOwnedRefs, type OwnershipContext } from '@/services/plugin/ownership'
 import {
   parseSocketPayload,
   socketEventName,
@@ -673,65 +674,95 @@ export class PluginRuntime {
         await useLibraryStore().clearHostPlaylist(params?.reference)
         return null
       }
+      // 播放器与队列统一校验授权与资源归属（桌面 `PluginHost` 的同一条规则）：
+      // 读操作要 player.read，其余要 player.control；带 track 引用的操作还要求
+      // 该引用属于本插件声明的 provider，否则插件可以往队列里塞别的音源的歌。
       case 'player.getState': {
+        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
         const { usePlayerStore } = await import('@/stores/player')
         return usePlayerStore().hostState()
       }
       case 'player.play': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        // 桌面版同样只在传了 track 时校验（`data.args?.[0] != null`）。
+        if (params?.track != null) {
+          assertOwnedRefs([params.track.ref], 'track', this.ownershipContext())
+        }
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().hostPlay(params?.track)
         return null
       }
       case 'player.pause': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().pause()
         return null
       }
       case 'player.next': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().next()
         return null
       }
       case 'player.previous': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().previous()
         return null
       }
       case 'player.seek': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().seek(Number(params?.positionMs) || 0)
         return null
       }
       case 'player.setVolume': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().setVolume(Number(params?.volume) || 0)
         return null
       }
       case 'player.setMode': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().setMode(params?.mode)
         return null
       }
       case 'queue.get': {
+        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
         const { usePlayerStore } = await import('@/stores/player')
         return usePlayerStore().hostQueue()
       }
       case 'queue.append': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        assertOwnedRefs(
+          (params?.tracks ?? []).map((entity: any) => entity?.ref),
+          'track',
+          this.ownershipContext()
+        )
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().appendHostTracks(params?.tracks ?? [])
         return null
       }
       case 'queue.replace': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        assertOwnedRefs(
+          (params?.tracks ?? []).map((entity: any) => entity?.ref),
+          'track',
+          this.ownershipContext()
+        )
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().replaceHostQueue(params?.tracks ?? [])
         return null
       }
       case 'queue.remove': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().removeHostTracks(params?.keys ?? [])
         return null
       }
       case 'queue.reorder': {
+        await this.requirePermission(params?.call?.permissionKey, '播放控制')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().reorderHostTracks(params?.keys ?? [])
         return null
@@ -990,6 +1021,11 @@ export class PluginRuntime {
     }
   }
 
+
+  /** 归属校验上下文：本插件的 manifest id 与声明的 provider。 */
+  private ownershipContext(): OwnershipContext {
+    return { manifestId: this.manifest.id, manifest: this.manifest }
+  }
 
   private async requirePermission(key: string | undefined, group: string): Promise<void> {
     const resolved = resolvePermissionKey(key)
