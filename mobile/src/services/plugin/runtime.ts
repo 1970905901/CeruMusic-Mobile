@@ -652,24 +652,36 @@ export class PluginRuntime {
         if (params?.operation?.next === 'profile') await router.push('/account')
         return null
       }
+      // 歌单读写按桌面 `PluginHost` 分级：读取 / 导入 / 删除各自要对应授权，
+      // 导入的条目必须是标准歌曲引用（否则会把插件私有结构塞进用户歌单）。
       case 'library.playlists.list': {
+        await this.requirePermission(params?.call?.permissionKey, '歌单读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().asHostPlaylists()
       }
       case 'library.playlists.getTracks': {
+        await this.requirePermission(params?.call?.permissionKey, '歌单读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().asHostTracks(params?.reference, params?.cursor)
       }
       case 'library.playlists.import': {
+        await this.requirePermission(params?.call?.permissionKey, '歌单修改')
+        const request = params?.request ?? {}
+        const items = Array.isArray(request.items) ? request.items : []
+        if (items.some((item: any) => item?.ref?.kind !== 'track')) {
+          throw new Error('歌单只接收标准歌曲')
+        }
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().importHostPlaylist(params?.request)
+        return useLibraryStore().importHostPlaylist(request)
       }
       case 'library.playlists.removeTracks': {
+        await this.requirePermission(params?.call?.permissionKey, '歌单删除')
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().removeHostTracks(params?.reference, params?.tracks)
         return null
       }
       case 'library.playlists.clearPlaylist': {
+        await this.requirePermission(params?.call?.permissionKey, '歌单删除')
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().clearHostPlaylist(params?.reference)
         return null
@@ -767,53 +779,74 @@ export class PluginRuntime {
         usePlayerStore().reorderHostTracks(params?.keys ?? [])
         return null
       }
+      // 收藏 / 历史 / 下载：与桌面 `PluginHost` 同一套授权与归属规则。
       case 'favorites.contains': {
+        await this.requirePermission(params?.call?.permissionKey, '资料库读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().isFavorite(params?.track?.ref ?? params?.track)
       }
       case 'favorites.add': {
+        await this.requirePermission(params?.call?.permissionKey, '资料库写入')
+        assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().addHostFavorite(params?.track)
         return null
       }
       case 'favorites.remove': {
+        await this.requirePermission(params?.call?.permissionKey, '资料库写入')
+        assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().removeHostFavorite(params?.track)
         return null
       }
       case 'history.list': {
+        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().historyPage(params?.cursor)
       }
       case 'downloads.list': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         return useDownloadStore().asHostTasks()
       }
       case 'downloads.create': {
+        await this.requirePermission(params?.call?.permissionKey, '创建下载')
+        const request = params?.request ?? {}
+        const tracks = Array.isArray(request.tracks) ? request.tracks : []
+        // 与桌面同口径：一次 1–100 个任务，且只能下载自己声明的资源。
+        if (tracks.length < 1 || tracks.length > 100) {
+          throw new Error('一次只能创建 1 到 100 个下载任务')
+        }
+        assertOwnedRefs(tracks, 'track', this.ownershipContext())
         const { useDownloadStore } = await import('@/stores/downloads')
-        return useDownloadStore().createHostDownloads(params?.request)
+        return useDownloadStore().createHostDownloads(request)
       }
       case 'downloads.pause': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().pause(params?.ids ?? [])
         return null
       }
       case 'downloads.resume': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().resume(params?.ids ?? [])
         return null
       }
       case 'downloads.cancel': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().cancel(params?.ids ?? [])
         return null
       }
       case 'downloads.retry': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().retry(params?.ids ?? [])
         return null
       }
       case 'downloads.reveal': {
+        await this.requirePermission(params?.call?.permissionKey, '下载管理')
         const { useDownloadStore } = await import('@/stores/downloads')
         await useDownloadStore().share(params?.id)
         return null
