@@ -78,6 +78,7 @@ import {
 import { albumsOutline, chevronForward } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
+import { dedupeByKey } from '@/services/listMerge'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
@@ -126,7 +127,9 @@ async function load(reset = false) {
     )
     if (!listRequests.isCurrent(token, categoryId)) return
     const next = (page.items || []).filter((item: any) => item?.ref?.kind === 'playlist')
-    items.value = reset ? next : [...items.value, ...next]
+    // 分页边界常重复返回上一页的歌单；不去重会让 `:key` 重复、渲染错乱，
+    // 也会让下面的「新增数」永远大于 0，守卫形同虚设。
+    items.value = dedupeByKey(reset ? next : [...items.value, ...next], keyOf)
     barrenPages = nextBarrenCount(items.value.length - before, barrenPages)
     nextCursor.value = pagingShouldContinue(!!page.nextCursor, barrenPages)
       ? page.nextCursor
