@@ -12,9 +12,21 @@ import {
   type LoudnessTarget,
   type SurroundMode
 } from '@/services/audioEffects'
+import {
+  BUILTIN_EQ_PRESET_NAMES,
+  EQ_CUSTOM_PRESET,
+  EQ_FALLBACK_PRESET,
+  checkPresetName,
+  exportEqConfig,
+  parseEqConfig,
+  resolvePresetAfterImport,
+  sanitizeCustomPresets,
+  type StoredEqPreset
+} from '@/services/eqPresets'
 import { usePlayerStore } from '@/stores/player'
 
 const STORAGE_KEY = 'ceru-mobile-audio-effects-v1'
+const PRESET_STORAGE_KEY = 'ceru-mobile-eq-presets-v1'
 
 function defaultState(): AudioEffectsState {
   return {
@@ -49,12 +61,37 @@ function load(): AudioEffectsState {
   }
 }
 
+function loadCustomPresets(): StoredEqPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY)
+    return raw ? sanitizeCustomPresets(JSON.parse(raw)) : []
+  } catch {
+    return []
+  }
+}
+
+/** 逐段比较增益，用于判断导入的增益是否正好等于某个预设。 */
+function gainsEqual(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((value, index) => Math.abs(value - b[index]) < 1e-6)
+}
+
+/** 内置预设在前，用户预设在后；下拉与「是否可删」都按这份列表判断。 */
+function buildPresets(custom: readonly StoredEqPreset[]): EqualizerPreset[] {
+  return [
+    ...EQUALIZER_PRESETS.map((preset) => ({ ...preset, gains: [...preset.gains] })),
+    ...custom.map((preset) => ({
+      name: preset.name,
+      gains: [...preset.gains],
+      ...(preset.originalGains ? { originalGains: [...preset.originalGains] } : {})
+    }))
+  ]
+}
+
 export const useAudioEffectsStore = defineStore('audioEffects', () => {
   const player = usePlayerStore()
   const state = ref<AudioEffectsState>(load())
-  const presets = ref<EqualizerPreset[]>(
-    EQUALIZER_PRESETS.map((preset) => ({ ...preset, gains: [...preset.gains] }))
-  )
+  const customPresets = ref<StoredEqPreset[]>(loadCustomPresets())
+  const presets = ref<EqualizerPreset[]>(buildPresets(customPresets.value))
   const supported = computed(
     () =>
       typeof window !== 'undefined' &&
@@ -94,11 +131,134 @@ export const useAudioEffectsStore = defineStore('audioEffects', () => {
   function setBandGain(index: number, gain: number): void {
     if (index < 0 || index >= state.value.equalizerGains.length) return
     state.value.equalizerGains[index] = gain
-    state.value.equalizerPreset = '自定义'
+    state.value.equalizerPreset = EQ_CUSTOM_PRESET
   }
 
   function resetEqualizer(): void {
-    selectPreset('Flat(原声)')
+    selectPreset(EQ_FALLBACK_PRESET)
+  }
+
+  function persistCustomPresets(): void {
+    try {
+      localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(customPresets.value))
+    } catch {
+      // Preferences remain in memory when storage is unavailable.
+    }
+  }
+
+  function isBuiltinPreset(name: string): boolean {
+    return (BUILTIN_EQ_PRESET_NAMES as readonly string[]).includes(name)
+  }
+
+  /** 当前选中的是否是用户预设；内置预设与「自定义」都不能删改。 */
+  const customPresetActive = computed(
+    () => !isBuiltinPreset(state.value.equalizerPreset) &&
+      customPresets.value.some((preset) => preset.name === state.value.equalizerPreset)
+  )
+
+  /**
+   * 用当前增益保存为新预设。校验与清洗都在 `eqPresets` 里，
+   * 这里只负责落地并切到新预设，让用户立刻看到名字。
+   */
+  function savePreset(name: string): { ok: true; name: string } | { ok: false; reason: string } {
+    const checked = checkPresetName(
+      name,
+      customPresets.value.map((preset) => preset.name)
+    )
+    if (!checked.ok) {
+      const reason =
+        checked.reason === 'empty'
+          ? '预设名称不能为空'
+          : checked.reason === 'builtin'
+            ? '与内置预设同名'
+            : '已存在同名预设'
+      return { ok: false, reason }
+    }
+    const gains = clampEqualizerGains(state.value.equalizerGains)
+    customPresets.value = [
+      ...customPresets.value,
+      { name: checked.name, gains, originalGains: [...gains] }
+    ]
+    presets.value = buildPresets(customPresets.value)
+    state.value.equalizerPreset = checked.name
+    state.value.equalizerGains = [...gains]
+    persistCustomPresets()
+    return { ok: true, name: checked.name }
+  }
+
+  /** 把当前增益写回当前用户预设，初始值保持不动，仍可「重置」。 */
+  function overwriteCurrentPreset(): boolean {
+    if (!customPresetActive.value) return false
+    const gains = clampEqualizerGains(state.value.equalizerGains)
+    customPresets.value = customPresets.value.map((preset) =>
+      preset.name === state.value.equalizerPreset ? { ...preset, gains } : preset
+    )
+    presets.value = buildPresets(customPresets.value)
+    state.value.equalizerGains = [...gains]
+    persistCustomPresets()
+    return true
+  }
+
+  function deleteCurrentPreset(): boolean {
+    if (!customPresetActive.value) return false
+    const name = state.value.equalizerPreset
+    customPresets.value = customPresets.value.filter((preset) => preset.name !== name)
+    presets.value = buildPresets(customPresets.value)
+    const fallback = presets.value.find((preset) => preset.name === EQ_FALLBACK_PRESET)
+    state.value.equalizerPreset = EQ_FALLBACK_PRESET
+    state.value.equalizerGains = fallback ? [...fallback.gains] : clampEqualizerGains([])
+    persistCustomPresets()
+    return true
+  }
+
+  /**
+   * 重置当前预设的增益：内置预设回到自身定义值，
+   * 用户预设回到保存时的初始值；没有记录初始值的旧数据回落到 Flat。
+   */
+  function resetToCurrentPreset(): void {
+    const name = state.value.equalizerPreset
+    const preset = presets.value.find((item) => item.name === name)
+    if (!preset) {
+      selectPreset(EQ_FALLBACK_PRESET)
+      return
+    }
+    const target = customPresetActive.value ? preset.originalGains : preset.gains
+    state.value.equalizerGains = target
+      ? clampEqualizerGains(target)
+      : clampEqualizerGains(EQUALIZER_PRESETS[0].gains)
+  }
+
+  function exportConfig(): string {
+    return exportEqConfig(customPresets.value, {
+      presetName: state.value.equalizerPreset,
+      gains: clampEqualizerGains(state.value.equalizerGains),
+      enabled: state.value.equalizerEnabled
+    })
+  }
+
+  /**
+   * 导入桌面版或本机导出的配置；解析失败时抛错，由界面提示，不改动现状。
+   *
+   * 桌面版把 `currentPreset` 与 `gains` 分开保存，两者可能对不上（例如导出后
+   * 手动拖过滑杆）。增益优先：文件里带了增益就照抄并把下拉落到
+   * 「自定义」，只有当「名字 + 增益」正好是某个已知预设时才沿用名字，
+   * 否则会显示一个与滑杆不符的预设。
+   */
+  function importConfig(text: string): void {
+    const parsed = parseEqConfig(text)
+    customPresets.value = parsed.presets
+    presets.value = buildPresets(customPresets.value)
+    persistCustomPresets()
+    if (typeof parsed.enabled === 'boolean') state.value.equalizerEnabled = parsed.enabled
+    const matchedName = resolvePresetAfterImport(parsed.presetName, parsed.presets)
+    if (parsed.gains) {
+      state.value.equalizerGains = [...parsed.gains]
+      const preset = presets.value.find((item) => item.name === matchedName)
+      state.value.equalizerPreset =
+        preset && gainsEqual(preset.gains, parsed.gains) ? matchedName : EQ_CUSTOM_PRESET
+      return
+    }
+    if (parsed.presetName) selectPreset(matchedName)
   }
 
   function setBassBoost(enabled: boolean, gain?: number): void {
@@ -150,10 +310,17 @@ export const useAudioEffectsStore = defineStore('audioEffects', () => {
     supported,
     active,
     apply,
+    customPresetActive,
     setEqualizerEnabled,
     selectPreset,
     setBandGain,
     resetEqualizer,
+    savePreset,
+    overwriteCurrentPreset,
+    deleteCurrentPreset,
+    resetToCurrentPreset,
+    exportConfig,
+    importConfig,
     setBassBoost,
     setSurround,
     setBalance,

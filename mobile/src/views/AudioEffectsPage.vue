@@ -12,6 +12,13 @@
       </ion-toolbar>
     </ion-header>
     <ion-content :fullscreen="true">
+      <input
+        ref="importInput"
+        class="file-input"
+        type="file"
+        accept="application/json,.json"
+        @change="onImportFile"
+      />
       <div class="fx-head ceru-pad">
         <p class="eyebrow">AUDIO EFFECTS</p>
         <h1 class="ceru-title">均衡器与音效</h1>
@@ -49,10 +56,40 @@
               <ion-select-option v-for="preset in store.presets" :key="preset.name" :value="preset.name">
                 {{ preset.name }}
               </ion-select-option>
-              <ion-select-option value="自定义" :disabled="state.equalizerPreset !== '自定义'">
+              <ion-select-option value="自定义" :disabled="state.equalizerPreset !== EQ_CUSTOM_PRESET">
                 自定义
               </ion-select-option>
             </ion-select>
+          </ion-item>
+          <!-- 桌面版 EqualizerSettings 的预设管理：保存 / 覆盖 / 删除 / 重置 / 导入导出 -->
+          <ion-item lines="none" class="preset-actions">
+            <div class="preset-actions-row">
+              <ion-button size="small" fill="clear" @click="savePresetAs">存为新预设</ion-button>
+              <ion-button
+                v-if="store.customPresetActive"
+                size="small"
+                fill="clear"
+                @click="overwritePreset"
+              >
+                保存当前值
+              </ion-button>
+              <ion-button
+                v-if="store.customPresetActive"
+                size="small"
+                fill="clear"
+                color="danger"
+                @click="deletePreset"
+              >
+                删除
+              </ion-button>
+              <ion-button size="small" fill="clear" @click="resetPreset">重置</ion-button>
+            </div>
+          </ion-item>
+          <ion-item lines="none" class="preset-actions">
+            <div class="preset-actions-row">
+              <ion-button size="small" fill="clear" @click="exportConfig">导出配置</ion-button>
+              <ion-button size="small" fill="clear" @click="importInput?.click()">导入配置</ion-button>
+            </div>
           </ion-item>
           <div class="band-list" :class="{ disabled: !state.equalizerEnabled }">
             <div v-for="(freq, index) in frequencies" :key="freq" class="band-row">
@@ -181,7 +218,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -201,16 +238,20 @@ import {
   IonTitle,
   IonToggle,
   IonToolbar,
+  alertController,
   toastController
 } from '@ionic/vue'
 import { optionsOutline, volumeHighOutline } from 'ionicons/icons'
 import { EQ_FREQUENCIES, type LoudnessTarget, type SurroundMode } from '@/services/audioEffects'
 import { BASS_PRESETS, bassPresetFromGain, bassPresetGain } from '@/services/bassPresets'
+import { EQ_CUSTOM_PRESET } from '@/services/eqPresets'
+import { saveAndShareFile } from '@/services/fileExport'
 import { useAudioEffectsStore } from '@/stores/audioEffects'
 
 const store = useAudioEffectsStore()
 const state = store.state
 const frequencies = EQ_FREQUENCIES
+const importInput = ref<HTMLInputElement | null>(null)
 
 const balanceLabel = computed(() => {
   if (!state.balance.enabled) return '已关闭'
@@ -252,6 +293,91 @@ function onPresetChange(event: CustomEvent): void {
 function onBandInput(index: number, event: CustomEvent): void {
   store.setBandGain(index, Number(event.detail.value))
   commit()
+}
+
+async function showMessage(message: string, color = 'medium'): Promise<void> {
+  const toast = await toastController.create({ message, duration: 2200, color })
+  await toast.present()
+}
+
+async function savePresetAs(): Promise<void> {
+  const alert = await alertController.create({
+    header: '保存为新预设',
+    inputs: [{ name: 'name', type: 'text', placeholder: '预设名称' }],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role, data } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  const result = store.savePreset(String(data?.values?.name ?? ''))
+  if (!result.ok) {
+    await showMessage(result.reason, 'warning')
+    return
+  }
+  await showMessage(`已保存预设「${result.name}」`, 'success')
+}
+
+async function overwritePreset(): Promise<void> {
+  const name = state.equalizerPreset
+  if (!store.overwriteCurrentPreset()) return
+  await showMessage(`已更新预设「${name}」`, 'success')
+}
+
+async function deletePreset(): Promise<void> {
+  if (!store.customPresetActive) {
+    await showMessage('内置预设不能删除', 'warning')
+    return
+  }
+  const name = state.equalizerPreset
+  const alert = await alertController.create({
+    header: '删除预设',
+    message: `确定要删除预设「${name}」吗？`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '删除', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'destructive') return
+  store.deleteCurrentPreset()
+  await showMessage(`已删除预设「${name}」`)
+}
+
+function resetPreset(): void {
+  // 只重置均衡器，不影响低音 / 环绕 / 响度，与按钮旁的语义一致。
+  store.resetToCurrentPreset()
+  commit()
+}
+
+async function exportConfig(): Promise<void> {
+  try {
+    await saveAndShareFile({
+      name: 'ceru-music-eq-config.json',
+      data: store.exportConfig(),
+      mime: 'application/json',
+      title: 'Ceru Music 音效配置'
+    })
+  } catch (error) {
+    await showMessage(error instanceof Error ? error.message : '导出失败', 'danger')
+  }
+}
+
+async function onImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    // 导入只覆盖均衡器配置；低音 / 环绕 / 响度不在桌面版的导出格式里。
+    store.importConfig(await file.text())
+    await showMessage('配置导入成功', 'success')
+  } catch (error) {
+    await showMessage(error instanceof Error ? error.message : '导入失败', 'danger')
+  }
 }
 
 function onBassEnabled(event: CustomEvent): void {
@@ -356,6 +482,26 @@ function resetAll(): void {
 
 .band-row ion-range {
   padding: 0;
+}
+
+.file-input {
+  display: none;
+}
+
+.preset-actions {
+  --min-height: 40px;
+}
+
+.preset-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+}
+
+.preset-actions-row ion-button {
+  margin: 0;
+  font-size: 0.8rem;
 }
 
 .actions {
