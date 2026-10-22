@@ -1195,6 +1195,9 @@ export class PluginRuntime {
       }
       case 'sharing.create': {
         await this.requirePermission(params?.call?.permissionKey, 'sharing.publish')
+        // 分享的是歌曲引用：必须属于本插件声明的 provider，
+        // 否则插件可以伪造一条指向别的音源（或不存在资源）的分享链接。
+        assertOwnedRefs([params?.request?.track], 'track', this.ownershipContext())
         return createShareDescriptor(params?.request ?? {})
       }
       case 'sharing.resolve':
