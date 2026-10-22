@@ -232,11 +232,24 @@ export const usePlayerStore = defineStore('player', () => {
     }, 600)
   }
 
+  /**
+   * 队列版本号：任何会改变队列内容或顺序的操作都 +1。
+   *
+   * 此前 `hostQueue()` 用「长度 + 当前索引」拼 revision，拖动排序后两者都不变，
+   * 插件轮询 `queue.get` 会永远发现不了变化；而推送用的 `Date.now()` 又可能在
+   * 同一毫秒内产生相同值。改成一个只增不减的计数器，两条路径共用同一个值。
+   */
+  let queueRevision = 0
+  function bumpQueueRevision(): string {
+    queueRevision += 1
+    return String(queueRevision)
+  }
+
   function publishQueue() {
     pluginStore.publishQueue({
       items: queue.value.map((track) => track.raw),
       currentIndex: currentIndex.value,
-      revision: String(Date.now())
+      revision: bumpQueueRevision()
     })
   }
 
@@ -1029,7 +1042,9 @@ export const usePlayerStore = defineStore('player', () => {
     return {
       items: queue.value.map((track) => track.raw),
       currentIndex: currentIndex.value,
-      revision: String(queue.value.length + currentIndex.value)
+      // 与推送共用同一个计数器：`queue.get` 与 `queue.changed` 的版本号必须一致，
+      // 否则插件按「revision 变了才刷新」判断时会漏掉变化。
+      revision: String(queueRevision)
     }
   }
 
