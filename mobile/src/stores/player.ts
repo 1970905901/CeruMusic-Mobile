@@ -885,8 +885,12 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function setMode(mode: { repeat?: RepeatMode; shuffle?: boolean } | undefined): void {
-    if (!mode) return
-    if (mode.repeat) repeat.value = mode.repeat
+    if (!mode || typeof mode !== 'object') return
+    // 只接受三个合法取值：插件传别的字符串会把状态写坏，
+    // 界面上的循环按钮与「播完自动下一首」的判定都会失效。
+    if (mode.repeat === 'off' || mode.repeat === 'all' || mode.repeat === 'one') {
+      repeat.value = mode.repeat
+    }
     if (typeof mode.shuffle === 'boolean') {
       const changed = shuffle.value !== mode.shuffle
       shuffle.value = mode.shuffle
