@@ -370,6 +370,10 @@ export class PluginRuntime {
     this.pending.clear()
     this.clearScheduledTasks()
     this.clearSockets()
+    // 文件与目录句柄持有用户选中的 File / SAF 目录引用；运行时销毁后必须放掉，
+    // 否则这些引用会跟着页面活到下次刷新（iOS 上还可能占着安全作用域访问）。
+    this.pickedFiles.clear()
+    this.pickedDirectories.clear()
     // 插件停用/卸载/崩溃后不会再调用 ui.progress.close，
     // 不清理的话它的进度卡片会永远挂在界面上。
     void import('@/services/pluginProgress').then(({ clearPluginProgress }) =>
