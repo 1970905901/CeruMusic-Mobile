@@ -174,9 +174,21 @@ export const useLibraryStore = defineStore('library', () => {
     return record ? localTrackToTrack(record) : undefined
   }
 
+  /**
+   * 是否已收藏。参数既可能是完整 Track（带 key），也可能是插件传来的 ref。
+   *
+   * 私有资源的 Track key 是 `pluginId:providerId:id`，而 ref 里只有
+   * `providerId`/`id` 时拼出来的是 `providerId:id`——只认一种形状会让
+   * 插件对私有歌曲的 `favorites.contains` 永远返回 false，进而重复收藏。
+   */
   function isFavorite(trackOrRef: Track | any): boolean {
-    const key = trackOrRef?.key ?? (trackOrRef?.providerId && trackOrRef?.id ? `${trackOrRef.providerId}:${trackOrRef.id}` : '')
-    return favoriteKeys.value.has(key)
+    const explicitKey = typeof trackOrRef?.key === 'string' ? trackOrRef.key : undefined
+    const candidates = playlistKeyCandidates(
+      trackOrRef?.ref ?? trackOrRef,
+      explicitKey
+    )
+    if (!candidates.length) return false
+    return candidates.some((key) => favoriteKeys.value.has(key))
   }
 
   async function toggleFavorite(track: Track): Promise<boolean> {
