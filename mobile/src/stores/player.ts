@@ -9,6 +9,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
+import { isAudioContentType, notAudioMessage } from '@/services/downloadContentType'
 import {
   bindAudioPipelineElement,
   isAudioEffectsActive,
@@ -489,6 +490,9 @@ export const usePlayerStore = defineStore('player', () => {
           const mime =
             (response.headers && (response.headers['content-type'] || response.headers['Content-Type'])) ||
             'audio/mpeg'
+          // 与下载 / 缓存同口径：200 但不是音频（鉴权失效的登录页、JSON 报错）
+          // 不能当音频塞给播放器，否则只得到一句笼统的「音频播放失败」。
+          if (!isAudioContentType(String(mime))) throw new Error(notAudioMessage(String(mime)))
           const blob = await responseToBlob(response.data, String(mime))
           cleanupObjectUrl()
           objectUrl = URL.createObjectURL(blob)
@@ -496,6 +500,8 @@ export const usePlayerStore = defineStore('player', () => {
         }
         const response = await fetch(resolved.url, { headers: resolved.requestHeaders })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const mime = response.headers.get('content-type') || ''
+        if (!isAudioContentType(mime)) throw new Error(notAudioMessage(mime))
         const blob = await response.blob()
         cleanupObjectUrl()
         objectUrl = URL.createObjectURL(blob)
