@@ -970,7 +970,8 @@
             <p>用于按钮、进度与高亮</p>
           </ion-label>
         </ion-item>
-        <div class="accent-row">
+        <div class="accent-row" role="radiogroup" aria-label="强调色">
+          <!-- 纯色圆点没有文字：没有 aria-label 时读屏只会念出一个无名按钮 -->
           <button
             v-for="color in accents"
             :key="color"
@@ -978,6 +979,9 @@
             :class="{ active: settings.settings.accent === color }"
             :style="{ background: color }"
             type="button"
+            role="radio"
+            :aria-checked="settings.settings.accent === color"
+            :aria-label="`强调色 ${color}`"
             @click="settings.settings.accent = color"
           />
         </div>
