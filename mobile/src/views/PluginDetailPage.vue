@@ -431,7 +431,8 @@ async function saveConfig() {
 function grantAll() {
   if (!plugin.value) return
   for (const permission of plugin.value.manifest.permissions || []) {
-    settings.grantPermission(plugin.value.key, permission.key)
+    // 记录授权时的权限名：插件升级若把同一个 key 改成别的权限，旧授权会被撤销。
+    settings.grantPermission(plugin.value.key, permission.key, String(permission.name ?? '') || undefined)
   }
   void toast('已允许全部权限')
 }

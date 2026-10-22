@@ -296,6 +296,9 @@ export const usePluginStore = defineStore('plugins', () => {
         record.signatureStatus = parsed.signatureStatus
       }
       await db.put('plugins', toPlain(record))
+      // 插件升级后核对旧授权：同一个 key 若被改成要别的权限，旧授权必须失效，
+      // 否则用户当初为「读设置」点下的允许会被悄悄当成「控制播放」。
+      settings.reconcilePluginPermissions(record.key, parsed.manifest.permissions)
       if (record.enabled) {
         pluginRuntimeManager.deactivate(record.key)
         await activate(record)

@@ -76,3 +76,52 @@ export function checkPermissionDeclaration(
   if (String(match.name ?? '') !== name) return `插件未声明权限：${permissionLabel(name)}`
   return null
 }
+
+/**
+ * 插件升级后重新核对旧授权。
+ *
+ * 桌面版把授权存成 `key:name:scope` 指纹，所以插件改掉某个 key 对应的权限名，
+ * 旧授权自动失效、必须重新询问。移动端按 `[pluginKey][permissionKey]` 存布尔值，
+ * 升级后的新版本只要复用同一个 key，用户当初为「读设置」点下的允许就会被
+ * 悄悄当成「控制播放」——这正是权限指纹要防的事。
+ *
+ * 这里在插件导入/更新时调用：声明名与授权时记录的名字不一致，或该 key 已不再声明，
+ * 一律撤销授权（拒绝记录同样清掉，让用户重新做决定）。
+ */
+export interface PermissionTables {
+  granted: Record<string, boolean | string>
+  denied: Record<string, boolean | string>
+}
+
+export function reconcilePermissionNames(
+  tables: PermissionTables,
+  declarations: readonly DeclaredPermission[] | null | undefined
+): PermissionTables {
+  const byKey = new Map<string, string>()
+  for (const item of Array.isArray(declarations) ? declarations : []) {
+    const key = String(item?.key ?? '')
+    if (key) byKey.set(key, String(item?.name ?? ''))
+  }
+  const filter = (table: Record<string, boolean | string>): Record<string, boolean | string> => {
+    const next: Record<string, boolean | string> = {}
+    let changed = false
+    for (const [key, value] of Object.entries(table)) {
+      const declaredName = byKey.get(key)
+      // 旧版本只存了 `true`：只要该 key 仍被声明就保留，并把名字补上，
+      // 下次升级时就能按名字比对了。
+      if (declaredName === undefined) {
+        changed = true
+        continue
+      }
+      if (typeof value === 'string' && value !== declaredName) {
+        changed = true
+        continue
+      }
+      next[key] = typeof value === 'string' ? value : declaredName
+      if (typeof value !== 'string') changed = true
+    }
+    // 没变化时返回原对象，避免无谓地触发设置写入与同步。
+    return changed ? next : table
+  }
+  return { granted: filter(tables.granted), denied: filter(tables.denied) }
+}

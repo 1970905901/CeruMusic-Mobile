@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getBackgroundRenderer, type BackgroundRendererType } from '@/services/backgroundRenderers'
+import { reconcilePermissionNames } from '@/services/plugin/permissions'
 import {
   normalizeGlobalBackground,
   type GlobalBackgroundSettings
@@ -20,8 +21,12 @@ export interface AppSettings {
   preferredQuality: string
   providerOwners: Record<string, string>
   capabilityOwners: Record<string, string>
-  grantedPermissions: Record<string, Record<string, boolean>>
-  deniedPermissions: Record<string, Record<string, boolean>>
+  /**
+   * `[pluginKey][permissionKey]` → 授权时的权限名（`permission.control` 等）。
+   * 旧版本存的是 `true`；读取时按「仍被声明」处理，并在下次导入时补上名字。
+   */
+  grantedPermissions: Record<string, Record<string, boolean | string>>
+  deniedPermissions: Record<string, Record<string, boolean | string>>
   downloadQuality: string
   downloadFilenameTemplate: string
   /** 下载完成后写入音频文件的标签内容，对齐桌面版 tagWriteOptions。 */
@@ -267,20 +272,55 @@ export const useSettingsStore = defineStore('settings', () => {
     return !!settings.value.deniedPermissions[pluginKey]?.[permissionKey]
   }
 
-  function grantPermission(pluginKey: string, permissionKey: string) {
-    const granted = { ...(settings.value.grantedPermissions[pluginKey] ?? {}), [permissionKey]: true }
+  /**
+   * 记录一次授权。`name` 是授权时的权限名，写进去才能在插件升级后
+   * 发现「同一个 key 被拿去要别的权限」并撤销（见 reconcilePermissionNames）。
+   */
+  function grantPermission(pluginKey: string, permissionKey: string, name?: string) {
+    const granted = {
+      ...(settings.value.grantedPermissions[pluginKey] ?? {}),
+      [permissionKey]: name || true
+    }
     const denied = { ...(settings.value.deniedPermissions[pluginKey] ?? {}) }
     delete denied[permissionKey]
     settings.value.grantedPermissions = { ...settings.value.grantedPermissions, [pluginKey]: granted }
     settings.value.deniedPermissions = { ...settings.value.deniedPermissions, [pluginKey]: denied }
   }
 
-  function denyPermission(pluginKey: string, permissionKey: string) {
-    const denied = { ...(settings.value.deniedPermissions[pluginKey] ?? {}), [permissionKey]: true }
+  function denyPermission(pluginKey: string, permissionKey: string, name?: string) {
+    const denied = {
+      ...(settings.value.deniedPermissions[pluginKey] ?? {}),
+      [permissionKey]: name || true
+    }
     const granted = { ...(settings.value.grantedPermissions[pluginKey] ?? {}) }
     delete granted[permissionKey]
     settings.value.grantedPermissions = { ...settings.value.grantedPermissions, [pluginKey]: granted }
     settings.value.deniedPermissions = { ...settings.value.deniedPermissions, [pluginKey]: denied }
+  }
+
+  /**
+   * 插件导入/更新后核对旧授权，撤销「key 还在、但要的权限名变了」的记录。
+   * 返回是否真的改动了，便于调用方只在必要时持久化。
+   */
+  function reconcilePluginPermissions(
+    pluginKey: string,
+    declarations: readonly { key?: unknown; name?: unknown }[] | null | undefined
+  ): boolean {
+    const current = {
+      granted: settings.value.grantedPermissions[pluginKey] ?? {},
+      denied: settings.value.deniedPermissions[pluginKey] ?? {}
+    }
+    const next = reconcilePermissionNames(current, declarations)
+    if (next.granted === current.granted && next.denied === current.denied) return false
+    settings.value.grantedPermissions = {
+      ...settings.value.grantedPermissions,
+      [pluginKey]: next.granted as Record<string, boolean>
+    }
+    settings.value.deniedPermissions = {
+      ...settings.value.deniedPermissions,
+      [pluginKey]: next.denied as Record<string, boolean>
+    }
+    return true
   }
 
   function resetPermissions(pluginKey: string) {
@@ -319,6 +359,7 @@ export const useSettingsStore = defineStore('settings', () => {
     isPermissionDenied,
     grantPermission,
     denyPermission,
+    reconcilePluginPermissions,
     resetPermissions,
     addSearchHistory,
     clearSearchHistory

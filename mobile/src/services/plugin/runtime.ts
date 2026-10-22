@@ -170,13 +170,19 @@ async function performHttp(input: any): Promise<any> {
   return { status: response.status, headers: responseHeaders, data: parsed }
 }
 
-async function requestPermission(pluginKey: string, key: string): Promise<'granted' | 'denied' | 'prompt'> {
+async function requestPermission(
+  pluginKey: string,
+  key: string,
+  name?: string
+): Promise<'granted' | 'denied' | 'prompt'> {
   const settings = useSettingsStore()
   if (settings.isPermissionGranted(pluginKey, key)) return 'granted'
   if (settings.isPermissionDenied(pluginKey, key)) return 'denied'
+  const label = name ? permissionLabel(name) : key
   const alert = await alertController.create({
     header: '插件权限',
-    message: `插件 ${pluginKey} 请求权限：${key}`,
+    // 用权限的规范名而不是插件自造的 key：用户要看得懂自己在同意什么。
+    message: `插件 ${pluginKey} 请求权限：${label}`,
     buttons: [
       { text: '拒绝', role: 'cancel' },
       { text: '允许', role: 'confirm' }
@@ -185,10 +191,10 @@ async function requestPermission(pluginKey: string, key: string): Promise<'grant
   await alert.present()
   const { role } = await alert.onDidDismiss()
   if (role === 'confirm') {
-    settings.grantPermission(pluginKey, key)
+    settings.grantPermission(pluginKey, key, name)
     return 'granted'
   }
-  settings.denyPermission(pluginKey, key)
+  settings.denyPermission(pluginKey, key, name)
   return 'denied'
 }
 
@@ -1130,7 +1136,7 @@ export class PluginRuntime {
     const resolved = resolvePermissionKey(key)
     const declared = checkPermissionDeclaration(this.manifest.permissions, resolved ?? '', name)
     if (declared) throw new Error(declared)
-    const status = resolved ? await requestPermission(this.record.key, resolved) : 'denied'
+    const status = resolved ? await requestPermission(this.record.key, resolved, name) : 'denied'
     if (status !== 'granted') {
       throw new Error(
         '此功能尚未获得授权，请在插件权限中允许“' + permissionLabel(name) + '”后重试'
