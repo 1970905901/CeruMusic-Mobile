@@ -819,6 +819,8 @@
           <ion-label>
             <h2>下载文件名</h2>
             <p>{{ settings.settings.downloadFilenameTemplate }}</p>
+            <!-- 桌面端在模板输入框下方给出实时预览，避免保存后才发现整列名字都一样 -->
+            <p class="template-preview">示例：{{ filenamePreview }}</p>
           </ion-label>
         </ion-item>
         <ion-item>
@@ -1163,6 +1165,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { checkCloudSettings, settingsSyncState } from '@/services/settingsSync'
 import { findPluginUpdates, installPluginUpdate } from '@/services/pluginUpdates'
+import { buildDownloadFilename } from '@/utils/filename'
 import {
   clearMediaCache,
   enforceMediaCacheLimit,
@@ -1578,6 +1581,22 @@ async function editDownloadSubfolder() {
     .join('/')
   settings.settings.downloadSubfolder = folder || 'CeruMusic'
 }
+
+/**
+ * 文件名模板的实时预览（桌面端 StorageSection 同款）。
+ * 用一首固定的示例歌，模板改动后立刻能看出结果——尤其 `%t` 写错成 `%T`
+ * 或漏了分隔符时，保存前就能发现，而不是下完几百首才发现文件名全一样。
+ */
+const filenamePreview = computed(() =>
+  buildDownloadFilename(settings.settings.downloadFilenameTemplate, {
+    title: '晴天',
+    artist: '周杰伦',
+    album: '叶惠美',
+    quality: 'flac',
+    platform: '网易云',
+    ext: 'flac'
+  })
+)
 
 async function editFilenameTemplate() {
   const alert = await alertController.create({
@@ -2115,6 +2134,13 @@ ion-segment {
 .accent-dot.active {
   border-color: var(--ceru-bg-elevated);
   outline: 2px solid var(--ceru-text);
+}
+.template-preview {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ceru-brand);
+  overflow-wrap: anywhere;
 }
 .version-note {
   padding: 22px 20px;
