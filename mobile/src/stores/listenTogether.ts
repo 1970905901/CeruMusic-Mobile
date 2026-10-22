@@ -82,6 +82,17 @@ function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 }
 
+/**
+ * socket.io 放弃重连后应当向用户说明的情况。
+ *
+ * 此前没有任何地方监听 `reconnect_failed`：重连次数用尽后，界面会一直停在
+ * 「已连接」或「正在重试…」，进行中的加入要等 18s 超时才失败，而且文案是
+ * 「超时」而不是「连不上」——用户会以为是自己网络慢，实际是已经放弃重试。
+ */
+export function reconnectExhaustedMessage(): string {
+  return '与一起听服务器的连接已断开，请检查网络后重新进入房间'
+}
+
 export const useListenTogetherStore = defineStore('listenTogether', () => {
   const auth = useAuthStore()
   const player = usePlayerStore()
@@ -272,6 +283,19 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
       connected.value = false
       if (joining.value) failJoin(cause)
       else error.value = '连接一起听服务器失败，正在重试…'
+    })
+    /**
+     * 重连次数用尽。
+     *
+     * socket.io 放弃重连后不会再触发 disconnect/connect_error，界面会一直停在
+     * 「已连接」或「正在重试…」，加入中的 join promise 也会挂到 18s 超时才失败。
+     * 这里直接把真实情况说出来，并让进行中的加入立即失败。
+     */
+    sock.io.on('reconnect_failed', () => {
+      connected.value = false
+      const message = reconnectExhaustedMessage()
+      if (joining.value) failJoin(new Error(message))
+      else error.value = message
     })
     sock.on(SERVER.STATE, (state: RoomState) => {
       everJoined = true
