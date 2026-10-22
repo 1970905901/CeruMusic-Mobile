@@ -135,6 +135,9 @@ void (async () => {
           restartSettingsSync()
         } else {
           notifications.stopRealtime()
+          // 只断连接不够：列表与角标还在内存里，换账号登录后会先看到
+          // 上一个账号的私信与评论内容。
+          notifications.resetInbox()
           stopSettingsSync()
         }
       }

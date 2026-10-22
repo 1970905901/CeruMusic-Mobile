@@ -111,6 +111,21 @@ export const useNotificationsStore = defineStore('notifications', () => {
     connecting = false
   }
 
+  /**
+   * 退出登录时清空列表与计数。
+   *
+   * `stopRealtime` 只断连接；消息列表与未读角标还留在内存里，
+   * 换另一个账号登录后，会先看到上一个账号的私信与评论内容，
+   * 角标也带着别人的未读数。
+   */
+  function resetInbox() {
+    items.value = []
+    counts.value = { all: 0, notice: 0, interaction: 0, comment: 0 }
+    nextCursor.value = null
+    error.value = ''
+    loading.value = false
+  }
+
   function scheduleReconnect() {
     if (stopped || reconnectTimer) return
     const delay = Math.min(1000 * 2 ** Math.min(reconnectAttempt++, 5), 60000)
@@ -228,6 +243,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     revision,
     startRealtime,
     stopRealtime,
+    resetInbox,
     wakeRealtime
   }
 })
