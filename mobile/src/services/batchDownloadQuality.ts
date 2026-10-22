@@ -5,6 +5,9 @@
  *
  * 移动端此前批量下载直接沿用设置里的首选音质，逐首传给 `createDownload`，
  * 结果是一首只支持 320k 的歌被要求下 flac——插件要么报错，要么给出意外档位。
+ *
+ * 同一套判定也用于单曲下载（`trackQualityChoices` / `resolveTrackQuality`），
+ * 与桌面版 `downloadSingleSong` 的弹窗口径一致。
  */
 import { selectQuality } from '@shiqianjiang/ceru-plugin-sdk/quality'
 
