@@ -1149,6 +1149,7 @@ import {
   type TagWriteOptions
 } from '@/services/tagWriteOptions'
 import { displayMinutes } from '@/services/sleepTimer'
+import { describeQualityCoverage, intersectQualities } from '@/services/qualityIntersection'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
 import type { SettingsSearchItem } from '@/services/settingsSearch'
 import { usePlayerStore } from '@/stores/player'
@@ -1237,9 +1238,15 @@ const qualityTypesWithSaved = computed(() => {
   ])
 })
 
-const preferredQualityOptions = computed(() =>
-  buildQualitySelectOptions(qualityTypesWithSaved.value, '自动（最高）')
-)
+const preferredQualityOptions = computed(() => {
+  const options = buildQualitySelectOptions(qualityTypesWithSaved.value, '自动（最高）')
+  const common = intersectQualities(qualitySources.value)
+  if (!common.length) return options
+  // 标出「所有音源都支持」的音质，避免选到一个切音源就静默降级的档位。
+  return options.map((option) =>
+    option.value && common.includes(option.value) ? { ...option, label: `${option.label}（通用）` } : option
+  )
+})
 
 const cacheQualityOptions = computed(() =>
   buildQualitySelectOptions(qualityTypesWithSaved.value, '不限制')
@@ -1249,9 +1256,21 @@ const downloadQualityOptions = computed(() =>
   buildQualitySelectOptions(qualityTypesWithSaved.value, '跟随首选音质')
 )
 
+/** 各已启用音源声明的音质，用于「全局音质」交集判定（桌面版 MusicSourceSection）。 */
+const qualitySources = computed(() =>
+  pluginStore.sources.map((source) => ({
+    id: source.id,
+    qualities: source.implementations.find((item) => item.qualities?.length)?.qualities ?? []
+  }))
+)
+
 const preferredQualityDescription = computed(() => {
   const value = settings.settings.preferredQuality
-  return value ? getQualityDescription(value) : '插件支持时优先使用，未指定时取插件最高音质'
+  if (!value) return '插件支持时优先使用，未指定时取插件最高音质'
+  // 只有在真的会降级时才补一句，避免设置页挂着一句永远成立的废话。
+  const coverage = describeQualityCoverage(value, qualitySources.value)
+  const description = getQualityDescription(value)
+  return coverage ? `${description}（${coverage}）` : description
 })
 
 const tagLyricFormatOptions = TAG_LYRIC_FORMATS.map((value) => ({
