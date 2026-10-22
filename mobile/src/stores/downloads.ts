@@ -794,13 +794,22 @@ export const useDownloadStore = defineStore('downloads', () => {
     }))
   }
 
+  /**
+   * 插件请求批量下载。
+   *
+   * 与桌面一致：任何一首找不到都要报错——静默跳过会让插件以为整批都进了队列，
+   * 用户却发现少了几首，而且没有任何原因可查。
+   */
   async function createHostDownloads(request: any) {
     const result: DownloadTask[] = []
     for (const reference of request?.tracks ?? []) {
       const track =
         library.getTrack(`${reference.providerId}:${reference.id}`) ??
         library.getTrack(`${reference.pluginId}:${reference.providerId}:${reference.id}`)
-      if (track) result.push(await createDownload(track, request?.quality))
+      if (!track) {
+        throw new Error(`无法解析下载歌曲：${String(reference?.id ?? '')}`)
+      }
+      result.push(await createDownload(track, request?.quality))
     }
     return result.map((task) => ({
       id: task.id,
