@@ -153,7 +153,20 @@ export const usePlayerStore = defineStore('player', () => {
       const raw = localStorage.getItem(PLAYER_STORAGE_KEY)
       if (!raw) return
       const saved = JSON.parse(raw)
-      if (Array.isArray(saved.queue)) queue.value = saved.queue
+      // 只接受结构完好的条目：存档可能来自更早的版本，或被写到一半。
+      // 一条没有 key/ref 的记录会让队列渲染、恢复播放和洗牌顺序全部出错。
+      if (Array.isArray(saved.queue)) {
+        queue.value = saved.queue.filter(
+          (item: any) =>
+            item &&
+            typeof item === 'object' &&
+            typeof item.key === 'string' &&
+            item.key &&
+            item.ref &&
+            typeof item.ref === 'object' &&
+            typeof item.ref.id === 'string'
+        )
+      }
       currentIndex.value = Number.isFinite(saved.currentIndex) ? saved.currentIndex : queue.value.length ? 0 : -1
       if (currentIndex.value >= queue.value.length) currentIndex.value = queue.value.length - 1
       restorePositionMs = Number(saved.positionMs) || 0
