@@ -28,6 +28,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
   let reconnectAttempt = 0
   let stopped = true
   let connecting = false
+  /**
+   * 列表请求的世代号。
+   *
+   * 切换分类时旧请求还在路上：此前 `loading` 为真就直接 return，新分类
+   * 一次都不拉——界面已经显示「通知」，列表却还是「全部」的内容，而且不会
+   * 自愈。现在重新加载会作废旧请求，旧响应连同它的加载态一起丢弃。
+   */
+  let listGeneration = 0
   async function refreshCounts() {
     if (!auth.authenticated) {
       counts.value = { all: 0, notice: 0, interaction: 0, comment: 0 }
@@ -41,8 +49,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   async function load(reset = false) {
-    if (!auth.authenticated || loading.value) return
+    if (!auth.authenticated) return
+    // 增量加载仍然只允许一个在途请求；「重来」则要打断在途请求（换分类时）。
+    if (!reset && loading.value) return
     if (!reset && !nextCursor.value && items.value.length) return
+    const token = reset ? ++listGeneration : listGeneration
+    const requestedCategory = category.value
     loading.value = true
     error.value = ''
     if (reset) {
@@ -50,15 +62,26 @@ export const useNotificationsStore = defineStore('notifications', () => {
       nextCursor.value = null
     }
     try {
-      const page = await notificationsApi.list(category.value, reset ? undefined : nextCursor.value || undefined)
+      const page = await notificationsApi.list(
+        requestedCategory,
+        reset ? undefined : nextCursor.value || undefined
+      )
+      if (!isCurrentList(token, requestedCategory)) return
       const known = new Set(items.value.map((item) => item.id))
       items.value = [...items.value, ...page.items.filter((item) => !known.has(item.id))]
       nextCursor.value = page.nextCursor
     } catch (cause) {
+      if (!isCurrentList(token, requestedCategory)) return
       error.value = cause instanceof Error ? cause.message : '消息加载失败'
     } finally {
-      loading.value = false
+      // 过期请求不得关闭新请求的加载态。
+      if (token === listGeneration) loading.value = false
     }
+  }
+
+  /** 响应是否仍属于当前分类与当前世代。 */
+  function isCurrentList(token: number, requestedCategory: MessageCategory): boolean {
+    return token === listGeneration && requestedCategory === category.value
   }
 
   /**
@@ -119,6 +142,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
    * 角标也带着别人的未读数。
    */
   function resetInbox() {
+    // 换账号：在途请求的响应不得再落到新账号的收件箱里。
+    listGeneration += 1
     items.value = []
     counts.value = { all: 0, notice: 0, interaction: 0, comment: 0 }
     nextCursor.value = null
@@ -215,8 +240,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   async function refreshFirstPage() {
     if (loading.value || !auth.authenticated) return
+    const token = listGeneration
+    const requestedCategory = category.value
     try {
-      const page = await notificationsApi.list(category.value)
+      const page = await notificationsApi.list(requestedCategory)
+      // 响应回来时用户可能已经切了分类，插进去就混了。
+      if (!isCurrentList(token, requestedCategory)) return
       if (page.items.length) {
         const known = new Set(page.items.map((item) => item.id))
         items.value = [...page.items, ...items.value.filter((item) => !known.has(item.id))]
