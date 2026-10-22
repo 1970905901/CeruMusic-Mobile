@@ -1080,7 +1080,9 @@ async function openMore() {
               ' - ' +
               track.value.artists.join(' / ') +
               (track.value.album ? ' (' + track.value.album + ')' : '')
-          }).then(() => toast('已复制'))
+          })
+            .then(() => toast('已复制'))
+            .catch(() => toast('复制失败', 'danger'))
         }
       },
       {
