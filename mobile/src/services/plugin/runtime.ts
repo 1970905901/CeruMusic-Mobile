@@ -240,6 +240,13 @@ async function requestPermission(
   return 'denied'
 }
 
+/** 把插件传来的任意值收敛成限长字符串；非法值返回空串。 */
+function clipText(value: unknown, limit: number): string {
+  if (value === null || value === undefined) return ''
+  const text = String(value)
+  return text.length > limit ? text.slice(0, limit) + '…' : text
+}
+
 async function showToast(message: string, color?: string) {
   const toast = await toastController.create({
     message,
@@ -510,12 +517,13 @@ export class PluginRuntime {
         return requestPermission(this.record.key, key)
       }
       case 'ui.confirm': {
+        // 标题与正文限长：插件可以把一屏放不下的文字塞进弹窗，用户看不到按钮。
         const alert = await alertController.create({
-          header: params?.title || '请确认',
-          message: params?.message || '',
+          header: clipText(params?.title, 120) || '请确认',
+          message: clipText(params?.message, 2000),
           buttons: [
             { text: '取消', role: 'cancel' },
-            { text: params?.confirmText || '确定', role: 'confirm' }
+            { text: clipText(params?.confirmText, 40) || '确定', role: 'confirm' }
           ]
         })
         await alert.present()
@@ -524,13 +532,13 @@ export class PluginRuntime {
       }
       case 'ui.prompt': {
         const alert = await alertController.create({
-          header: params?.title || '请输入',
+          header: clipText(params?.title, 120) || '请输入',
           inputs: [
             {
               name: 'value',
               type: params?.secret ? 'password' : 'text',
-              value: params?.value ?? '',
-              placeholder: params?.label || ''
+              value: clipText(params?.value, 4000),
+              placeholder: clipText(params?.label, 100)
             }
           ],
           buttons: [
@@ -562,9 +570,12 @@ export class PluginRuntime {
         await sheet.onDidDismiss()
         return picked
       }
-      case 'ui.toast':
-        await showToast(params?.message || String(params ?? ''))
+      case 'ui.toast': {
+        // 插件传超长文案会把 toast 撑成一整块遮住播放页；限长后再显示。
+        const text = String(params?.message ?? '').trim()
+        await showToast(text.slice(0, 200) || '插件通知')
         return null
+      }
       case 'ui.notify': {
         // 后台弹系统通知要单独授权（SDK 的 notifications 组只有
         // `notifications.system`）；前台只是 toast，不打扰系统通知栏。
