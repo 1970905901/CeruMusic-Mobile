@@ -256,6 +256,12 @@ export async function fetchAndCacheCover(url: string): Promise<void> {
       readTimeout: 30000
     })
     if (response.status < 200 || response.status >= 300) return
+    // 只缓存真正的图片：CDN 的 HTML 错误页/JSON 报错也能返回 200，
+    // 存进来之后这张封面永远加载失败，且占着缓存预算。
+    const declared = String(
+      response.headers?.['content-type'] || response.headers?.['Content-Type'] || ''
+    ).toLowerCase()
+    if (declared && !declared.startsWith('image/')) return
     const data = response.data
     let dataUrl: string
     if (data instanceof Blob) {
