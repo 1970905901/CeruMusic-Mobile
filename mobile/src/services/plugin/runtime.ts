@@ -84,6 +84,9 @@ function pluginStorageKey(pluginKey: string, key: string) {
  * 必须剥掉路径分隔符与 `..`，否则插件能把文件写到 `exports/` 之外，
  * 覆盖应用目录里的其它文件（桌面版走的是系统保存对话框，没有这个问题）。
  */
+/** 单个插件可同时登记的后台任务数。 */
+export const MAX_SCHEDULED_TASKS = 16
+
 /** Socket 单条消息的负载上限（JSON 序列化后的字节数）。 */
 export const MAX_SOCKET_PAYLOAD_BYTES = 1024 * 1024
 
@@ -1235,6 +1238,11 @@ export class PluginRuntime {
       case 'tasks.schedule': {
         await this.requirePermission(params?.call?.permissionKey, 'background.run')
         const task = validateScheduledTask(params?.request ?? {}, this.info.actions)
+        // 每个 id 都是一个真实 setTimeout；插件用不同 id 反复注册会把定时器
+        // 堆到成千上万个（最短间隔 1 分钟，它们不会自己消失）。
+        if (!this.scheduledTasks.has(task.id) && this.scheduledTasks.size >= MAX_SCHEDULED_TASKS) {
+          throw new Error(`后台任务数量已达上限（${MAX_SCHEDULED_TASKS}）`)
+        }
         this.scheduleTask(task)
         return { id: task.id }
       }
