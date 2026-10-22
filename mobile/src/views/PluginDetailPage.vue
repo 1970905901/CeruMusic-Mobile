@@ -194,6 +194,13 @@
 
         <ion-list v-if="logs.length" class="group">
           <div class="group-title">最近日志</div>
+          <!-- 日志是排障时唯一的一手信息：能整段复制出去，才谈得上贴给作者或贴到 issue -->
+          <ion-item lines="none">
+            <div class="log-actions">
+              <ion-button size="small" fill="clear" @click="copyLogs">复制全部</ion-button>
+              <ion-button size="small" fill="clear" color="danger" @click="clearLogs">清空</ion-button>
+            </div>
+          </ion-item>
           <ion-item v-for="log in logs.slice(0, 20)" :key="log.at + log.message">
             <ion-label>
               <p class="log-line">
@@ -243,6 +250,7 @@ import {
   alertController,
   toastController
 } from '@ionic/vue'
+import { Clipboard } from '@capacitor/clipboard'
 import {
   ellipsisHorizontal,
   albumsOutline,
@@ -517,6 +525,42 @@ async function updateFromUrl() {
   }
 }
 
+/** 复制该插件的全部日志（带时间与级别），便于贴给作者或 issue。 */
+async function copyLogs(): Promise<void> {
+  const text = logs.value
+    .map((log) => `[${new Date(log.at).toLocaleString()}] [${log.level}] ${log.message}`)
+    .join('\n')
+  if (!text) {
+    await toast('没有可复制的日志')
+    return
+  }
+  try {
+    await Clipboard.write({ string: text })
+    await toast(`已复制 ${logs.value.length} 条日志`, 'success')
+  } catch {
+    await toast('复制失败', 'danger')
+  }
+}
+
+/** 只清当前插件的日志，不动其它插件。 */
+async function clearLogs(): Promise<void> {
+  const alert = await alertController.create({
+    header: '清空日志',
+    message: '只清空这个插件的日志，不影响其它插件。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '清空',
+        role: 'destructive',
+        handler: () => {
+          pluginStore.clearLogs(plugin.value?.key || '')
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
 async function confirmRemove() {
   if (!plugin.value) return
   const alert = await alertController.create({
@@ -633,6 +677,12 @@ ion-item p {
   text-transform: uppercase;
   font-weight: 700;
   margin-right: 6px;
+}
+.log-actions {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  justify-content: flex-end;
 }
 .danger-zone {
   margin-top: 26px;

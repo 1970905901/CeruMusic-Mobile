@@ -85,6 +85,13 @@ export const usePluginStore = defineStore('plugins', () => {
     logs.value = [entry, ...logs.value].slice(0, 300)
   })
 
+  /** 清空某个插件的日志；不传 key 时清空全部（插件卸载路径用）。 */
+  function clearLogs(pluginKey?: string): void {
+    logs.value = pluginKey
+      ? logs.value.filter((item) => item.pluginKey !== pluginKey)
+      : []
+  }
+
   const enabledPlugins = computed(() => plugins.value.filter((item) => item.enabled))
   const providers = computed<ProviderEntry[]>(() => {
     const result: ProviderEntry[] = []
@@ -600,6 +607,7 @@ export const usePluginStore = defineStore('plugins', () => {
     plugins,
     runtimeInfo,
     logs,
+    clearLogs,
     initialized,
     importing,
     error,
