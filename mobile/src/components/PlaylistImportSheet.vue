@@ -118,7 +118,7 @@ import {
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 
-defineProps<{
+const props = defineProps<{
   open?: boolean
 }>()
 
@@ -159,6 +159,19 @@ watch(
     if (entries.length && !selectedKey.value) selectedKey.value = entries[0].key
   },
   { immediate: true }
+)
+
+/**
+ * 每次打开都从干净状态开始。此前上一次的「导入失败：……」会原样留在面板里，
+ * 用户重开面板以为这次的链接也失败了，而输入框里还是空的。
+ * 输入值本身保留，方便用户改一改再试。
+ */
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    error.value = ''
+  }
 )
 
 function close() {
