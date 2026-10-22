@@ -1084,8 +1084,19 @@ async function openMore() {
         }
       },
       {
-        text: '一起听',
-        handler: () => ionRouter.push('/listen-together')
+        // 在房间里时直接点歌给房主审批，不必先跳到一起听页面再找按钮。
+        text: listenTogether.inRoom ? '点歌到房间' : '一起听',
+        handler: () => {
+          if (!listenTogether.inRoom) {
+            ionRouter.push('/listen-together')
+            return
+          }
+          if (listenTogether.requestTrack(track.value as any)) {
+            void toast('点歌请求已发送')
+          } else {
+            void toast('房间连接已断开', 'warning')
+          }
+        }
       },
       {
         text: '查看插件',
