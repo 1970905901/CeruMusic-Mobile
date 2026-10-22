@@ -1167,7 +1167,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function initMediaSession() {
-    const attach = (action: any, handler: () => void) => {
+    const attach = (action: any, handler: (details?: { seekTime?: number | null }) => void) => {
       if (Capacitor.isNativePlatform()) {
         void MediaSession.setActionHandler({ action }, handler).catch(() => undefined)
       }
@@ -1186,7 +1186,13 @@ export const usePlayerStore = defineStore('player', () => {
     attach('stop', () => pause())
     attach('seekbackward', () => seek(positionMs.value - 10_000))
     attach('seekforward', () => seek(positionMs.value + 10_000))
-    attach('seekto', () => undefined)
+    // 挂一个空处理器等于**吞掉**系统发来的跳转：车机、耳机线控、
+    // 通知栏进度条的拖动都会静默无效。这里按系统给的 seekTime 落位。
+    attach('seekto', (details?: { seekTime?: number | null }) => {
+      const time = Number(details?.seekTime)
+      if (!Number.isFinite(time) || time < 0) return
+      seek(time * 1000)
+    })
   }
 
   initMediaSession()
