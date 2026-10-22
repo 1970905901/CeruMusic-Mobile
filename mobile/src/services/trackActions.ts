@@ -52,9 +52,14 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
       {
         text: favorite ? '取消收藏' : '收藏',
         handler: () => {
-          void library.toggleFavorite(track).then((added) =>
-            toast(added ? '已收藏' : '已取消收藏')
-          )
+          // 收藏要写 IndexedDB；失败时此前既没有提示也没有抛出处理，
+          // 按钮看起来「点了没反应」，用户以为收藏成功了。
+          void library
+            .toggleFavorite(track)
+            .then((added) => toast(added ? '已收藏' : '已取消收藏'))
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '收藏失败', 'danger')
+            )
         }
       },
       {
@@ -94,7 +99,9 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
         handler: () => {
           void Clipboard.write({
             string: `${track.title} - ${track.artists.join(' / ')}${track.album ? ` (${track.album})` : ''}`
-          }).then(() => toast('已复制'))
+          })
+            .then(() => toast('已复制'))
+            .catch(() => toast('复制失败', 'danger'))
         }
       },
       ...(options?.extraButtons ?? []),
@@ -165,7 +172,12 @@ async function addToPlaylist(track: Track): Promise<void> {
       ...library.playlists.map((playlist) => ({
         text: playlist.name,
         handler: () => {
-          void library.addTrackToPlaylist(playlist.id, track).then(() => toast('已添加'))
+          void library
+            .addTrackToPlaylist(playlist.id, track)
+            .then(() => toast('已添加'))
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '添加失败', 'danger')
+            )
         }
       })),
       {
@@ -211,6 +223,9 @@ export async function addTracksToPlaylistDialog(tracks: Track[]): Promise<void> 
           void library
             .addTracksToPlaylist(playlist.id, tracks)
             .then((count) => toast(`已添加 ${count} 首歌曲到「${playlist.name}」`))
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '添加失败', 'danger')
+            )
         }
       })),
       {
