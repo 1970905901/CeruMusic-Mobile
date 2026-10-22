@@ -34,6 +34,18 @@ export function batchQualityChoices(
 }
 
 /**
+ * 单曲下载的音质候选：歌曲自己声明的档位，按清单顺序（低→高）。
+ * 与桌面版 `downloadSingleSong` 的弹窗一致——只列出这首歌真能提供的档位，
+ * 不给一个选了也会被降级的假选项。
+ */
+export function trackQualityChoices(
+  track: BatchQualityCandidate,
+  order: readonly string[]
+): string[] {
+  return batchQualityChoices([track], order)
+}
+
+/**
  * 为单首歌解析实际音质：目标档位不可用时降级到它支持的最高档。
  *
  * 返回 `undefined` 表示不做指定，由 `createDownload` 走默认逻辑——

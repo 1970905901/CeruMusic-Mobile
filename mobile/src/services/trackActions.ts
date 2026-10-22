@@ -7,6 +7,8 @@ import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
 import { useAuthStore } from '@/stores/auth'
 import { useShareStore } from '@/stores/share'
+import { resolveTrackQuality, trackQualityChoices } from '@/services/batchDownloadQuality'
+import { getQualityDisplayName } from '@/services/qualityNames'
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2000, color })
@@ -58,10 +60,9 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
       {
         text: '下载',
         handler: () => {
-          void downloads
-            .createDownload(track)
-            .then(() => toast('已加入下载队列'))
-            .catch((error) => toast(error instanceof Error ? error.message : String(error), 'danger'))
+          // 有多个可选音质时先让用户选一次（桌面版 downloadSingleSong 同口径）；
+          // 只有一档或插件没声明时直接按默认音质入队，不为一次点击多弹一层。
+          void downloadWithQualityChoice(track)
         }
       },
       ...plugins.menus
@@ -101,6 +102,59 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
     ]
   })
   await sheet.present()
+}
+
+/**
+ * 单曲下载前选音质，对齐桌面版 `downloadSingleSong`：
+ * 只列出这首歌声明支持的档位，选中后仍按「不高于所选」降级一次。
+ * 只有一档可选时不弹面板，直接下载。
+ */
+async function downloadWithQualityChoice(track: Track): Promise<void> {
+  const downloads = useDownloadStore()
+  const plugins = usePluginStore()
+  if (track.localUri) {
+    void toast('本地歌曲无需下载')
+    return
+  }
+  const order = plugins.qualityOrderFor(track.ref?.providerId ?? '')
+  const options = trackQualityChoices(track, order)
+  let quality: string | undefined
+  if (options.length > 1) {
+    const picked = await new Promise<string | null>((resolve) => {
+      let choice: string | null = null
+      void actionSheetController
+        .create({
+          header: '选择下载音质',
+          buttons: [
+            ...[...options].reverse().map((value) => ({
+              text: getQualityDisplayName(value),
+              handler: () => {
+                choice = value
+              }
+            })),
+            { text: '取消', role: 'cancel' }
+          ]
+        })
+        .then(async (sheet) => {
+          await sheet.present()
+          await sheet.onDidDismiss()
+          resolve(choice)
+        })
+    })
+    if (!picked) return
+    quality = resolveTrackQuality(track, picked, order) ?? picked
+    if (quality !== picked) {
+      void toast(`所选音质不可用，已调整为 ${getQualityDisplayName(quality)}`)
+    }
+  } else if (options.length === 1) {
+    quality = options[0]
+  }
+  try {
+    await downloads.createDownload(track, quality)
+    await toast('已加入下载队列')
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : String(error), 'danger')
+  }
 }
 
 async function addToPlaylist(track: Track): Promise<void> {
