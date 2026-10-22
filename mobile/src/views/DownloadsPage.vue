@@ -21,23 +21,53 @@
         <p class="head-sub">下载文件保存在所选目录；授权文件夹可通过系统分享导出。</p>
       </div>
 
+      <!-- 批量操作跟着当前分类走：在「已完成」页显示「全部暂停」只会让人困惑。 -->
       <div v-if="downloads.tasks.length" class="batch-row ceru-pad">
-        <button class="batch-btn" type="button" :disabled="!hasPaused" @click="downloads.resumeAll()">
-          全部开始
-        </button>
-        <button class="batch-btn" type="button" :disabled="!hasActive" @click="downloads.pauseAll()">
-          全部暂停
-        </button>
-        <button class="batch-btn" type="button" :disabled="!hasQueue" @click="confirmClearQueue">
-          清空队列
-        </button>
-        <button v-if="hasFailed" class="batch-btn danger" type="button" @click="confirmClearFailed">
-          清空失败
-        </button>
+        <template v-if="tab === 'active'">
+          <button class="batch-btn" type="button" :disabled="!hasPaused" @click="downloads.resumeAll()">
+            全部开始
+          </button>
+          <button class="batch-btn" type="button" :disabled="!hasActive" @click="downloads.pauseAll()">
+            全部暂停
+          </button>
+          <button class="batch-btn" type="button" :disabled="!hasQueue" @click="confirmClearQueue">
+            清空队列
+          </button>
+        </template>
+        <template v-else-if="tab === 'completed'">
+          <button class="batch-btn danger" type="button" @click="clearCompleted">清空已完成</button>
+        </template>
+        <template v-else>
+          <button class="batch-btn danger" type="button" :disabled="!hasFailed" @click="confirmClearFailed">
+            清空失败
+          </button>
+        </template>
       </div>
 
-      <div v-if="downloads.tasks.length" class="task-list">
-        <div v-for="task in downloads.tasks" :key="task.id" class="task-card ceru-card">
+      <div v-if="downloads.tasks.length" class="task-tabs ceru-pad">
+        <ion-segment :value="tab" @ionChange="setTab($event.detail.value)">
+          <ion-segment-button value="active">
+            <ion-label>进行中 {{ tabCounts.active || '' }}</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="completed">
+            <ion-label>已完成 {{ tabCounts.completed || '' }}</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="failed">
+            <ion-label>失败 {{ tabCounts.failed || '' }}</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+
+      <div v-if="downloads.tasks.length && !visibleTasks.length" class="ceru-pad">
+        <EmptyState
+          :title="tab === 'active' ? '没有进行中的下载' : tab === 'completed' ? '还没有下载完成的歌曲' : '没有失败的任务'"
+          :description="tab === 'active' ? '在歌曲菜单里选择下载后，任务会出现在这里。' : ''"
+          :icon="cloudDownloadOutline"
+        />
+      </div>
+
+      <div v-if="visibleTasks.length" class="task-list">
+        <div v-for="task in visibleTasks" :key="task.id" class="task-card ceru-card">
           <div class="task-top">
             <CoverImage :src="task.cover" :size="54" :radius="12" :alt="task.title" />
             <div class="task-copy">
@@ -77,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -85,8 +115,11 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
+  IonLabel,
   IonPage,
   IonProgressBar,
+  IonSegment,
+  IonSegmentButton,
   IonTitle,
   IonToolbar,
   actionSheetController,
@@ -99,9 +132,24 @@ import EmptyState from '@/components/EmptyState.vue'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
 import type { DownloadTask } from '@/types/download'
+import {
+  countByTab,
+  selectDownloadTasks,
+  type DownloadTab
+} from '@/services/downloadGroups'
 
 const downloads = useDownloadStore()
 const player = usePlayerStore()
+
+/** 下载分类（对齐桌面版下载页的进行中/已完成/失败）。 */
+const tab = ref<DownloadTab>('active')
+const tabCounts = computed(() => countByTab(downloads.tasks))
+const visibleTasks = computed(() => selectDownloadTasks(downloads.tasks, tab.value))
+
+/** 服务端给的 segment 值是宽泛类型，收敛成三个合法分类。 */
+function setTab(value: unknown) {
+  tab.value = value === 'completed' || value === 'failed' ? value : 'active'
+}
 
 const hasPaused = computed(() => downloads.tasks.some((task) => task.status === 'paused'))
 const hasActive = computed(() =>
@@ -270,6 +318,13 @@ async function toast(message: string, color = 'medium') {
   color: var(--ceru-text-secondary);
   font-size: 13px;
   line-height: 1.55;
+}
+.task-tabs {
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.task-tabs ion-segment {
+  --background: var(--ceru-card, rgba(255, 255, 255, 0.06));
 }
 .batch-row {
   display: flex;
