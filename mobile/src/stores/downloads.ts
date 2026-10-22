@@ -100,6 +100,8 @@ export const useDownloadStore = defineStore('downloads', () => {
   const tasks = ref<DownloadTask[]>([])
   const initialized = ref(false)
   const activeRequests = new Map<string, XMLHttpRequest>()
+  /** 正在执行中的任务 id：防止同一任务被并发拉起两次。 */
+  const inFlight = new Set<string>()
 
   const runningCount = computed(
     () => tasks.value.filter((task) => task.status === 'running' || task.status === 'queued').length
@@ -470,6 +472,11 @@ export const useDownloadStore = defineStore('downloads', () => {
     throw new Error('下载响应不是二进制数据')
   }
 
+  /**
+   * 原生 HTTP 下载。`CapacitorHttp` 不支持中止，暂停/取消只能改状态；
+   * 请求返回后必须再确认一次任务是否仍是 running，否则一次已经取消的任务
+   * 会在后台下载完成后被写回「已完成」，甚至在用户删掉它之后重新出现在列表里。
+   */
   async function downloadWithNativeHttp(
     task: DownloadTask,
     url: string,
@@ -493,7 +500,11 @@ export const useDownloadStore = defineStore('downloads', () => {
     const ext = extFromMime(String(mime), url)
     const path = await resolveDownloadPath(task, ext)
     const rawBase64 = await responseToBase64(response.data)
+    // 传输期间用户可能已暂停/取消/删除该任务；此时不写文件、不改状态。
+    const current = tasks.value.find((item) => item.id === task.id)
+    if (!current || current.status !== 'running') return
     const base64 = await prepareDownloadData(task, rawBase64, ext, String(mime))
+    if (!tasks.value.some((item) => item.id === task.id && item.status === 'running')) return
     await completeDownload(task, path, base64, ext, String(mime))
   }
 
@@ -615,6 +626,9 @@ export const useDownloadStore = defineStore('downloads', () => {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
     if (task.status === 'completed' || task.status === 'cancelled') return
+    // 原生 HTTP 请求无法中止：暂停后 iframe 仍在跑，若此时恢复又拉一次，
+    // 两次传输会同时写同一个文件。用一张「在途」表保证同一任务只有一条链路。
+    if (inFlight.has(id)) return
     const active = tasks.value.filter((item) => item.status === 'running')
     if (active.length >= Math.max(1, settings.settings.maxConcurrentDownloads)) {
       task.status = 'queued'
@@ -625,6 +639,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       updateTask(id, { status: 'failed', error: '歌曲已不在资料库中' })
       return
     }
+    inFlight.add(id)
     updateTask(id, { status: 'running', receivedBytes: 0, error: undefined })
     try {
       const resolved = await pluginStore.resolve(track, task.quality)
@@ -645,6 +660,8 @@ export const useDownloadStore = defineStore('downloads', () => {
       })
       const next = tasks.value.find((item) => item.status === 'queued')
       if (next) void runTask(next.id)
+    } finally {
+      inFlight.delete(id)
     }
   }
 
