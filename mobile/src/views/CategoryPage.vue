@@ -78,6 +78,7 @@ import {
 import { albumsOutline, chevronForward } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
+import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { createRequestGuard } from '@/services/requestGuard'
@@ -91,6 +92,8 @@ const categoryId = String(route.query.categoryId || '')
 const title = String(route.query.title || '歌单分类')
 const items = ref<any[]>([])
 const nextCursor = ref<string | undefined>()
+/** 连续没有新增的页数；插件回传同一个游标时靠它停下。 */
+let barrenPages = 0
 const loading = ref(false)
 const error = ref<string | null>(null)
 /** 分类页只按路由参数加载一次，分页请求之间用 capture 并存。 */
@@ -113,6 +116,8 @@ async function load(reset = false) {
   const token = reset ? listRequests.beginLatest(categoryId) : listRequests.capture(categoryId)
   loading.value = true
   error.value = null
+  if (reset) barrenPages = 0
+  const before = reset ? 0 : items.value.length
   try {
     const page = await pluginStore.playlistList(
       source,
@@ -122,7 +127,10 @@ async function load(reset = false) {
     if (!listRequests.isCurrent(token, categoryId)) return
     const next = (page.items || []).filter((item: any) => item?.ref?.kind === 'playlist')
     items.value = reset ? next : [...items.value, ...next]
-    nextCursor.value = page.nextCursor
+    barrenPages = nextBarrenCount(items.value.length - before, barrenPages)
+    nextCursor.value = pagingShouldContinue(!!page.nextCursor, barrenPages)
+      ? page.nextCursor
+      : undefined
   } catch (cause) {
     if (!listRequests.isCurrent(token, categoryId)) return
     error.value = cause instanceof Error ? cause.message : String(cause)

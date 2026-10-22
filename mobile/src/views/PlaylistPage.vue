@@ -308,6 +308,7 @@ import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/t
 import { useTrackBatchSelection } from '@/services/trackBatch'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
+import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -485,6 +486,8 @@ async function doRemoveSelected() {
   }
 }
 const nextCursor = ref<string | undefined>()
+/** 连续没有新增的页数；插件回传同一个游标时靠它停下。 */
+let barrenPages = 0
 const loading = ref(false)
 /** 远程歌单/榜单的分页请求守卫；本地歌单是同步读取，不参与竞态。 */
 const remoteRequests = createRequestGuard()
@@ -560,6 +563,7 @@ const playlistStatsText = computed(() => {
 function loadLocal() {
   tracks.value = library.playlistTracks(remoteId)
   nextCursor.value = undefined
+  barrenPages = 0
 }
 
 async function loadRemote(reset = false) {
@@ -573,6 +577,8 @@ async function loadRemote(reset = false) {
   const token = reset ? remoteRequests.beginLatest(identity) : remoteRequests.capture(identity)
   loading.value = true
   error.value = null
+  if (reset) barrenPages = 0
+  const before = reset ? 0 : tracks.value.length
   try {
     const reference = {
       pluginId: source,
@@ -591,7 +597,10 @@ async function loadRemote(reset = false) {
       .map((item: any) => pluginStore.normalizeEntity(provider?.pluginKey || source, item))
     // 音源分页会在边界重复上一页的最后一首；不去重会导致 :key 重复、渲染错乱。
     tracks.value = dedupeByKey(reset ? items : [...tracks.value, ...items], (track) => track.key)
-    nextCursor.value = page.nextCursor
+    barrenPages = nextBarrenCount(tracks.value.length - before, barrenPages)
+    nextCursor.value = pagingShouldContinue(!!page.nextCursor, barrenPages)
+      ? page.nextCursor
+      : undefined
   } catch (cause) {
     if (!remoteRequests.isCurrent(token, identity)) return
     error.value = cause instanceof Error ? cause.message : String(cause)

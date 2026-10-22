@@ -202,6 +202,7 @@ import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
+import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import {
   SUGGESTION_GROUPS,
   normalizeSuggestions,
@@ -222,6 +223,8 @@ const kind = ref<'tracks' | 'playlists'>('tracks')
 const results = ref<Track[]>([])
 const playlists = ref<any[]>([])
 const nextCursor = ref<string | undefined>()
+/** 连续没有新增的页数；插件回传同一个游标时靠它停下。 */
+let barrenPages = 0
 const loading = ref(false)
 const error = ref<string | null>(null)
 /**
@@ -382,6 +385,7 @@ async function runSearch(reset = false) {
     results.value = []
     playlists.value = []
     nextCursor.value = undefined
+    barrenPages = 0
     settings.addSearchHistory(text)
   }
   try {
@@ -390,20 +394,28 @@ async function runSearch(reset = false) {
       if (!searchRequests.isCurrent(token, searchIdentity())) return
       // 音源分页常在边界重复返回上一页的最后一首；直接拼接会让同一首歌
       // 在列表里出现两次，`TrackRow` 的 :key 也随之重复、Vue 渲染错乱。
+      const before = reset ? 0 : results.value.length
       const merged = reset
         ? dedupeByKey(page.items, (track) => track.key)
         : dedupeByKey([...results.value, ...page.items], (track) => track.key)
       results.value = merged
-      nextCursor.value = page.nextCursor
+      barrenPages = nextBarrenCount(merged.length - before, barrenPages)
+      nextCursor.value = pagingShouldContinue(!!page.nextCursor, barrenPages)
+        ? page.nextCursor
+        : undefined
     } else {
       const page = await pluginStore.searchPlaylists(source.value.id, text, reset ? undefined : nextCursor.value)
       if (!searchRequests.isCurrent(token, searchIdentity())) return
       const items = (page.items ?? []).map((item: any) => ({ ...item }))
       const keyOf = (item: any) => `${item.ref?.providerId ?? ''}:${item.ref?.id ?? ''}`
+      const before = reset ? 0 : playlists.value.length
       playlists.value = reset
         ? dedupeByKey(items, keyOf)
         : dedupeByKey([...playlists.value, ...items], keyOf)
-      nextCursor.value = page.nextCursor
+      barrenPages = nextBarrenCount(playlists.value.length - before, barrenPages)
+      nextCursor.value = pagingShouldContinue(!!page.nextCursor, barrenPages)
+        ? page.nextCursor
+        : undefined
     }
   } catch (cause) {
     if (!searchRequests.isCurrent(token, searchIdentity())) return
