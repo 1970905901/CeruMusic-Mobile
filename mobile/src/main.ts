@@ -7,6 +7,7 @@ import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import { Device } from '@capacitor/device'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { createPinia } from 'pinia'
+import { applyIonicPrimary } from '@/services/accentTheme'
 
 import '@ionic/vue/css/core.css'
 import '@ionic/vue/css/normalize.css'
@@ -96,9 +97,16 @@ const app = createApp(App).use(IonicVue, { mode: ionicMode }).use(pinia)
 
 const settings = useSettingsStore(pinia)
 
+/**
+ * 强调色不只是一个 CSS 变量：Ionic 组件的颜色全部走 `--ion-color-primary*`，
+ * 按钮、开关、进度条、分段控件都只认这一组。此前只改了 `--ceru-brand`，
+ * 于是应用内自绘的模块变了色，Ionic 控件仍是默认的青绿，两套强调色并存。
+ * 这里把强调色同时写进 Ionic 的 primary 系列，并按 shade/tint 规则生成深浅变体。
+ */
 function applyTheme() {
   document.documentElement.classList.toggle('dark', settings.isDark)
   document.documentElement.style.setProperty('--ceru-brand', settings.settings.accent)
+  applyIonicPrimary(settings.settings.accent)
   if (Capacitor.isNativePlatform()) {
     void StatusBar.setStyle({ style: settings.isDark ? Style.Dark : Style.Light }).catch(() => undefined)
     void StatusBar.setBackgroundColor({ color: settings.isDark ? '#0b0f14' : '#f5f7f8' }).catch(
