@@ -654,8 +654,21 @@ export const usePluginStore = defineStore('plugins', () => {
         settings.settings.deniedPermissions as Record<string, unknown>
       ] as const,
       (next, previous) => {
-        const keys = changedPermissionKeys(previous?.[0], previous?.[1], next[0], next[1])
-        if (keys.length) publishPermissions(keys)
+        const changed = changedPermissionKeys(previous?.[0], previous?.[1], next[0], next[1])
+        if (!changed.length) return
+        publishPermissions(changed)
+        // 同步 worker 内的授权缓存：否则用户刚在详情页点过「允许」，
+        // 插件下一次调用仍会再弹一次授权框。
+        pluginRuntimeManager.syncPermissions(
+          {
+            isPermissionGranted: settings.isPermissionGranted,
+            isPermissionDenied: settings.isPermissionDenied
+          },
+          (pluginKey) =>
+            (plugins.value.find((item) => item.key === pluginKey)?.manifest.permissions ?? []).map(
+              (item) => String(item.key ?? '')
+            )
+        )
       },
       { deep: true }
     )

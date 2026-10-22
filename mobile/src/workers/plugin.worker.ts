@@ -762,6 +762,16 @@ scope.onmessage = (event: MessageEvent) => {
     }
     return
   }
+  if (message.type === 'permissions') {
+    // 宿主侧手动改过授权：同步本进程的缓存，否则下一次调用还会再弹一次框。
+    grantedPermissions = new Set(
+      (Array.isArray(message.granted) ? message.granted : []).map(String)
+    )
+    deniedPermissions = new Set(
+      (Array.isArray(message.denied) ? message.denied : []).map(String)
+    )
+    return
+  }
   if (message.type === 'dispose') {
     void dispose()
   }

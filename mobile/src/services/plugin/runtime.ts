@@ -402,6 +402,17 @@ export class PluginRuntime {
     this.worker.postMessage({ type: 'event', event, value: toPlain(value) })
   }
 
+  /**
+   * 把最新的授权结果推回 worker 的本地缓存。
+   *
+   * 授权列表只在激活时传给 worker 一次；用户之后在插件详情页手动允许，
+   * worker 里的 `grantedPermissions` 仍然是旧的，下一次调用还会再弹一次框。
+   */
+  syncPermissions(granted: string[], denied: string[]): void {
+    if (this.disposed) return
+    this.worker.postMessage({ type: 'permissions', granted, denied })
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -1713,6 +1724,27 @@ export class PluginRuntimeManager {
 
   publish(event: string, value: any) {
     for (const runtime of this.runtimes.values()) runtime.publish(event, value)
+  }
+
+  /**
+   * 授权表发生变化后，把最新结果推给每个插件的 worker。
+   *
+   * 插件之间互不影响：每个 runtime 只接收自己在宿主里被授权的 key。
+   */
+  syncPermissions(settings: {
+    isPermissionGranted: (pluginKey: string, permissionKey: string) => boolean
+    isPermissionDenied: (pluginKey: string, permissionKey: string) => boolean
+  }, declared: (pluginKey: string) => readonly string[]): void {
+    for (const runtime of this.runtimes.values()) {
+      const key = runtime.record.key
+      const granted: string[] = []
+      const denied: string[] = []
+      for (const permission of declared(key)) {
+        if (settings.isPermissionGranted(key, permission)) granted.push(permission)
+        else if (settings.isPermissionDenied(key, permission)) denied.push(permission)
+      }
+      runtime.syncPermissions(granted, denied)
+    }
   }
 
   /**
