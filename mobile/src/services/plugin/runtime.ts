@@ -790,13 +790,17 @@ export class PluginRuntime {
       case 'files.pick':
         return this.pickFiles(params?.request)
       case 'files.pickDirectory':
-        return null
+        return this.pickDirectory()
       case 'files.readText': {
+        // 与桌面 `handleFileService` 同口径：读取要 files.read 授权。
+        // 只有「选文件」本身不需要——那是用户在系统面板里主动点的。
+        await this.requirePermission(params?.call?.permissionKey, 'files.read')
         const file = this.pickedFiles.get(params?.file?.id)
         if (!file) throw new Error('文件句柄已过期')
         return file.text()
       }
       case 'files.readBase64': {
+        await this.requirePermission(params?.call?.permissionKey, 'files.read')
         const file = this.pickedFiles.get(params?.file?.id)
         if (!file) throw new Error('文件句柄已过期')
         return this.blobToBase64(file)
@@ -815,6 +819,7 @@ export class PluginRuntime {
         return { kind: 'file', id: relativePath, name, mime: 'text/plain' }
       }
       case 'files.writeText': {
+        await this.requirePermission(params?.call?.permissionKey, 'files.write')
         const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
         await Filesystem.writeFile({
           path: String(params?.file?.id || 'exports/ceru-export.txt'),
@@ -839,8 +844,22 @@ export class PluginRuntime {
         return useLibraryStore().localMusicPage(params?.cursor)
       }
       case 'localMusic.scan': {
+        // 插件传了目录句柄就只扫这些目录（Android SAF）；没传则沿用应用自己的扫描范围。
+        const handles = Array.isArray(params?.directories) ? params.directories : []
+        const folders = handles
+          .map((handle: any) => this.pickedDirectories.get(String(handle?.id ?? '')))
+          .filter((folder: any): folder is { uri: string; name: string } => Boolean(folder))
+        if (handles.length && !folders.length) {
+          throw new Error('目录句柄已过期，请重新选择文件夹')
+        }
+        if (folders.length) {
+          const { importSafUris } = await import('@/services/safImport')
+          const result = await importSafUris(folders)
+          return { taskId: `scan-${Date.now().toString(36)}`, imported: result.imported, skipped: result.skipped }
+        }
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().scanLocalMusic()
+        const records = await useLibraryStore().scanLocalMusic()
+        return { taskId: `scan-${Date.now().toString(36)}`, imported: records.length }
       }
       case 'localMusic.getTags': {
         const { useLibraryStore } = await import('@/stores/library')
@@ -1100,6 +1119,24 @@ export class PluginRuntime {
   }
 
   private pickedFiles = new Map<string, File>()
+  /** `files.pickDirectory` 返回的句柄 → SAF 目录，供 `localMusic.scan` 使用。 */
+  private pickedDirectories = new Map<string, { uri: string; name: string }>()
+
+  /**
+   * 让插件选一个授权目录，返回可再传给 `localMusic.scan` 的句柄。
+   *
+   * 移动端只有 Android SAF 能给出「一个可以在后续操作中继续访问的目录」；
+   * iOS 的 Document Picker 拿到的是一次性 URL，没有对应能力。
+   * 因此这里在 iOS/Web 上明确返回 null，而不是给一个之后必然失效的假句柄。
+   */
+  private async pickDirectory(): Promise<{ kind: 'directory'; id: string; name: string } | null> {
+    const { safImportSupported, pickSafDirectory } = await import('@/services/safImport')
+    if (!safImportSupported()) return null
+    const folder = await pickSafDirectory()
+    const id = `dir-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    this.pickedDirectories.set(id, folder)
+    return { kind: 'directory', id, name: folder.name }
+  }
 
   private async pickFiles(request: any): Promise<any[]> {
     return new Promise((resolve) => {

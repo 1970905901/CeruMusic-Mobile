@@ -111,13 +111,31 @@ export async function importSafFolder(
   options?: SafImportOptions
 ): Promise<SafImportResult> {
   if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 文件夹导入')
+  const folder = await Saf.pickDirectory()
+  return importSafUris([folder], onProgress, options)
+}
+
+/**
+ * 导入已知的授权文件夹（不再弹选择器）。
+ * 插件通过 `files.pickDirectory` 拿到句柄后调用 `localMusic.scan` 走这里。
+ */
+export async function importSafUris(
+  folders: ReadonlyArray<{ uri: string; name: string }>,
+  onProgress?: (message: string) => void,
+  options?: SafImportOptions
+): Promise<SafImportResult> {
+  if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 文件夹导入')
+  if (!folders.length) {
+    return { folder: '', imported: 0, skipped: 0, failed: 0, truncated: false, filteredSize: 0, filteredDuration: 0 }
+  }
   const settingsStore = useSettingsStore()
   const minSizeKb = options?.minSizeKb ?? settingsStore.settings.localScanFilterMinSizeKb ?? 100
   const minDurationSec = options?.minDurationSec ?? settingsStore.settings.localScanFilterMinDurationSec ?? 30
-  const folder = await Saf.pickDirectory()
+  const folder = folders[0]
   const entries: SafEntry[] = []
   onProgress?.('正在扫描文件夹…')
-  await collectFiles(folder.uri, 0, entries)
+  // 插件可能一次给多个授权目录；逐个收集，合并计数。
+  for (const target of folders) await collectFiles(target.uri, 0, entries)
   if (!entries.length) {
     return { folder: folder.name, imported: 0, skipped: 0, failed: 0, truncated: false, filteredSize: 0, filteredDuration: 0 }
   }
