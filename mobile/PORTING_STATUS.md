@@ -163,7 +163,7 @@
 - 社区评论定位高亮：`services/commentLocate.ts` 把通知里的 `commentId` 映射到「根评论 / 回复」两种落点——命中回复时先展开所属根评论的回复再滚动，命中根评论直接滚动；定位成功后该条评论高亮 1.6s 后褪去，找不到（已删除或未加载）时提示而不是静默失败。社区页此前只预填回复、不滚动，现在与桌面端 `PostDetailModal` 的跳转反馈一致。- 社区。
 - AI 助手。
 - 一起听。
-- 识曲。
+- 识曲片段定位与结果搜索：对齐桌面端 `views/music/recognize.vue`。移动端此前丢弃了识别结果里的 `startTime`，点播放一律从 0:00 开始，和刚听到的那一段对不上；现在结果卡片显示「识别片段 03:12」，播放后 seek 到该处并提示。结果旁补上桌面版的搜索按钮（歌名 + 歌手跳搜索页）。结果归一化收敛到 `services/recognizeResults.ts`：兼容数组 / `items` / `songs` 三种外壳，封面按 `img`/`artworkUrl`/`cover`/`pic` 取，歌手数组与对象展平成「A / B」，小于 1000 的小数当秒处理（12.5 → 12.5s，而不是 12ms），非对象条目直接丢弃。
 - 歌单转换器。
 - 主题与设置。
 - 设置搜索：设置页顶部新增搜索栏，覆盖账户、插件、播放、缓存、歌词、存储、本地音乐、外观、壁纸、工具、关于共 11 个分组；支持中文标题、英文关键词、别名与分组名匹配，空查询展示最近使用（本地持久化、去重、上限 5 条）；支持键盘 ↑/↓/Enter 选择，选中后滚动到对应分组并短暂高亮。索引与最近使用清洗逻辑集中在 `services/settingsSearch.ts`。
@@ -180,9 +180,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：99 个测试文件，627 个测试全部通过
+- `npm run test`：100 个测试文件，634 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后两次提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`）**未触发 CI**——额度已用尽，这两次只经过本地 typecheck / test / build 验证。
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后三次提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`）**未触发 CI**——额度已用尽，这几次只经过本地 typecheck / test / build 验证。
 
 ## 当前未完成
 
