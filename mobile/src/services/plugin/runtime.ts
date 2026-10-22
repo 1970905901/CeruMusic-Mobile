@@ -1373,7 +1373,9 @@ export class PluginRuntime {
         return null
       }
       case 'window.control':
-        return null
+        // 能力表已把 window 标为 unsupported；这里也要如实失败，
+        // 静默返回 null 会让插件以为自己成功最小化了窗口。
+        throw new Error('当前平台不支持窗口控制')
       default:
         throw new Error(`未实现的 Host RPC：${method}`)
     }
