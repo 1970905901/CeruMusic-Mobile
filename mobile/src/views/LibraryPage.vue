@@ -602,6 +602,35 @@ async function removeSelected(): Promise<void> {
   await alert.present()
 }
 
+/**
+ * 单曲删除确认。
+ *
+ * 批量删除早就有二次确认，单曲删除却在菜单里点一下就真的删文件——
+ * 手机上「点错一行」太常见，而本地文件删了没法恢复。
+ */
+async function confirmDeleteLocal(track: Track): Promise<void> {
+  const alert = await alertController.create({
+    header: '删除本地文件',
+    message: `将从设备删除「${track.title}」，此操作不可恢复。`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '删除',
+        role: 'destructive',
+        handler: () => {
+          void library
+            .deleteLocalTrack(track.key)
+            .then(() => showToast('已删除本地文件', 'success'))
+            .catch((error) =>
+              showToast(error instanceof Error ? error.message : '删除失败', 'danger')
+            )
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
 async function applyBatchRemoval(
   tracks: Track[],
   segment: 'favorites' | 'local' | 'recent'
@@ -1115,7 +1144,8 @@ async function openLocalActions(track: Track) {
         text: '删除本地文件',
         role: 'destructive',
         handler: () => {
-          void library.deleteLocalTrack(track.key)
+          // 单曲删除是真正的物理删除，与批量删除一样先confirm一次。
+          void confirmDeleteLocal(track)
         }
       },
       { text: '取消', role: 'cancel' }
