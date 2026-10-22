@@ -5,7 +5,10 @@ import {
   EQUALIZER_PRESETS,
   applyTailEffects,
   audioEffectChain,
+  EQ_GAIN_MAX,
+  EQ_GAIN_MIN,
   clampEqualizerGains,
+  clampNumber,
   hasActiveEffects,
   type AudioEffectsState,
   type EqualizerPreset,
@@ -26,6 +29,8 @@ import {
 import { usePlayerStore } from '@/stores/player'
 
 const STORAGE_KEY = 'ceru-mobile-audio-effects-v1'
+const SURROUND_MODES: SurroundMode[] = ['off', 'small', 'medium', 'large']
+const LOUDNESS_TARGETS: LoudnessTarget[] = ['gentle', 'standard', 'strong']
 const PRESET_STORAGE_KEY = 'ceru-mobile-eq-presets-v1'
 
 function defaultState(): AudioEffectsState {
@@ -45,16 +50,59 @@ function load(): AudioEffectsState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaults
     const parsed = JSON.parse(raw) as Partial<AudioEffectsState>
+    // 逐字段核对，而不是简单展开：存档可能来自旧版本或被写坏，
+    // `bassBoost.enabled: "true"`、`surround.mode: "huge"` 这类值
+    // 会被界面的 v-if 当 truthy、被音频链路当成不存在的预设。
     return {
       ...defaults,
-      ...parsed,
+      equalizerEnabled:
+        typeof parsed.equalizerEnabled === 'boolean'
+          ? parsed.equalizerEnabled
+          : defaults.equalizerEnabled,
+      equalizerPreset:
+        typeof parsed.equalizerPreset === 'string' && parsed.equalizerPreset
+          ? parsed.equalizerPreset
+          : defaults.equalizerPreset,
       equalizerGains: Array.isArray(parsed.equalizerGains)
         ? clampEqualizerGains(parsed.equalizerGains)
         : defaults.equalizerGains,
-      bassBoost: { ...defaults.bassBoost, ...(parsed.bassBoost ?? {}) },
-      surround: { ...defaults.surround, ...(parsed.surround ?? {}) },
-      balance: { ...defaults.balance, ...(parsed.balance ?? {}) },
-      loudness: { ...defaults.loudness, ...(parsed.loudness ?? {}) }
+      bassBoost: {
+        enabled:
+          typeof parsed.bassBoost?.enabled === 'boolean'
+            ? parsed.bassBoost.enabled
+            : defaults.bassBoost.enabled,
+        // 非数字（缺失、字符串、NaN）才回落到默认值；合法的 0 dB 必须保留。
+        gain: Number.isFinite(Number(parsed.bassBoost?.gain))
+          ? clampNumber(Number(parsed.bassBoost?.gain), EQ_GAIN_MIN, EQ_GAIN_MAX)
+          : defaults.bassBoost.gain
+      },
+      surround: {
+        enabled:
+          typeof parsed.surround?.enabled === 'boolean'
+            ? parsed.surround.enabled
+            : defaults.surround.enabled,
+        mode: SURROUND_MODES.includes(parsed.surround?.mode as SurroundMode)
+          ? (parsed.surround!.mode as SurroundMode)
+          : defaults.surround.mode
+      },
+      balance: {
+        enabled:
+          typeof parsed.balance?.enabled === 'boolean'
+            ? parsed.balance.enabled
+            : defaults.balance.enabled,
+        value: Number.isFinite(Number(parsed.balance?.value))
+          ? clampNumber(Number(parsed.balance?.value), -1, 1)
+          : defaults.balance.value
+      },
+      loudness: {
+        enabled:
+          typeof parsed.loudness?.enabled === 'boolean'
+            ? parsed.loudness.enabled
+            : defaults.loudness.enabled,
+        target: LOUDNESS_TARGETS.includes(parsed.loudness?.target as LoudnessTarget)
+          ? (parsed.loudness!.target as LoudnessTarget)
+          : defaults.loudness.target
+      }
     }
   } catch {
     return defaults
