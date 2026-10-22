@@ -4,6 +4,7 @@ import type { Track } from '@/types/music'
 import {
   decryptPlaylistText,
   encryptPlaylistTracks,
+  exportableTracks,
   packPlaylistFile,
   parsePlaylistFile,
   playlistFileTracks,
@@ -117,5 +118,29 @@ describe('playlist files', () => {
   it('rejects unknown file types and bad payloads', () => {
     expect(() => parsePlaylistFile('backup.json', new Uint8Array())).toThrow('请选择')
     expect(() => decryptPlaylistText('not-encrypted')).toThrow('解密播放列表失败')
+  })
+})
+
+describe('queue export filtering', () => {
+  const online = {
+    key: 'p:a:1',
+    ref: { providerId: 'a', kind: 'track', id: '1' },
+    title: '在线',
+    artists: ['x'],
+    qualities: [],
+    playable: true,
+    raw: {},
+    source: 'plugin'
+  } as any
+  const local = { ...online, key: 'local:1', source: 'local', localUri: 'file:///1.mp3' } as any
+  const downloaded = { ...online, key: 'p:a:2', downloadedPath: 'file:///2.mp3' } as any
+
+  it('drops local files and downloaded copies, which only exist on this device', () => {
+    // 导出文件要能在别的设备/桌面版导入，本地文件带过去只会变成坏引用。
+    expect(exportableTracks([online, local, downloaded]).map((t) => t.key)).toEqual(['p:a:1'])
+  })
+
+  it('reports an empty export rather than writing a file with no songs', () => {
+    expect(exportableTracks([local, downloaded])).toEqual([])
   })
 })

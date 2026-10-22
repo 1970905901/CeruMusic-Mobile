@@ -238,10 +238,37 @@
 
     <ion-modal :is-open="queueOpen" :initial-breakpoint="0.88" :breakpoints="[0, 0.55, 0.88]" @didDismiss="queueOpen = false">
       <ion-content class="queue-content">
+        <input
+          ref="queueFileInput"
+          type="file"
+          accept=".cmpl,.cpl,application/octet-stream"
+          class="queue-file-input"
+          @change="onQueueFile"
+        />
         <div class="queue-head ceru-pad">
           <h2>播放队列</h2>
           <div class="queue-head-actions">
             <span>{{ player.queue.length }} 首</span>
+            <!-- 对齐桌面版「播放列表管理」：当前播放队列可以导出/导入为歌单文件 -->
+            <button
+              v-if="player.queue.length"
+              class="queue-action"
+              type="button"
+              :disabled="queueFileBusy"
+              @click="exportQueueFile"
+            >
+              <ion-icon :icon="shareOutline" />
+              导出
+            </button>
+            <button
+              class="queue-action"
+              type="button"
+              :disabled="queueFileBusy"
+              @click="pickQueueFile"
+            >
+              <ion-icon :icon="folderOpenOutline" />
+              导入
+            </button>
             <button v-if="player.queue.length" class="queue-clear" type="button" @click="clearQueue">
               <ion-icon :icon="trashOutline" />
               清空
@@ -322,6 +349,7 @@ import {
   closeCircle,
   cloudDownloadOutline,
   ellipsisHorizontal,
+  folderOpenOutline,
   heart,
   heartOutline,
   headsetOutline,
@@ -334,6 +362,7 @@ import {
   playSkipBack,
   playSkipForward,
   repeat,
+  shareOutline,
   shuffle,
   speedometerOutline,
   textOutline,
@@ -357,6 +386,15 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { currentLyricIndex, parseLyrics } from '@/services/lyrics'
 import { getLyricCache, putLyricCache } from '@/services/lyricProvider'
+import {
+  encryptPlaylistTracks,
+  exportableTracks,
+  packPlaylistFile,
+  parsePlaylistFile,
+  playlistFileName,
+  playlistFileTracks
+} from '@/services/playlistFiles'
+import { saveAndShareFile } from '@/services/fileExport'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { createIdleControls } from '@/services/idleControls'
 import { lyricJumpStyle } from '@/services/lyricJump'
@@ -448,6 +486,9 @@ const lyricConverters = computed(() =>
   })
 )
 const queueOpen = ref(false)
+const queueFileInput = ref<HTMLInputElement | null>(null)
+/** 队列文件导入/导出进行中，避免重复点击触发两次。 */
+const queueFileBusy = ref(false)
 const commentsOpen = ref(false)
 const artSize = ref(Math.min(window.innerWidth < 900 ? 320 : 360, Math.max(220, window.innerWidth - 84)))
 const lyricCache = new Map<string, LyricDocument>()
@@ -794,6 +835,76 @@ function reorderQueue(event: any) {
 
 function removeQueueItem(item: Track) {
   player.removeHostTracks([item.key])
+}
+
+/**
+ * 当前播放队列导出为歌单文件（.cmpl），与歌单页导出的格式完全一致，
+ * 因此可以直接在歌单页或桌面版导入。本地/已下载歌曲不进文件——它们只在本机。
+ */
+async function exportQueueFile() {
+  if (queueFileBusy.value) return
+  queueFileBusy.value = true
+  try {
+    const queue = player.queue
+    if (!queue.length) throw new Error('播放队列为空')
+    const exportable = exportableTracks(queue)
+    if (!exportable.length) throw new Error('队列里没有可导出的在线歌曲')
+    const encrypted = encryptPlaylistTracks(queue)
+    const dropped = queue.length - exportable.length
+    await saveAndShareFile({
+      name: playlistFileName('播放队列'),
+      data: packPlaylistFile(encrypted),
+      mime: 'application/gzip',
+      title: 'Ceru Music 播放队列'
+    })
+    await toast(
+      dropped > 0 ? `已导出 ${exportable.length} 首（${dropped} 首本地歌曲未包含）` : `已导出 ${exportable.length} 首`
+    )
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '导出失败', 'danger')
+  } finally {
+    queueFileBusy.value = false
+  }
+}
+
+function pickQueueFile() {
+  queueFileInput.value?.click()
+}
+
+/** 导入歌单文件到**当前队列**（追加，不替换正在播放的歌）。 */
+async function onQueueFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || queueFileBusy.value) return
+  queueFileBusy.value = true
+  try {
+    const songs = parsePlaylistFile(file.name, new Uint8Array(await file.arrayBuffer()))
+    const tracks = playlistFileTracks(songs, pluginStore.providers)
+    if (!tracks.length) throw new Error('歌单文件里没有可导入的歌曲')
+    const before = player.queue.length
+    // rawEntityToTrack 的元数据走 entity.metadata，不能平铺传字段。
+    await player.appendHostTracks(
+      tracks.map((item) => ({
+        ref: item.ref,
+        title: item.title,
+        subtitle: item.artists.join(' / '),
+        durationMs: item.durationMs,
+        metadata: {
+          artists: item.artists,
+          album: item.album ? { title: item.album } : undefined,
+          artworkUrl: item.artworkUrl,
+          qualities: item.qualities
+        }
+      }))
+    )
+    const added = player.queue.length - before
+    await toast(added > 0 ? `已加入 ${added} 首到播放队列` : '这些歌曲已经在队列中')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '导入失败', 'danger')
+  } finally {
+    queueFileBusy.value = false
+  }
 }
 
 async function clearQueue() {
@@ -1723,6 +1834,25 @@ onBeforeUnmount(() => {
 }
 .queue-clear ion-icon {
   font-size: 14px;
+}
+.queue-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-accent, #00dac0);
+  font-size: 12px;
+  padding: 4px 2px;
+}
+.queue-action:disabled {
+  opacity: 0.5;
+}
+.queue-action ion-icon {
+  font-size: 14px;
+}
+.queue-file-input {
+  display: none;
 }
 .queue-row {
   display: flex;
