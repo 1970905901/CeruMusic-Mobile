@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { selectTasksToStart } from './downloadPump'
+import { selectTasksToRequeue, selectTasksToStart } from './downloadPump'
 
 const queued = (id: string) => ({ id, status: 'queued' })
 const running = (id: string) => ({ id, status: 'running' })
@@ -44,5 +44,26 @@ describe('download pump after removal', () => {
     // 删除正在下载的任务同样中止了传输并空出一个并发位。
     const afterRemoval = [queued('a'), queued('b'), running('c')]
     expect(selectTasksToStart(afterRemoval, 2)).toEqual(['a'])
+  })
+})
+
+describe('lowering the concurrency limit', () => {
+  it('requeues the newest tasks rather than the oldest', () => {
+    // tasks 按创建时间倒序；调小上限时停掉最后开始的，别把用户最先点的砍掉。
+    const tasks = [running('newest'), running('middle'), running('oldest')]
+    expect(selectTasksToRequeue(tasks, 1)).toEqual(['newest', 'middle'])
+  })
+
+  it('requeues nothing when the running count fits', () => {
+    expect(selectTasksToRequeue([running('a'), running('b')], 2)).toEqual([])
+    expect(selectTasksToRequeue([running('a'), running('b')], 5)).toEqual([])
+  })
+
+  it('treats an invalid limit as one slot', () => {
+    expect(selectTasksToRequeue([running('a'), running('b')], 0)).toEqual(['a'])
+  })
+
+  it('ignores tasks that are not running', () => {
+    expect(selectTasksToRequeue([queued('a'), done('b'), running('c')], 1)).toEqual([])
   })
 })

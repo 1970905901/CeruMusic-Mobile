@@ -30,6 +30,10 @@
           <button class="batch-btn" type="button" :disabled="!hasActive" @click="downloads.pauseAll()">
             全部暂停
           </button>
+          <!-- 桌面版下载页顶部的「同时下载数」：并发改了要立即补位，不必等下一个任务结束 -->
+          <button class="batch-btn" type="button" @click="openConcurrency">
+            同时 {{ settings.settings.maxConcurrentDownloads }} 个
+          </button>
           <button class="batch-btn" type="button" :disabled="!hasQueue" @click="confirmClearQueue">
             清空队列
           </button>
@@ -131,6 +135,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePlayerStore } from '@/stores/player'
+import { useSettingsStore } from '@/stores/settings'
 import type { DownloadTask } from '@/types/download'
 import {
   countByTab,
@@ -140,6 +145,7 @@ import {
 
 const downloads = useDownloadStore()
 const player = usePlayerStore()
+const settings = useSettingsStore()
 
 /** 下载分类（对齐桌面版下载页的进行中/已完成/失败）。 */
 const tab = ref<DownloadTab>('active')
@@ -269,6 +275,22 @@ async function clearCompleted() {
   await alert.present()
   const { role } = await alert.onDidDismiss()
   if (role === 'destructive') await downloads.clearCompleted()
+}
+
+/** 同时下载数：范围与桌面版一致（1–5），选完立即生效并补位。 */
+async function openConcurrency(): Promise<void> {
+  const sheet = await actionSheetController.create({
+    header: '同时下载数',
+    buttons: [
+      ...[1, 2, 3, 4, 5].map((value) => ({
+        text:
+          `${value} 个` + (settings.settings.maxConcurrentDownloads === value ? ' ✓' : ''),
+        handler: () => downloads.setMaxConcurrent(value)
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
 }
 
 async function confirmClearQueue() {

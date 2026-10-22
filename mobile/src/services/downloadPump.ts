@@ -41,3 +41,20 @@ export function selectTasksToStart(
   }
   return result
 }
+
+/**
+ * 调小并发上限后，需要退回队列的在途任务。
+ *
+ * 与桌面版 `setMaxConcurrentDownloads` 一致：停掉**最后开始**的任务而不是
+ * 刚点的那首——`tasks` 在 store 里按创建时间倒序，所以数组前面就是最新的。
+ * 返回空数组表示当前在途数量没超过新上限。
+ */
+export function selectTasksToRequeue(
+  tasks: readonly PumpCandidate[],
+  limit: number
+): string[] {
+  const capacity = Math.max(1, Math.floor(Number(limit) || 1))
+  const running = tasks.filter((task) => task.status === DOWNLOAD_STATUS_RUNNING)
+  if (running.length <= capacity) return []
+  return running.slice(0, running.length - capacity).map((task) => task.id)
+}

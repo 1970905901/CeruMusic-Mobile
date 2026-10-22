@@ -22,7 +22,7 @@ import { deleteSafDocument, writeSafFromApp } from '@/services/safImport'
 import { parseLyrics } from '@/services/lyrics'
 import { blobToDataUrl } from '@/services/imageUtils'
 import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
-import { selectTasksToStart } from '@/services/downloadPump'
+import { selectTasksToRequeue, selectTasksToStart } from '@/services/downloadPump'
 import {
   MISSING_DOWNLOAD_MESSAGE,
   isMissingFileError,
@@ -531,6 +531,22 @@ export const useDownloadStore = defineStore('downloads', () => {
     return changed
   }
 
+  /**
+   * 调整同时下载数，对齐桌面版 `setMaxConcurrentDownloads`：
+   * - 调小后若在途任务多于新上限，把**最后开始**的退回队列（不是直接砍掉）；
+   * - 随后补位，调大时立刻把排队中的任务拉起来，不必等当前任务结束。
+   */
+  function setMaxConcurrent(value: number): void {
+    const limit = Math.max(1, Math.min(5, Math.trunc(value) || 1))
+    settings.settings.maxConcurrentDownloads = limit
+    for (const id of selectTasksToRequeue(tasks.value, limit)) {
+      activeRequests.get(id)?.abort()
+      activeRequests.delete(id)
+      updateTask(id, { status: 'queued', receivedBytes: 0 })
+    }
+    pumpQueue()
+  }
+
   async function createDownload(track: Track, quality?: string): Promise<DownloadTask> {
     const directoryMode = settings.settings.downloadDirectoryMode
     if (directoryMode === 'saf') {
@@ -770,6 +786,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     completed,
     init,
     validateFiles,
+    setMaxConcurrent,
     createDownload,
     createBatchDownloads,
     pause,
