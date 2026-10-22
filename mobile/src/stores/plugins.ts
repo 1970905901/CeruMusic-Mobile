@@ -528,6 +528,15 @@ export const usePluginStore = defineStore('plugins', () => {
     return runtime.invokeProvider(provider.providerId, 'tracks.lyrics', [track.ref])
   }
 
+  /**
+   * 某个音源声明的音质顺序（低→高），取不到时返回空数组。
+   * 批量下载的「自动降级」要靠它判断哪一档更低。
+   */
+  function qualityOrderFor(source: string): string[] {
+    const provider = selectedProvider(source)
+    return provider?.qualities ? [...provider.qualities] : []
+  }
+
   async function suggest(source: string, query: string): Promise<any> {
     const provider = selectedProvider(source)
     if (!provider) return null
@@ -625,6 +634,7 @@ export const usePluginStore = defineStore('plugins', () => {
     chartTracks,
     resolve,
     lyrics,
+    qualityOrderFor,
     suggest,
     hiresArtwork,
     hotSearch,

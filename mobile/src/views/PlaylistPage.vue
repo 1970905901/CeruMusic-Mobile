@@ -388,9 +388,7 @@ async function addToPlaylistSelected() {
  * 与桌面版批量下载前的「选择批量下载音质(自动降级)」同口径。
  */
 function batchQualityOptions(): string[] {
-  const order =
-    pluginStore.sources.find((item) => item.id === source)?.implementations[0]?.qualities ?? []
-  return batchQualityChoices(selectedTracks.value, order)
+  return batchQualityChoices(selectedTracks.value, pluginStore.qualityOrderFor(source))
 }
 
 /** 弹一次音质选择；用户取消时返回 null，不下载任何东西。 */

@@ -361,6 +361,8 @@ import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
+import { batchQualityChoices } from '@/services/batchDownloadQuality'
+import { getQualityDisplayName } from '@/services/qualityNames'
 import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
 import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
@@ -502,11 +504,30 @@ async function addToPlaylistSelected(): Promise<void> {
   exitBatchMode()
 }
 
+/**
+ * 批量下载前选一次音质（桌面版「选择批量下载音质(自动降级)」）。
+ * 所选歌曲的在线曲目可能来自多个音源，因此音质并集要跨音源收集，
+ * 每首歌的实际档位再由 store 逐首降级。
+ */
 async function downloadSelected(): Promise<void> {
   const tracks = selection.selectedTracks.value
   if (!tracks.length) return
+  const order = [
+    ...new Set(
+      tracks
+        .map((track) => track.ref?.providerId ?? pluginStore.sources[0]?.id ?? '')
+        .filter(Boolean)
+        .flatMap((source) => pluginStore.qualityOrderFor(source))
+    )
+  ]
+  const options = batchQualityChoices(
+    tracks.filter((track) => !track.localUri),
+    order
+  )
+  const quality = options.length ? await chooseBatchQuality(options) : null
+  if (options.length && !quality) return
   try {
-    const enqueued = await downloads.createBatchDownloads(tracks)
+    const enqueued = await downloads.createBatchDownloads(tracks, quality ?? undefined, order)
     await showToast(
       enqueued > 0 ? `已添加 ${enqueued} 首歌曲到下载队列` : '所选歌曲已在下载或已是本地歌曲'
     )
@@ -514,6 +535,31 @@ async function downloadSelected(): Promise<void> {
     await showToast(error instanceof Error ? error.message : '批量下载失败', 'danger')
   }
   exitBatchMode()
+}
+
+/** 音质选择面板：从高到低列出（用户通常想要尽可能好的），取消则不下载。 */
+async function chooseBatchQuality(options: string[]): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    let picked: string | null = null
+    void actionSheetController
+      .create({
+        header: '选择批量下载音质（自动降级）',
+        buttons: [
+          ...[...options].reverse().map((value) => ({
+            text: getQualityDisplayName(value),
+            handler: () => {
+              picked = value
+            }
+          })),
+          { text: '取消', role: 'cancel' }
+        ]
+      })
+      .then(async (sheet) => {
+        await sheet.present()
+        await sheet.onDidDismiss()
+        resolve(picked)
+      })
+  })
 }
 
 async function removeSelected(): Promise<void> {
