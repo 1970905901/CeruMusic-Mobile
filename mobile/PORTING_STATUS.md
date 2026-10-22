@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39706675134`（功能提交 `deb0e5b`），Android/iOS 均成功
+- 最新 CI：`39707964221`（功能提交 `7830f01`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -128,6 +128,7 @@
 - 设置同步隐私边界：toSyncableSettings 与 mergeCloudSettings 共用同一份 SENSITIVE_KEYS（api key、权限表、引导状态、搜索历史、本机壁纸），上传剔除与云端合并不再各写一份清单。
 - 设置同步的订阅生命周期：`stopSettingsSync` 原先只置标志位与清防抖定时器，watcher 与 `online` 监听**始终没被释放**，`initialized` 也保持 true；于是退出登录再登录时 `restartSettingsSync` 里的 `startSettingsSync` 直接早退，**整个会话再也不会自动上传设置**。现在停止会真正 `dispose` 所有 watcher、移除监听并复位标志，重启走显式的 stop→start。「是否该安排上传」抽成 `shouldScheduleUpload` 纯函数，覆盖未登录 / 关闭同步 / 已停止 / 正在应用云端值四种情况（`applying` 期间必须静默，否则写入云端值会立刻触发上传来回打乒乓）。
 - 设置同步的字典字段：`providerOwners` 与 `capabilityOwners` 改成**按键合并**（冲突时云端优先），不再整块替换。这两个映射的键是本机的音源/插件标识，而两台设备装的插件往往不同——原先浅合并会把本机架好的音源实现与能力路由抹掉，静默回落到「自动」。云端缺失或给出非法值时保留本机映射，不会因一次脏数据清空。`tagWriteOptions` 等嵌套对象由读取时的 `normalizeTagWriteOptions` 兜底，部分字段缺失会回落到默认值而不是留下 `undefined`。
+- 一起听重连耗尽：socket 以 `reconnectionAttempts: 10` 创建，但没有任何地方监听 `reconnect_failed`。socket.io 放弃重连后不会再发 `disconnect`/`connect_error`，房间会一直显示「已连接」或停在「正在重试…」，进行中的加入要等 18s 计时器超时才失败——文案还是「超时」，用户会以为网络慢，实际客户端早已放弃重试。现在该事件会清掉连接状态、让进行中的加入立即失败，并给出真实原因。
 - 一起听位置同步：targetPositionAt 抽成纯函数并先用 finiteOrZero 收敛服务端字段，脏锚点（非数字）不再让播放位置变成 NaN；暂停不补偿、未来锚点不倒扣、负值归零都有测试覆盖。
 - 插件 KV 清理：isPluginKvKey 按 plugin:<key>: 整段前缀匹配；插件 id 只允许 [A-Za-z0-9._-]，因此 com.example.plugin 不再误删 com.example.plugin2 的数据，空 key 直接拒绝。
 - 通知未读角标：subtractUnread 统一处理总数与分类扣减，计数落后于列表时夹到 0，脏计数按 0 处理。
@@ -169,9 +170,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：91 个测试文件，547 个测试全部通过
+- `npm run test`：91 个测试文件，548 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39706675134）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39707964221）
 
 ## 当前未完成
 
