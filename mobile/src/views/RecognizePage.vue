@@ -41,8 +41,14 @@
           <div class="result-copy">
             <div class="result-title ceru-truncate">{{ item.title }}</div>
             <div class="result-artist ceru-truncate">{{ item.artist }}</div>
+            <div v-if="item.startTimeMs > 0" class="result-segment">
+              识别片段 {{ formatStartTime(item.startTimeMs) }}
+            </div>
           </div>
-          <button type="button" class="result-play" aria-label="播放识别结果" @click="playResult(item)">
+          <button type="button" class="result-action" aria-label="搜索该歌曲" @click="searchResult(item)">
+            <ion-icon :icon="searchOutline" />
+          </button>
+          <button type="button" class="result-action result-play" aria-label="播放识别结果" @click="playResult(item)">
             <ion-icon :icon="playCircleOutline" />
           </button>
         </div>
@@ -75,18 +81,17 @@ import {
   cloudUploadOutline,
   micOutline,
   playCircleOutline,
+  searchOutline,
   stopCircleOutline
 } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
+import {
+  formatStartTime,
+  normalizeRecognitionResults,
+  type RecognitionResult
+} from '@/services/recognizeResults'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
-
-interface RecognitionResult {
-  title: string
-  artist: string
-  cover?: string
-  raw: Record<string, unknown>
-}
 
 const router = useIonRouter()
 const plugins = usePluginStore()
@@ -152,21 +157,6 @@ async function resampleTo8kMono(buffer: AudioBuffer): Promise<Float32Array> {
   return (await context.startRendering()).getChannelData(0)
 }
 
-function normalizeResults(value: any): RecognitionResult[] {
-  const list = Array.isArray(value)
-    ? value
-    : Array.isArray(value?.items)
-      ? value.items
-      : Array.isArray(value?.songs)
-        ? value.songs
-        : []
-  return list.map((item: any) => ({
-    title: String(item?.name ?? item?.title ?? item?.songName ?? '未知歌曲'),
-    artist: String(item?.singer ?? item?.artist ?? item?.subtitle ?? '未知艺术家'),
-    cover: item?.img ?? item?.artworkUrl ?? item?.cover,
-    raw: item && typeof item === 'object' ? item : { value: item }
-  }))
-}
 async function recognizeBlob(blob: Blob): Promise<void> {
   const action = recognizeAction.value
   const source = provider.value
@@ -197,7 +187,7 @@ async function recognizeBlob(blob: Blob): Promise<void> {
       fp: fingerprint,
       duration: slice.length / 8000
     })
-    results.value = normalizeResults(response)
+    results.value = normalizeRecognitionResults(response)
     if (!results.value.length) throw new Error('没有识别到歌曲，请靠近声源或换一段音频')
     statusText.value = '识别到 ' + results.value.length + ' 个可能结果'
   } finally {
@@ -296,10 +286,22 @@ async function playResult(item: RecognitionResult): Promise<void> {
       return
     }
     await player.playTrack(track)
+    // 桌面版 playSong 之后会跳到 startTime；这里同样带用户到录音对应的位置，
+    // 否则从「歌曲开头」播放，和刚听到的那一段对不上。
+    if (item.startTimeMs > 0) {
+      player.seek(item.startTimeMs)
+      await toast(`已跳转到识别片段 ${formatStartTime(item.startTimeMs)}`, 'success')
+    }
     router.push('/player')
   } catch (error) {
     await toast(error instanceof Error ? error.message : '播放失败', 'danger')
   }
+}
+
+/** 用「歌名 + 歌手」打开搜索页，与桌面版识别结果旁的搜索按钮一致。 */
+function searchResult(item: RecognitionResult): void {
+  const query = [item.title, item.artist].filter(Boolean).join(' ')
+  void router.push({ path: '/tabs/search', query: { q: query } })
 }
 
 async function toast(message: string, color = 'medium'): Promise<void> {
@@ -404,14 +406,24 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--ceru-text-secondary);
 }
-.result-play {
+.result-segment {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.result-action {
   border: 0;
   background: transparent;
-  color: var(--ceru-brand);
-  font-size: 30px;
+  color: var(--ceru-text-secondary);
+  font-size: 22px;
   display: grid;
   place-items: center;
   padding: 6px;
+}
+.result-action.result-play {
+  color: var(--ceru-brand);
+  font-size: 30px;
 }
 .notice {
   padding-top: 24px;
