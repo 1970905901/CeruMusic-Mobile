@@ -1250,6 +1250,23 @@ export class PluginRuntimeManager {
     for (const runtime of this.runtimes.values()) runtime.publish(event, value)
   }
 
+  /**
+   * 推送账号会话。与其它事件不同，这条**必须逐插件生成**：
+   * 插件看到的身份是 `sha256(manifestId:userId)`，拿原始 subject 推广播
+   * 等于把所有插件当作同一个应用，也让插件能跨插件关联同一个用户。
+   */
+  async publishAccountSession(loggedIn: boolean, userId: string, displayName: string): Promise<void> {
+    for (const runtime of this.runtimes.values()) {
+      const id = loggedIn && userId
+        ? await pluginIdentity(runtime.record.manifestId, userId)
+        : null
+      runtime.publish('account.changed', {
+        loggedIn: Boolean(id),
+        profile: id ? { id, displayName, identityScope: 'plugin' } : null
+      })
+    }
+  }
+
   disposeAll() {
     for (const runtime of this.runtimes.values()) runtime.dispose()
     this.runtimes.clear()

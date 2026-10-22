@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { PLUGIN_PUBLIC_SETTINGS, pluginSettingsGet } from '@/services/pluginSettings'
-import { settingsChangedKeys } from '@/services/pluginEvents'
+import { changedPermissionKeys, settingsChangedKeys } from '@/services/pluginEvents'
+import { pluginRoomState } from '@/services/pluginRooms'
+import { pluginAudioDevices } from '@/services/pluginDevices'
+import { useAuthStore } from '@/stores/auth'
+import { useListenTogetherStore } from '@/stores/listenTogether'
 import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { ProviderEntry, PluginLogEntry, PluginRecord, PluginRuntimeInfo } from '@/types/plugin'
 import type { SearchPage, Track } from '@/types/music'
@@ -638,6 +642,57 @@ export const usePluginStore = defineStore('plugins', () => {
       (next, previous) => publishSettings(settingsChangedKeys(previous, next)),
       { deep: true }
     )
+    // 权限表不在公开设置里（不能把授权内容暴露给插件），但「哪几项被改过」允许告知——
+    // 桌面版 `PluginHost.setGrantedPermissions` 也只推 key 列表，不带授权状态。
+    watch(
+      () => [
+        settings.settings.grantedPermissions as Record<string, unknown>,
+        settings.settings.deniedPermissions as Record<string, unknown>
+      ] as const,
+      (next, previous) => {
+        const keys = changedPermissionKeys(previous?.[0], previous?.[1], next[0], next[1])
+        if (keys.length) publishPermissions(keys)
+      },
+      { deep: true }
+    )
+    // 账号、一起听房间与音频设备：桌面版 PluginHostBridge 都有推送，移动端此前缺失。
+    // 这些事件只携带「已脱敏」的状态（插件专属身份 id、房间人数、设备 id/名称）。
+    const auth = useAuthStore()
+    let previousAccount = ''
+    watch(
+      () => [auth.authenticated, String((auth.user as any)?.sub || ''), auth.displayName] as const,
+      ([loggedIn, subject, displayName]) => {
+        const signature = `${loggedIn}|${subject}|${displayName}`
+        if (signature === previousAccount) return
+        previousAccount = signature
+        void pluginRuntimeManager
+          .publishAccountSession(Boolean(loggedIn), subject, displayName)
+          .catch(() => undefined)
+      },
+      { immediate: true }
+    )
+    let previousRooms = ''
+    watch(
+      () => {
+        const lt = useListenTogetherStore()
+        return [lt.room?.code ?? '', lt.members.length, lt.myRole ?? ''] as const
+      },
+      () => {
+        const lt = useListenTogetherStore()
+        const state = pluginRoomState({
+          room: lt.room,
+          members: lt.members,
+          role: lt.myRole
+        })
+        const signature = JSON.stringify(state)
+        if (signature === previousRooms) return
+        previousRooms = signature
+        pluginRuntimeManager.publish('rooms.changed', state)
+      },
+      { immediate: true }
+    )
+    // 移动端设备列表固定为本机输出，只在启动时推一次，避免无意义的重复事件。
+    pluginRuntimeManager.publish('devices.changed', pluginAudioDevices())
   }
 
   return {
