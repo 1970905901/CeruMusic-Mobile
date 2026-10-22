@@ -159,11 +159,42 @@ const defaults: AppSettings = {
   audioOutputDeviceId: 'default'
 }
 
+/**
+ * 只保留与默认值同类型的字段。
+ *
+ * 存档可能来自旧版本、被手动改过，或写到一半损坏（`theme: null`、
+ * `maxConcurrentDownloads: "abc"`）。直接展开会让这些值进入运行时状态，
+ * 之后界面用 null 做比较、用字符串做算术，症状很难追。
+ */
+function pickWellTyped(parsed: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    const fallback = (defaults as unknown as Record<string, unknown>)[key]
+    if (fallback === undefined) continue
+    if (value === null || value === undefined) continue
+    if (Array.isArray(fallback)) {
+      if (Array.isArray(value)) result[key] = value
+      continue
+    }
+    if (fallback !== null && typeof fallback === 'object') {
+      if (typeof value === 'object' && !Array.isArray(value)) result[key] = value
+      continue
+    }
+    if (typeof value === typeof fallback) result[key] = value
+  }
+  return result
+}
+
 function load(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...defaults }
-    const parsed = JSON.parse(raw) as Partial<AppSettings>
+    const parsedRaw = JSON.parse(raw)
+    const parsed = pickWellTyped(
+      parsedRaw && typeof parsedRaw === 'object' && !Array.isArray(parsedRaw)
+        ? (parsedRaw as Record<string, unknown>)
+        : {}
+    ) as Partial<AppSettings>
     return {
       ...defaults,
       ...parsed,
