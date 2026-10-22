@@ -149,7 +149,9 @@ export const useLibraryStore = defineStore('library', () => {
     ])
     favorites.value = favoriteRows.sort((a, b) => b.createdAt - a.createdAt)
     playlists.value = playlistRows.sort((a, b) => b.updatedAt - a.updatedAt)
-    history.value = historyRows.sort((a, b) => b.playedAt - a.playedAt).slice(0, 300)
+    // 历史上限与写入路径共用 HISTORY_LIMIT：此前初始化读 300 条、写入只留 200 条，
+    // 重启后多出来的 100 条旧记录会短暂出现在「最近」里，再被下一次播放挤掉。
+    history.value = historyRows.sort((a, b) => b.playedAt - a.playedAt).slice(0, HISTORY_LIMIT)
     localRecords.value = localRows.sort((a, b) => b.createdAt - a.createdAt)
     for (const track of trackRows) tracks.value[track.key] = track
     for (const favorite of favorites.value) tracks.value[favorite.track.key] = favorite.track
