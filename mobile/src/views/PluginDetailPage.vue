@@ -104,19 +104,25 @@
 
         <ion-list class="group">
           <div class="group-title">权限</div>
-          <ion-item v-for="permission in plugin.manifest.permissions || []" :key="permission.key">
-            <ion-label>
-              <h2>{{ permission.key }}</h2>
-              <p>{{ permission.name }} · {{ permission.reason }}</p>
-            </ion-label>
-            <ion-badge slot="end" :color="settings.isPermissionGranted(plugin?.key || '', permission.key) ? 'success' : settings.isPermissionDenied(plugin?.key || '', permission.key) ? 'danger' : 'medium'">
-              {{ settings.isPermissionGranted(plugin.key, permission.key) ? '已允许' : settings.isPermissionDenied(plugin.key, permission.key) ? '已拒绝' : '未询问' }}
-            </ion-badge>
-          </ion-item>
-          <ion-item v-if="!(plugin.manifest.permissions || []).length">
+          <template v-for="group in permissionGroups" :key="group.id">
+            <ion-item-divider class="permission-group-title">
+              <ion-label>{{ group.title }}</ion-label>
+              <ion-badge slot="end" :color="groupStatus(group) === 'granted' ? 'success' : groupStatus(group) === 'denied' ? 'danger' : 'medium'">
+                {{ groupStatus(group) === 'granted' ? '已允许' : groupStatus(group) === 'denied' ? '已拒绝' : '未询问' }}
+              </ion-badge>
+            </ion-item-divider>
+            <ion-item v-for="permission in group.permissions" :key="permission.key">
+              <ion-label>
+                <h2>{{ permission.label }}</h2>
+                <p v-if="permission.reason">{{ permission.reason }}</p>
+                <p v-else-if="permission.name">{{ permission.name }}</p>
+              </ion-label>
+            </ion-item>
+          </template>
+          <ion-item v-if="!permissionGroups.length">
             <ion-label color="medium">该插件没有声明额外权限</ion-label>
           </ion-item>
-          <ion-item v-if="plugin.manifest.permissions?.length">
+          <ion-item v-if="permissionGroups.length">
             <ion-button fill="outline" size="small" @click="grantAll">全部允许</ion-button>
             <ion-button fill="clear" size="small" color="danger" @click="resetPermissions">清除授权</ion-button>
           </ion-item>
@@ -265,6 +271,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
 import { guestStoreFor } from '@/services/plugin/guests'
+import { groupPermissionDeclarations } from '@/services/plugin/permissions'
+import { PERMISSION_GROUPS, permissionGroup } from '@shiqianjiang/ceru-plugin-sdk/permissions'
 import type { GuestAdapterView, GuestRecord } from '@/types/plugin'
 import type { PluginRecord } from '@/types/plugin'
 
@@ -281,6 +289,35 @@ const runtimeLabel = computed(() => {
   return info ? '已激活' : plugin.value?.enabled ? '未激活' : '已停用'
 })
 const commands = computed(() => plugin.value?.manifest.contributes?.commands || [])
+
+/**
+ * 权限按 SDK 的授权组展示。
+ *
+ * 此前直接列 `key` 原文（`p-player`、`p-lib-2`），用户看不出是什么能力；
+ * 同一组（读/改/删歌单）也被拆成三条互不相干的记录。桌面版同样按组展示。
+ */
+const permissionGroups = computed(() =>
+  groupPermissionDeclarations(
+    plugin.value?.manifest.permissions,
+    (name) => permissionGroup(name as any),
+    (id) => PERMISSION_GROUPS[id as keyof typeof PERMISSION_GROUPS]?.title
+  )
+)
+
+/** 组状态：全部允许才算允许，任一拒绝即标红，其余为未询问。 */
+function groupStatus(group: { permissions: Array<{ key: string }> }): 'granted' | 'denied' | 'prompt' {
+  const key = plugin.value?.key || ''
+  const states = group.permissions.map((permission) =>
+    settings.isPermissionGranted(key, permission.key)
+      ? 'granted'
+      : settings.isPermissionDenied(key, permission.key)
+        ? 'denied'
+        : 'prompt'
+  )
+  if (states.some((state) => state === 'denied')) return 'denied'
+  if (states.every((state) => state === 'granted')) return 'granted'
+  return 'prompt'
+}
 const settingsPages = computed(() => plugin.value?.manifest.contributes?.settingsPages || [])
 const accountItems = computed(() => plugin.value?.manifest.contributes?.accountItems || [])
 const surfaces = computed(() => plugin.value?.manifest.modules?.surfaces || [])

@@ -49,6 +49,53 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'notifications.system': '发送系统通知'
 }
 
+export interface PermissionRow {
+  key: string
+  name: string
+  label: string
+  reason: string
+}
+
+export interface PermissionGroupRow {
+  id: string
+  title: string
+  permissions: PermissionRow[]
+}
+
+/**
+ * 把插件声明的权限按 SDK 的「用户可理解的授权组」聚合，供插件详情页展示。
+ *
+ * 此前页面直接列出 `key` 原文（`p-player`、`p-lib-2`），用户根本看不出
+ * 那是什么；同一组能力（读歌单 / 改歌单 / 删歌单）也被拆成三条互不相干的
+ * 记录，用户只能逐条猜。桌面版就是按 `PERMISSION_GROUPS` 分组并显示组标题。
+ */
+export function groupPermissionDeclarations(
+  declarations: readonly DeclaredPermission[] | null | undefined,
+  groupOf?: (name: string) => string | undefined,
+  groupTitle?: (id: string) => string | undefined
+): PermissionGroupRow[] {
+  const groups = new Map<string, PermissionGroupRow>()
+  for (const item of Array.isArray(declarations) ? declarations : []) {
+    const key = String(item?.key ?? '')
+    if (!key) continue
+    const name = String(item?.name ?? '')
+    const id = groupOf?.(name) || key
+    const group = groups.get(id) ?? {
+      id,
+      title: groupTitle?.(id) || '插件扩展能力',
+      permissions: []
+    }
+    group.permissions.push({
+      key,
+      name,
+      label: permissionLabel(name),
+      reason: String(item?.reason ?? '')
+    })
+    groups.set(id, group)
+  }
+  return [...groups.values()]
+}
+
 export function permissionLabel(name: string): string {
   return PERMISSION_LABELS[name] || '相关功能'
 }
@@ -56,6 +103,7 @@ export function permissionLabel(name: string): string {
 export interface DeclaredPermission {
   key?: unknown
   name?: unknown
+  reason?: unknown
 }
 
 /**

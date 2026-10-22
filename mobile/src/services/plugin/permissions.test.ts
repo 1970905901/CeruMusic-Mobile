@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkPermissionDeclaration,
+  groupPermissionDeclarations,
   permissionLabel,
   reconcilePermissionNames
 } from './permissions'
@@ -85,5 +86,49 @@ describe('reconciling stored permissions after an update', () => {
     const granted = { 'p-read': 'settings.read' }
     const result = reconcilePermissionNames({ granted, denied: {} }, declarations)
     expect(result.granted).toBe(granted)
+  })
+})
+
+describe('permission grouping for the plugin detail page', () => {
+  const groupOf = (name: string) =>
+    name.startsWith('library.') ? 'library' : name === 'player.control' ? 'playbackControl' : undefined
+
+  it('groups declarations by capability instead of raw key', () => {
+    // 详情页此前直接显示 `p-lib-1` 这样的键，用户看不出是什么能力。
+    const groups = groupPermissionDeclarations(
+      [
+        { key: 'p-lib-1', name: 'library.read', reason: '读取收藏' },
+        { key: 'p-lib-2', name: 'library.write', reason: '修改歌单' },
+        { key: 'p-player', name: 'player.control' }
+      ],
+      groupOf,
+      (id) => (id === 'library' ? '歌单' : '播放控制')
+    )
+    expect(groups.map((group) => group.id)).toEqual(['library', 'playbackControl'])
+    expect(groups[0].title).toBe('歌单')
+    expect(groups[0].permissions.map((item) => item.label)).toEqual(['歌单读取', '歌单修改'])
+    expect(groups[0].permissions[0].reason).toBe('读取收藏')
+  })
+
+  it('keeps a declaration whose name has no group, keyed by its own key', () => {
+    const groups = groupPermissionDeclarations([{ key: 'p-custom', name: 'made.up' }], groupOf)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].id).toBe('p-custom')
+    expect(groups[0].title).toBe('插件扩展能力')
+  })
+
+  it('drops declarations without a key rather than rendering an empty row', () => {
+    const groups = groupPermissionDeclarations([{ name: 'player.control' }, null as any], groupOf)
+    expect(groups).toEqual([])
+  })
+
+  it('returns an empty list for missing declarations', () => {
+    expect(groupPermissionDeclarations(undefined, groupOf)).toEqual([])
+    expect(groupPermissionDeclarations(null, groupOf)).toEqual([])
+  })
+
+  it('uses the per-permission name as the label when the manifest has no group', () => {
+    const groups = groupPermissionDeclarations([{ key: 'p-net', name: 'network.request' }])
+    expect(groups[0].permissions[0].label).toBe('网络访问')
   })
 })
