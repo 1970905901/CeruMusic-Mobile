@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39721464070`（功能提交 `4f0ddb9`），Android/iOS 均成功
+- 最新 CI：`39724922381`（功能提交 `5c378b2`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -38,6 +38,7 @@
 - 后台降载：`services/appVisibility.ts` 合并原生 `appStateChange` 与 `document.hidden`，切后台时停掉播放页背景呼吸动画、低频鼓点采样、音频可视化与全局视频壁纸解码，回前台自动恢复；音频播放与媒体会话不受影响（桌面端 `useAppBackground` 的移动端等价实现）。
 - 锁屏/通知媒体控制。
 - iOS/Android 主题、品牌色、深色模式、安全区。
+- 图标对比度：原图标是**白底 + 淡薄荷音符（#B8F1CC）**，在 iOS 主屏的白格子里几乎不可见，页头 30px 处更是糊成一团。现在 Launcher 图标与 PWA 图标统一为**品牌色实底 + 白色音符**，App 内 logo 为**透明底 + 品牌色音符**（小尺寸、浅色标题栏上更轻盈）。`scripts/make-icon.cjs` 从 `resources/icon-source.png` 生成三份源图，按 `capacitor-assets` 的约定分层：`icon.png`（不透明，iOS/PWA）、`icon-foreground.png`（透明，Android 自适应前景）、`icon-background.png`（纯品牌色背景层）——早先只给 `icon.png` 传透明底，Android 与 PWA 都会变成「透明底白音符」等于看不见。脚本只读 `icon-source.png`、从不覆盖自己的输入，重复运行不会把字形逐渐洗掉。页头与欢迎页 logo 改用 `object-fit: contain`，避免音符被裁切。
 - 基础页面：发现、搜索、音乐库、下载、识别、歌单转换、播放器、设置、插件管理。
 
 ### 播放与媒体
@@ -179,7 +180,7 @@ npm run build
 - `npm run typecheck`：通过
 - `npm run test`：96 个测试文件，605 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39721464070）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）
 
 ## 当前未完成
 
