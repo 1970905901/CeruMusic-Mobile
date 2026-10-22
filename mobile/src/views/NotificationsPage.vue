@@ -36,24 +36,26 @@
 
       <template v-else>
         <div v-if="notifications.items.length" class="notice-list">
-          <button
-            v-for="item in notifications.items"
-            :key="item.id"
-            type="button"
-            class="notice-card"
-            :class="{ unread: !item.read }"
-            @click="openItem(item)"
-          >
-            <div class="notice-avatar">
-              <CoverImage :src="ossAvatar(item.actorAvatar || item.cover)" :size="44" :radius="22" :alt="item.actorName || item.title" />
-            </div>
-            <div class="notice-copy">
-              <div class="notice-title ceru-truncate">{{ item.title || item.actorName || '系统通知' }}</div>
-              <div class="notice-content">{{ item.content }}</div>
-              <div class="notice-time">{{ formatTime(item.createdAt) }}</div>
-            </div>
-            <span v-if="!item.read" class="unread-dot" />
-          </button>
+          <template v-for="item in notifications.items" :key="item.id">
+            <!-- 官方通知（含 markdown / 网页）用整块卡片，和互动消息分开渲染 -->
+            <NoticeCard
+              v-if="item.category === 'notice'"
+              :message="item"
+              @open="openItem(item)"
+              @open-link="openLink"
+            />
+            <button v-else type="button" class="notice-card" :class="{ unread: !item.read }" @click="openItem(item)">
+              <div class="notice-avatar">
+                <CoverImage :src="ossAvatar(item.actorAvatar || item.cover)" :size="44" :radius="22" :alt="item.actorName || item.title" />
+              </div>
+              <div class="notice-copy">
+                <div class="notice-title ceru-truncate">{{ item.title || item.actorName || '系统通知' }}</div>
+                <div class="notice-content">{{ item.content }}</div>
+                <div class="notice-time">{{ formatTime(item.createdAt) }}</div>
+              </div>
+              <span v-if="!item.read" class="unread-dot" />
+            </button>
+          </template>
         </div>
 
         <div v-if="notifications.loading" class="loading"><ion-spinner name="crescent" /> 加载中…</div>
@@ -77,7 +79,9 @@
 import { onMounted } from 'vue'
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSegment, IonSegmentButton, IonSpinner, IonTitle, IonToolbar, alertController, toastController, useIonRouter } from '@ionic/vue'
 import { mailOpenOutline, notificationsOffOutline, refreshOutline } from 'ionicons/icons'
+import { Browser } from '@capacitor/browser'
 import CoverImage from '@/components/CoverImage.vue'
+import NoticeCard from '@/components/NoticeCard.vue'
 import { ossAvatar } from '@/services/ossImage'
 import { resolveNotificationTarget } from '@/services/notificationTarget'
 import { useAuthStore } from '@/stores/auth'
@@ -147,6 +151,18 @@ async function clearRead(): Promise<void> {
   const { role } = await alert.onDidDismiss()
   if (role !== 'destructive') return
   if (await notifications.clearRead()) await toast('已清理已读消息')
+}
+
+/**
+ * 通知里的外链用系统浏览器打开（`@capacitor/browser`）：
+ * 直接在 WebView 里跳转会把消息页顶掉，返回后列表状态也丢了。
+ */
+async function openLink(href: string): Promise<void> {
+  try {
+    await Browser.open({ url: href })
+  } catch {
+    await toast('无法打开链接', 'danger')
+  }
 }
 
 async function toast(message: string, color = 'medium'): Promise<void> {
