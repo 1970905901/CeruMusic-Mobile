@@ -674,6 +674,12 @@ export class PluginRuntime {
       }
       case 'ui.closeView': {
         const { default: router } = await import('@/router')
+        // 只在用户**当前确实停在本插件的页面**时才回退。
+        // 否则插件在后台收到一个迟到的 closeView，会把用户从正在看的
+        // 歌单/设置页弹出去，看起来像应用自己乱跳。
+        const current = router.currentRoute.value
+        if (current.name !== 'plugin-surface') return null
+        if (String(current.params.key ?? '') !== this.record.key) return null
         router.back()
         return null
       }
