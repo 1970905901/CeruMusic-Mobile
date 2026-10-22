@@ -11,7 +11,7 @@ import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
-import { playlistKeyCandidates } from '@/services/playlistKeys'
+import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
 
@@ -194,9 +194,16 @@ export const useLibraryStore = defineStore('library', () => {
   async function toggleFavorite(track: Track): Promise<boolean> {
     upsertTrack(track)
     const db = await getDb()
-    if (isFavorite(track)) {
-      await db.delete('favorites', track.key)
-      favorites.value = favorites.value.filter((item) => item.key !== track.key)
+    // 收藏可能以另一种 key 形态存着（插件私有资源 vs 公共 provider 资源），
+    // 判定用是候选集合，删除也必须按同一集合来，否则会出现
+    // 「判定为已收藏 → 删不到 → 告诉调用方已取消，列表却没变」。
+    const stored = favorites.value.filter((item) =>
+      playlistKeyMatches(item.key, track.ref, track.key)
+    )
+    if (stored.length) {
+      for (const item of stored) await db.delete('favorites', item.key)
+      const removed = new Set(stored.map((item) => item.key))
+      favorites.value = favorites.value.filter((item) => !removed.has(item.key))
       return false
     }
     const entry: FavoriteEntry = { key: track.key, track, createdAt: Date.now() }
