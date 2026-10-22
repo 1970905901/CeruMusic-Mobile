@@ -54,6 +54,18 @@
             <p class="plugin-desc ceru-truncate">
               {{ plugin.manifest.description || plugin.manifest.author || plugin.fileName }}
             </p>
+            <div v-if="sourceSummary(plugin.manifest).total" class="plugin-source-tags">
+              <span
+                v-for="tag in sourceSummary(plugin.manifest).tags"
+                :key="tag.id"
+                class="plugin-source-tag"
+              >
+                {{ tag.name }}
+              </span>
+              <span v-if="sourceSummary(plugin.manifest).overflow" class="plugin-source-tag more">
+                +{{ sourceSummary(plugin.manifest).overflow }}
+              </span>
+            </div>
             <div class="plugin-meta">
               <span>{{ plugin.manifest.contributes?.providers?.length || 0 }} 个音源</span>
               <span v-if="plugin.manifest.permissions?.length">{{ plugin.manifest.permissions.length }} 项权限</span>
@@ -112,9 +124,14 @@ import { useRouter } from 'vue-router'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import type { PluginRecord } from '@/types/plugin'
+import { summarizePluginSources } from '@/services/pluginSources'
 
 const router = useRouter()
 const pluginStore = usePluginStore()
+/** 插件支持的音源名标签（桌面版 plugins.vue 的 supportedSources）。 */
+function sourceSummary(manifest: PluginRecord['manifest']) {
+  return summarizePluginSources(manifest)
+}
 
 function openPlugin(key: string) {
   void router.push('/plugin/' + encodeURIComponent(key))
@@ -265,6 +282,24 @@ async function toast(message: string, color = 'medium') {
 .plugin-desc {
   margin: 4px 0 0;
   font-size: 12px;
+  color: var(--ceru-text-secondary);
+}
+.plugin-source-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.plugin-source-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 218, 192, 0.14);
+  color: var(--ceru-accent, #00dac0);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.plugin-source-tag.more {
+  background: transparent;
   color: var(--ceru-text-secondary);
 }
 .plugin-meta {
