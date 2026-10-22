@@ -7,8 +7,12 @@
         </ion-buttons>
         <ion-title>消息</ion-title>
         <ion-buttons slot="end">
+          <!-- 桌面版消息中心有独立的刷新按钮：实时连接掉线时用户还能手动拉一次 -->
+          <ion-button fill="clear" :disabled="notifications.loading" @click="refresh">
+            <ion-icon slot="icon-only" :icon="refreshOutline" />
+          </ion-button>
           <ion-button v-if="notifications.items.length" fill="clear" :disabled="notifications.clearing" @click="clearRead">
-            清理
+            {{ notifications.clearing ? '清理中' : '清理' }}
           </ion-button>
         </ion-buttons>
       </ion-toolbar>
@@ -72,7 +76,7 @@
 </template><script setup lang="ts">
 import { onMounted } from 'vue'
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSegment, IonSegmentButton, IonSpinner, IonTitle, IonToolbar, toastController, useIonRouter } from '@ionic/vue'
-import { mailOpenOutline, notificationsOffOutline } from 'ionicons/icons'
+import { mailOpenOutline, notificationsOffOutline, refreshOutline } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar } from '@/services/ossImage'
 import { resolveNotificationTarget } from '@/services/notificationTarget'
@@ -93,6 +97,19 @@ function formatTime(value: string): string {
 async function reload() {
   await notifications.refreshCounts()
   await notifications.load(true)
+}
+
+/**
+ * 手动刷新：先清空再重新拉第一页。
+ *
+ * `load(true)` 会自己清空列表，但 `load` 在 `loading` 为真时直接返回——
+ * 用户连点或刚进页时刷新按钮会像「没反应」。这里先等一下在途请求结束，
+ * 再发起刷新，并把失败原因明确提示出来，而不是静默留一个旧列表。
+ */
+async function refresh(): Promise<void> {
+  while (notifications.loading) await new Promise((resolve) => setTimeout(resolve, 60))
+  await reload()
+  if (notifications.error) await toast(notifications.error, 'danger')
 }
 
 async function changeCategory() {
