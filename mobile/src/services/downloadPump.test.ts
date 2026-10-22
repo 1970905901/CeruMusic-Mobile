@@ -38,3 +38,11 @@ describe('download pump', () => {
     expect(selectTasksToStart([], 3)).toEqual([])
   })
 })
+
+describe('download pump after removal', () => {
+  it('fills the slot freed by deleting a running task', () => {
+    // 删除正在下载的任务同样中止了传输并空出一个并发位。
+    const afterRemoval = [queued('a'), queued('b'), running('c')]
+    expect(selectTasksToStart(afterRemoval, 2)).toEqual(['a'])
+  })
+})

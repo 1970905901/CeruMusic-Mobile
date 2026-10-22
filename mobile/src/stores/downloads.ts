@@ -634,6 +634,8 @@ export const useDownloadStore = defineStore('downloads', () => {
     const db = await getDb()
     await db.delete('downloads', id)
     tasks.value = tasks.value.filter((item) => item.id !== id)
+    // 删除一个正在下载的任务同样空出了并发位；不补位的话队列会停在这里。
+    pumpQueue()
   }
 
   async function share(id: string): Promise<void> {
