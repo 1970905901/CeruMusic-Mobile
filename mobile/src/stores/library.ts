@@ -26,6 +26,8 @@ export const HISTORY_LIMIT = 200
  * 直接因内存不足崩溃，且没有任何提示。200 MB 已覆盖绝大多数无损单曲。
  */
 export const MAX_LOCAL_IMPORT_BYTES = 200 * 1024 * 1024
+/** 插件导入器单次导入的页数上限（每页 100 首，够导入一万首）。 */
+export const MAX_IMPORT_PAGES = 200
 
 /**
  * 把新记录并入历史：同 key 只保留最新一条，并裁剪到上限。
@@ -1111,6 +1113,16 @@ export const useLibraryStore = defineStore('library', () => {
 
     let cursor: string | undefined
     let playlist: Playlist | null = null
+    /**
+     * 导入器分页的停止条件。
+     *
+     * 这是个 `do … while (cursor)` 循环，唯一的出口是插件给出空的 `nextCursor`。
+     * 插件把游标原样回传（或每次都返回同一页）时，这里会**永远转下去**：界面
+     * 一直停在「导入中」，每转一圈都在往歌单里塞同一批歌，只能强杀应用。
+     * 与其它分页同一口径：连续两页没有新增即停，另加页数上限兜底。
+     */
+    let barrenPages = 0
+    let pages = 0
 
     do {
       const page = await runtime.invokeImporter(importerId, {
@@ -1122,11 +1134,21 @@ export const useLibraryStore = defineStore('library', () => {
       if (!playlist) playlist = createPlaylist(page.name || '导入歌单')
       if (page?.name && page.name !== playlist.name) playlist.name = page.name
 
+      let added = 0
       for (const entity of page?.items ?? []) {
         if (entity?.ref?.kind !== 'track') continue
         const track = pluginStore.normalizeEntity(pluginKey, entity)
         upsertTrack(track)
-        if (!playlist.trackKeys.includes(track.key)) playlist.trackKeys.push(track.key)
+        if (!playlist.trackKeys.includes(track.key)) {
+          playlist.trackKeys.push(track.key)
+          added += 1
+        }
+      }
+      pages += 1
+      barrenPages = added === 0 ? barrenPages + 1 : 0
+      if (barrenPages >= 2 || pages >= MAX_IMPORT_PAGES) {
+        cursor = undefined
+        break
       }
       cursor = page?.nextCursor
     } while (cursor)
