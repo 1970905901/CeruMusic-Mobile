@@ -927,16 +927,45 @@ async function clearQueue() {
   await alert.present()
 }
 
+/** 睡眠定时时长选择：与设置页同一组选项，避免两处口径不一致。 */
+async function pickSleepTimer(): Promise<void> {
+  const options = [
+    { minutes: 15, label: '15 分钟后暂停' },
+    { minutes: 30, label: '30 分钟后暂停' },
+    { minutes: 60, label: '60 分钟后暂停' }
+  ]
+  const sheet = await actionSheetController.create({
+    header: '睡眠定时',
+    buttons: [
+      ...options.map((option) => ({
+        text: option.label,
+        handler: () => {
+          player.setSleepTimer(option.minutes)
+          void toast(`将在 ${option.minutes} 分钟后暂停`)
+        }
+      })),
+      { text: '取消', role: 'cancel' }
+    ]
+  })
+  await sheet.present()
+}
+
 async function openMore() {
   if (!track.value) return
   const sheet = await actionSheetController.create({
     header: track.value.title,
     buttons: [
       {
-        text: player.sleepRemainingMs ? '关闭睡眠定时' : '15 分钟后暂停',
+        text: player.sleepRemainingMs ? '关闭睡眠定时' : '睡眠定时…',
         handler: () => {
-          player.setSleepTimer(player.sleepRemainingMs ? null : 15)
-          void toast(player.sleepRemainingMs ? '已关闭睡眠定时' : '将在 15 分钟后暂停')
+          // 关闭直接生效；未开启时给几个常用时长——播放页只有「15 分钟」一个选项，
+          // 想听 30/60 分钟还得绕去设置页。
+          if (player.sleepRemainingMs) {
+            player.setSleepTimer(null)
+            void toast('已关闭睡眠定时')
+            return
+          }
+          void pickSleepTimer()
         }
       },
       {
