@@ -33,9 +33,33 @@
         </div>
       </div>
 
-      <div v-if="pluginStore.plugins.length" class="plugin-list ceru-pad">
+      <div v-if="pluginStore.plugins.length" class="plugin-filter ceru-pad">
+        <ion-searchbar
+          v-model="pluginQuery"
+          placeholder="搜索插件名称、作者或音源"
+          :debounce="150"
+          class="plugin-search"
+        />
+        <ion-segment :value="pluginStatus" @ionChange="setPluginStatus($event.detail.value)">
+          <ion-segment-button value="all">全部</ion-segment-button>
+          <ion-segment-button value="enabled">已启用</ion-segment-button>
+          <ion-segment-button value="disabled">已禁用</ion-segment-button>
+        </ion-segment>
+      </div>
+
+      <div v-if="pluginStore.plugins.length && !filteredPlugins.length" class="ceru-pad">
+        <EmptyState
+          title="没有匹配的插件"
+          description="换个关键词，或清除筛选查看全部插件。"
+          :icon="extensionPuzzleOutline"
+        >
+          <ion-button @click="clearPluginFilter">清除筛选</ion-button>
+        </EmptyState>
+      </div>
+
+      <div v-if="filteredPlugins.length" class="plugin-list ceru-pad">
         <div
-          v-for="plugin in pluginStore.plugins"
+          v-for="plugin in filteredPlugins"
           :key="plugin.key"
           class="plugin-card ceru-card"
           role="button"
@@ -99,6 +123,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -107,6 +132,9 @@ import {
   IonHeader,
   IonIcon,
   IonPage,
+  IonSearchbar,
+  IonSegment,
+  IonSegmentButton,
   IonTitle,
   IonToggle,
   IonToolbar,
@@ -125,12 +153,31 @@ import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import type { PluginRecord } from '@/types/plugin'
 import { summarizePluginSources } from '@/services/pluginSources'
+import { filterPlugins, type PluginStatusFilter } from '@/services/pluginFilter'
 
 const router = useRouter()
 const pluginStore = usePluginStore()
 /** 插件支持的音源名标签（桌面版 plugins.vue 的 supportedSources）。 */
 function sourceSummary(manifest: PluginRecord['manifest']) {
   return summarizePluginSources(manifest)
+}
+
+/** 插件搜索与状态筛选（桌面版 plugins.vue 的 filteredPlugins）。 */
+const pluginQuery = ref('')
+const pluginStatus = ref<PluginStatusFilter>('all')
+const filteredPlugins = computed(() =>
+  filterPlugins(pluginStore.plugins, pluginQuery.value, pluginStatus.value)
+)
+
+function clearPluginFilter() {
+  pluginQuery.value = ''
+  pluginStatus.value = 'all'
+}
+
+/** ion-segment 的值是宽泛类型，收敛成过滤器的三个合法取值。 */
+function setPluginStatus(value: unknown) {
+  pluginStatus.value =
+    value === 'enabled' || value === 'disabled' ? (value as PluginStatusFilter) : 'all'
 }
 
 function openPlugin(key: string) {
@@ -233,10 +280,20 @@ async function toast(message: string, color = 'medium') {
   margin-top: 16px;
   flex-wrap: wrap;
 }
+.plugin-filter {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.plugin-search {
+  --background: var(--ceru-card, rgba(255, 255, 255, 0.06));
+  --border-radius: 12px;
+  padding: 0;
+}
 .plugin-list {
   display: grid;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 14px;
 }
 .plugin-card {
   display: flex;
