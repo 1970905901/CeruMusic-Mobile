@@ -126,7 +126,7 @@
 - 插件一起听 `ctx.rooms.*`。
 - 插件音频设备 `ctx.devices.list / select`，当前只暴露本机系统输出。
 - 插件 Socket，支持原生 WebSocket 与 Socket.IO。
-- 插件主机事件 `ctx.events.on`，已覆盖 `settings.changed`、`theme.changed`：此前这条只写在文档里——`publishTheme` 没有任何调用方，`settings.changed` 连发布函数都没有，插件监听这两个事件收不到任何东西。现在 `stores/plugins.ts` 监听**与 `pluginSettingsGet` 同一份公开设置白名单**，变化时推送变更键名；亮暗模式切换推送 `theme.changed`。白名单保证 API key、权限表等内部状态不会通过事件名泄露给插件。启动时由 `main.ts` 调用 `startSettingsEvents()` 挂载（只挂一次）。
+- 插件主机事件 `ctx.events.on`，已覆盖 `settings.changed`、`theme.changed`：此前这条只写在文档里——`publishTheme` 没有任何调用方，`settings.changed` 连发布函数都没有，插件监听这两个事件收不到任何东西。现在 `stores/plugins.ts` 监听**与 `pluginSettingsGet` 同一份公开设置白名单**，变化时推送变更键名；亮暗模式切换推送 `theme.changed`。白名单保证 API key、权限表等内部状态不会通过事件名泄露给插件。启动时由 `main.ts` 调用 `startSettingsEvents()` 挂载（只挂一次）。此外补齐桌面版 `PluginHostBridge` 里其余三条推送：`account.changed`（**逐插件生成** `sha256(manifestId:userId)`，与 `account.getSession` 同口径，避免一个插件借事件跨插件关联同一用户）、`rooms.changed`（沿用 `rooms.getState` 的同一份快照）、`devices.changed`（移动端输出路由固定，只推一次）、以及 `permissions.changed`（只推**变更的键名**、不推授权状态，与桌面 `setGrantedPermissions` 一致）。
 - 插件设置访问限制：只能读写公开设置白名单，不能读 AI API key、权限表等内部状态。
 - 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
 - 自伤援助提示唯一实现：`services/communitySupport.ts` 收敛了原先在社区列表与帖子详情各写一份的 `showSupport`；发帖、编辑、评论三处发布成功后统一调用 `showSupportNotice`，弹窗展示标题、正文与心理援助热线。
@@ -206,9 +206,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：112 个测试文件，737 个测试全部通过
+- `npm run test`：112 个测试文件，744 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`、下载文件校验 `e5d7bce`、标签编辑器 `29b406d`、搜索联想 `b004ea0`、均衡器频谱 `9c32372`、下载并发 `40fc676`、设置并发滑杆 `4cba7da`、批量音质 `97e7284`、音乐库音质 `71f1532`、单曲音质 `1576de6`、消息刷新 `067ff96`、清理确认 `5e2d79a`、通知卡片 `186a43f`、发帖附件 `0d90cbd`、编辑附件 `8a56331`、分享合规承诺 `c73cd04`、本地删除确认 `9cabd89`、历史上限 `91d71b2`、歌单附件打开 `67154c3`、下载取消竞态 `03b3e82`、退出登录确认 `6b8db5b`、文字帖封面 `a7536ae`、歌单附件封面 `97ed022`、强调色同步 `95cc049`、色板无障碍 `4160c61`、远程歌单存本地 `3a16858`、歌单列表操作 `3088376`、歌单搜索 `1712eef`、歌单云端同步 `9576b97`、插件日志操作 `1d20a55`、下载重下 `eff30d7`、文件名预览 `1e83bb7`、插件设置事件 `0597311`）**均未触发 CI**——额度已用尽，这些提交只经过本地 typecheck / test / build 验证。
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`、下载文件校验 `e5d7bce`、标签编辑器 `29b406d`、搜索联想 `b004ea0`、均衡器频谱 `9c32372`、下载并发 `40fc676`、设置并发滑杆 `4cba7da`、批量音质 `97e7284`、音乐库音质 `71f1532`、单曲音质 `1576de6`、消息刷新 `067ff96`、清理确认 `5e2d79a`、通知卡片 `186a43f`、发帖附件 `0d90cbd`、编辑附件 `8a56331`、分享合规承诺 `c73cd04`、本地删除确认 `9cabd89`、历史上限 `91d71b2`、歌单附件打开 `67154c3`、下载取消竞态 `03b3e82`、退出登录确认 `6b8db5b`、文字帖封面 `a7536ae`、歌单附件封面 `97ed022`、强调色同步 `95cc049`、色板无障碍 `4160c61`、远程歌单存本地 `3a16858`、歌单列表操作 `3088376`、歌单搜索 `1712eef`、歌单云端同步 `9576b97`、插件日志操作 `1d20a55`、下载重下 `eff30d7`、文件名预览 `1e83bb7`、插件设置事件 `0597311`、其余宿主事件 `d1f3dcc`）**均未触发 CI**——额度已用尽，这些提交只经过本地 typecheck / test / build 验证。
 
 ## 当前未完成
 
