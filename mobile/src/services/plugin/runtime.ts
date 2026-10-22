@@ -1190,11 +1190,16 @@ export class PluginRuntime {
         })
         return null
       }
+      // 剪贴板与桌面同口径：读要 clipboard.read、写要 clipboard.write。
+      // 移动端此前两项都不校验——任何插件都能立刻读走用户剪贴板里的
+      // 密码、验证码与聊天记录（手机上剪贴板的内容往往比桌面敏感得多）。
       case 'clipboard.readText': {
+        await this.requirePermission(params?.call?.permissionKey, 'clipboard.read')
         const { Clipboard } = await import('@capacitor/clipboard')
         return (await Clipboard.read()).value ?? ''
       }
       case 'clipboard.writeText': {
+        await this.requirePermission(params?.call?.permissionKey, 'clipboard.write')
         const { Clipboard } = await import('@capacitor/clipboard')
         await Clipboard.write({ string: String(params?.text ?? '') })
         return null
