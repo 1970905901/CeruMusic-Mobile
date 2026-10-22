@@ -868,9 +868,14 @@ onMounted(() => {
     nowTick.value = Date.now()
   }, 500)
   if (auth.authenticated && !lt.inRoom) {
-    void lt.resumeCurrentRoom().then((value) => {
-      previousRoom.value = value
-    })
+    // 后台恢复房间：失败不打扰用户（room 列表本来就是空的），
+    // 但不能让它变成未处理的 rejection。
+    void lt
+      .resumeCurrentRoom()
+      .then((value) => {
+        previousRoom.value = value
+      })
+      .catch(() => undefined)
   }
 })
 
