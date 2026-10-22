@@ -197,7 +197,10 @@ async function skipToLocal() {
 .logo {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* 透明底音符用 contain，cover 会把音符裁掉边缘。 */
+  object-fit: contain;
+  padding: 10px;
+  box-sizing: border-box;
 }
 .brand-copy h1 {
   font-size: 26px;

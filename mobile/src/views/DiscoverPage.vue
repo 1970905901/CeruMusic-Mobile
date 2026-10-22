@@ -471,9 +471,10 @@ onBeforeUnmount(() => {
   --min-height: 52px;
 }
 .top-logo {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  /* logo.png 是「透明底 + 品牌色音符」，不再需要圆角卡片，直接留白即可。 */
+  object-fit: contain;
   margin-left: 8px;
 }
 .hero {
