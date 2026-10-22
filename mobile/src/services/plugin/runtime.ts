@@ -12,6 +12,11 @@ import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDe
 import { assertOwnedRefs, type OwnershipContext } from '@/services/plugin/ownership'
 import { checkPermissionDeclaration, permissionLabel } from '@/services/plugin/permissions'
 import {
+  MAX_STORAGE_VALUE_BYTES,
+  checkStorageKey,
+  storageValueBytes
+} from '@/services/plugin/pluginStorage'
+import {
   parseSocketPayload,
   socketEventName,
   validateSocketOptions,
@@ -426,14 +431,28 @@ export class PluginRuntime {
     switch (method) {
       case 'http.request':
         return performHttp(params)
-      case 'storage.get':
+      // 键与值都要校验（桌面 `PluginStorage.invoke` 同口径）：脏键会永久留在
+      // 数据库里，超大值会把整个 IndexedDB 撑到影响所有插件与本地数据。
+      case 'storage.get': {
+        const keyError = checkStorageKey(params?.key)
+        if (keyError) throw new Error(keyError)
         return kvGet(pluginStorageKey(this.record.key, params.key), null)
-      case 'storage.set':
+      }
+      case 'storage.set': {
+        const keyError = checkStorageKey(params?.key)
+        if (keyError) throw new Error(keyError)
+        const bytes = storageValueBytes(params?.value)
+        if (bytes === null) throw new Error('存储值必须是 JSON')
+        if (bytes > MAX_STORAGE_VALUE_BYTES) throw new Error('插件存储超过 10 MiB')
         await kvSet(pluginStorageKey(this.record.key, params.key), params.value)
         return null
-      case 'storage.delete':
+      }
+      case 'storage.delete': {
+        const keyError = checkStorageKey(params?.key)
+        if (keyError) throw new Error(keyError)
         await kvDelete(pluginStorageKey(this.record.key, params.key))
         return null
+      }
       case 'permissions.request': {
         // 直接请求权限同样要核对声明：否则插件可以绕过 `requirePermission`
         // 先把任意 key 授权下来，再在后续调用里使用。
