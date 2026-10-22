@@ -51,13 +51,35 @@ export function toSyncableSettings(settings: AppSettings): Partial<AppSettings> 
 }
 
 /**
+ * 以「字典」语义同步的字段：键是本机的音源/插件标识。
+ *
+ * 这些字段不能整块替换——设备 A 只装了插件 X、设备 B 只装了插件 Y，
+ * 云端把 Y 的配置传过来时，若整块覆盖就会把 A 上 X 的选择抹掉。
+ */
+const RECORD_KEYS: Array<keyof AppSettings> = ['providerOwners', 'capabilityOwners']
+
+/**
  * 把云端设置合并到本机设置。
  *
  * 敏感字段（api key、权限、引导状态、搜索历史、本机壁纸）永远以本机为准，
  * 避免换设备登录后把别人的 key 或权限写进来，也避免本机壁纸被云端空值覆盖。
+ *
+ * 字典类字段按键合并、云端优先；其它字段整块以云端为准。
  */
 export function mergeCloudSettings(current: AppSettings, cloud: Partial<AppSettings>): AppSettings {
   const merged: AppSettings = { ...current, ...(cloud || {}) }
+  for (const key of RECORD_KEYS) {
+    const fromCloud = cloud?.[key]
+    if (!fromCloud || typeof fromCloud !== 'object' || Array.isArray(fromCloud)) {
+      // 云端没给或给了非法值时保留本机，绝不因为一次脏数据清空映射。
+      ;(merged as unknown as Record<string, unknown>)[key] = current[key]
+      continue
+    }
+    ;(merged as unknown as Record<string, unknown>)[key] = {
+      ...(current[key] as Record<string, string>),
+      ...(fromCloud as Record<string, string>)
+    }
+  }
   for (const key of SENSITIVE_KEYS) {
     ;(merged as unknown as Record<string, unknown>)[key] = current[key]
   }

@@ -125,4 +125,33 @@ describe('settings sync merge', () => {
     const local = localSettings()
     expect(mergeCloudSettings(local, {})).toEqual(local)
   })
+
+  it('merges provider and capability owners per key instead of replacing the map', () => {
+    // 两台设备装的插件不同：云端只有 B 的配置，整块覆盖会让 A 上架好的
+    // 音源实现凭空消失，回到「自动」。
+    const local = localSettings({
+      providerOwners: { netease: 'plugin-a' },
+      capabilityOwners: { 'netease:hot': 'plugin-b' }
+    })
+    const merged = mergeCloudSettings(local, {
+      providerOwners: { qq: 'plugin-c' },
+      capabilityOwners: { 'qq:hot': 'plugin-d' }
+    })
+    expect(merged.providerOwners).toEqual({ netease: 'plugin-a', qq: 'plugin-c' })
+    expect(merged.capabilityOwners).toEqual({ 'netease:hot': 'plugin-b', 'qq:hot': 'plugin-d' })
+  })
+
+  it('lets the cloud win for a key both sides define', () => {
+    const local = localSettings({ providerOwners: { netease: 'plugin-a' } })
+    const merged = mergeCloudSettings(local, { providerOwners: { netease: 'plugin-z' } })
+    expect(merged.providerOwners).toEqual({ netease: 'plugin-z' })
+  })
+
+  it('keeps local owners when the cloud payload carries junk for them', () => {
+    const local = localSettings({ providerOwners: { netease: 'plugin-a' } })
+    const merged = mergeCloudSettings(local, {
+      providerOwners: null as unknown as Record<string, string>
+    })
+    expect(merged.providerOwners).toEqual({ netease: 'plugin-a' })
+  })
 })
