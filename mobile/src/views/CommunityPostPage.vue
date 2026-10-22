@@ -275,6 +275,7 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
+import { loadCloudPlaylist } from '@/services/cloudPlaylistTracks'
 import {
   attachmentCover as attachmentCoverOf,
   attachmentSubtitle as attachmentSubtitleOf,
@@ -318,6 +319,8 @@ const submittingComment = ref(false)
 const replyTarget = ref<{ commentId: string; parentId: string; username: string } | null>(null)
 
 const editing = ref(false)
+/** 歌单附件正在拉取曲目：防止连点触发多次播放。 */
+const playlistAttachmentLoading = ref(false)
 const saving = ref(false)
 const uploading = ref(false)
 const editDraft = ref('')
@@ -623,7 +626,7 @@ async function playAttachment() {
   const value = attachment.value
   if (!value) return
   if (value.type !== 'song') {
-    await toast('歌单附件将在后续云歌单功能中打开', 'medium')
+    await openPlaylistAttachment(value)
     return
   }
   const song = value.song || {}
@@ -655,6 +658,37 @@ async function playAttachment() {
     router.push('/player')
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '无法播放该歌曲', 'danger')
+  }
+}
+
+/**
+ * 打开帖子里的歌单附件。
+ *
+ * 附件只带 `listId`（云端歌单 ID）与前三首预览，原帖里没有完整曲目；
+ * 拉全量后把第一首放进播放队列并开始播放，用户点一下就能听到歌单内容，
+ * 完整列表也可以从播放页队列里看到。此前这里只会弹一句「将在后续打开」。
+ */
+async function openPlaylistAttachment(value: NonNullable<typeof attachment.value>): Promise<void> {
+  const listId = String(value.listId || '').trim()
+  if (!listId) {
+    await toast('这条歌单附件缺少云端 ID，无法打开', 'warning')
+    return
+  }
+  if (playlistAttachmentLoading.value) return
+  playlistAttachmentLoading.value = true
+  try {
+    const result = await loadCloudPlaylist(listId, pluginStore.providers)
+    const playable = result.tracks.filter((track) => track.playable)
+    if (!playable.length) {
+      await toast('歌单里的音源插件尚未安装或启用', 'warning')
+      return
+    }
+    await player.playTrack(playable[0], playable)
+    void router.push('/player')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '无法打开歌单附件', 'danger')
+  } finally {
+    playlistAttachmentLoading.value = false
   }
 }
 
