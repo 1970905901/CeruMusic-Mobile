@@ -118,6 +118,7 @@ import {
   sharedPlaylistTracks
 } from '@/services/sharedPlaylist'
 import { openTrackActions } from '@/services/trackActions'
+import { dedupeByKey } from '@/services/listMerge'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
@@ -180,8 +181,11 @@ async function load(reset: boolean) {
       providers: pluginStore.providers,
       shareId: id.value
     })
-    if (reset) tracks.value = mapped
-    else tracks.value = [...tracks.value, ...mapped]
+    // 分享歌单按 pos 分页，同样可能重叠；按 track key 去重避免重复行。
+    tracks.value = dedupeByKey(
+      reset ? mapped : [...tracks.value, ...mapped],
+      (track) => track.key
+    )
     const cursor = sharedPlaylistNextPos(page.playlist.songs ?? [])
     nextPos.value = cursor
     const total = Number(page.playlist.total || tracks.value.length)

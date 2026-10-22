@@ -307,6 +307,7 @@ import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import { useTrackBatchSelection } from '@/services/trackBatch'
 import { createRequestGuard } from '@/services/requestGuard'
+import { dedupeByKey } from '@/services/listMerge'
 
 const route = useRoute()
 const router = useRouter()
@@ -588,7 +589,8 @@ async function loadRemote(reset = false) {
     const items = (page.items || [])
       .filter((item: any) => item?.ref?.kind === 'track')
       .map((item: any) => pluginStore.normalizeEntity(provider?.pluginKey || source, item))
-    tracks.value = reset ? items : [...tracks.value, ...items]
+    // 音源分页会在边界重复上一页的最后一首；不去重会导致 :key 重复、渲染错乱。
+    tracks.value = dedupeByKey(reset ? items : [...tracks.value, ...items], (track) => track.key)
     nextCursor.value = page.nextCursor
   } catch (cause) {
     if (!remoteRequests.isCurrent(token, identity)) return

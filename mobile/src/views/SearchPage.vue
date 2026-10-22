@@ -201,6 +201,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
 import { createRequestGuard } from '@/services/requestGuard'
+import { dedupeByKey } from '@/services/listMerge'
 import {
   SUGGESTION_GROUPS,
   normalizeSuggestions,
@@ -387,13 +388,21 @@ async function runSearch(reset = false) {
     if (kind.value === 'tracks') {
       const page = await pluginStore.searchTracks(source.value.id, text, reset ? undefined : nextCursor.value)
       if (!searchRequests.isCurrent(token, searchIdentity())) return
-      results.value = reset ? page.items : [...results.value, ...page.items]
+      // 音源分页常在边界重复返回上一页的最后一首；直接拼接会让同一首歌
+      // 在列表里出现两次，`TrackRow` 的 :key 也随之重复、Vue 渲染错乱。
+      const merged = reset
+        ? dedupeByKey(page.items, (track) => track.key)
+        : dedupeByKey([...results.value, ...page.items], (track) => track.key)
+      results.value = merged
       nextCursor.value = page.nextCursor
     } else {
       const page = await pluginStore.searchPlaylists(source.value.id, text, reset ? undefined : nextCursor.value)
       if (!searchRequests.isCurrent(token, searchIdentity())) return
       const items = (page.items ?? []).map((item: any) => ({ ...item }))
-      playlists.value = reset ? items : [...playlists.value, ...items]
+      const keyOf = (item: any) => `${item.ref?.providerId ?? ''}:${item.ref?.id ?? ''}`
+      playlists.value = reset
+        ? dedupeByKey(items, keyOf)
+        : dedupeByKey([...playlists.value, ...items], keyOf)
       nextCursor.value = page.nextCursor
     }
   } catch (cause) {
