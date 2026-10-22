@@ -134,9 +134,18 @@
       </div>
 
       <div v-else-if="activeSegment === 'playlists'" class="section">
-        <div v-if="library.playlists.length" class="playlist-grid ceru-pad">
+        <div v-if="library.playlists.length > 5" class="filter-wrap ceru-pad">
+          <ion-searchbar
+            v-model="playlistFilter"
+            placeholder="搜索歌单名称或描述"
+            :debounce="150"
+            :animated="false"
+            :show-clear-button="'always'"
+          />
+        </div>
+        <div v-if="visiblePlaylists.length" class="playlist-grid ceru-pad">
           <div
-            v-for="playlist in library.playlists"
+            v-for="playlist in visiblePlaylists"
             :key="playlist.id"
             class="playlist-card ceru-press"
             role="button"
@@ -166,8 +175,14 @@
             <div class="playlist-name">新建歌单</div>
           </button>
         </div>
+        <p
+          v-if="playlistFilter && !visiblePlaylists.length"
+          class="empty-search-hint ceru-pad"
+        >
+          未找到名称或描述包含 “{{ playlistFilter }}” 的歌单
+        </p>
         <EmptyState
-          v-else
+          v-else-if="!library.playlists.length"
           title="还没有歌单"
           description="创建歌单，把不同来源的歌曲整理到一起。"
           :icon="albumsOutline"
@@ -392,6 +407,8 @@ const pluginStore = usePluginStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 
 const trackFilter = ref('')
+/** 歌单列表的搜索词：歌单攒多了以后，网格与「新建歌单」混在一起很难找。 */
+const playlistFilter = ref('')
 const batchMatching = ref(false)
 const favoriteSortType = ref<TrackSortType>('default')
 const localSortType = ref<TrackSortType>('default')
@@ -404,6 +421,17 @@ const favoriteSortLabel = computed(() => {
 const localSortLabel = computed(() => {
   const opt = TRACK_SORT_OPTIONS.find((o) => o.type === localSortType.value)
   return opt?.type === 'default' ? '排序' : opt?.label || '排序'
+})
+
+/** 歌单搜索：名称与描述，忽略大小写与首尾空白。 */
+const visiblePlaylists = computed(() => {
+  const q = playlistFilter.value.trim().toLowerCase()
+  if (!q) return library.playlists
+  return library.playlists.filter(
+    (playlist) =>
+      playlist.name.toLowerCase().includes(q) ||
+      String(playlist.description || '').toLowerCase().includes(q)
+  )
 })
 
 const filteredFavorites = computed(() => {
