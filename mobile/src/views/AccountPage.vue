@@ -147,6 +147,7 @@ import {
   IonTitle,
   IonToolbar,
   onIonViewWillEnter,
+  alertController,
   toastController,
   useIonRouter
 } from '@ionic/vue'
@@ -249,7 +250,24 @@ async function login() {
   }
 }
 
-async function logout() {
+/**
+ * 退出登录：先确认。
+ *
+ * 退出会停掉实时消息连接并关闭设置同步，误触后要重新走一遍 Logto 登录；
+ * 桌面端同样有二次确认。
+ */
+async function logout(): Promise<void> {
+  const alert = await alertController.create({
+    header: '退出登录',
+    message: '退出后将停止接收消息通知，并关闭设置同步。确定要退出吗？',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '退出', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'destructive') return
   try {
     await auth.logout()
     await toast('已退出登录')
