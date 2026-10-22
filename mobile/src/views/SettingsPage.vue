@@ -1558,7 +1558,9 @@ async function editDownloadSubfolder() {
 async function editFilenameTemplate() {
   const alert = await alertController.create({
     header: '下载文件名模板',
-    message: '可用变量：{title} {artist} {album} {quality} {ext}',
+    // 两种写法都支持：桌面版习惯 %t/%s/%a/%u/%d/%q，移动端原有 {title} 风格。
+    message:
+      '可用变量：\n%t 歌名 · %s 歌手 · %a 专辑\n%u 平台 · %d 日期 · %q 音质\n也可写作 {title} {artist} {album} {platform} {quality}',
     inputs: [
       {
         name: 'template',

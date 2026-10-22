@@ -145,6 +145,10 @@ export const useDownloadStore = defineStore('downloads', () => {
       artist: task.artist,
       album: track?.album,
       quality: task.quality,
+      // 桌面版 %u 取歌曲来源；移动端用音源名，缺失时由模板兜底。
+      platform:
+        pluginStore.selectedProvider(track?.ref?.providerId ?? '')?.providerName ||
+        track?.ref?.providerId,
       ext
     })
     if (task.directory === 'saf') return `${downloadPrefix(task)}/${filename}`
