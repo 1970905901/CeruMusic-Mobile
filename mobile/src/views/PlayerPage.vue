@@ -237,7 +237,7 @@
     </ion-content>
 
     <ion-modal :is-open="queueOpen" :initial-breakpoint="0.88" :breakpoints="[0, 0.55, 0.88]" @didDismiss="queueOpen = false">
-      <ion-content class="queue-content">
+      <ion-content ref="queueContentRef" class="queue-content">
         <input
           ref="queueFileInput"
           type="file"
@@ -268,6 +268,16 @@
             >
               <ion-icon :icon="folderOpenOutline" />
               导入
+            </button>
+            <!-- 桌面版队列底部有「定位当前播放」；长队列里靠手滑找正在播的那行很难 -->
+            <button
+              v-if="player.currentIndex >= 0"
+              class="queue-action"
+              type="button"
+              @click="locateCurrentInQueue"
+            >
+              <ion-icon :icon="locateOutline" />
+              定位
             </button>
             <button v-if="player.queue.length" class="queue-clear" type="button" @click="clearQueue">
               <ion-icon :icon="trashOutline" />
@@ -354,6 +364,7 @@ import {
   heartOutline,
   headsetOutline,
   listOutline,
+  locateOutline,
   musicalNotesOutline,
   downloadOutline,
   optionsOutline,
@@ -487,6 +498,7 @@ const lyricConverters = computed(() =>
   })
 )
 const queueOpen = ref(false)
+const queueContentRef = ref<any>(null)
 const queueFileInput = ref<HTMLInputElement | null>(null)
 /** 队列文件导入/导出进行中，避免重复点击触发两次。 */
 const queueFileBusy = ref(false)
@@ -836,6 +848,20 @@ function reorderQueue(event: any) {
 
 function removeQueueItem(item: Track) {
   player.removeHostTracks([item.key])
+}
+
+/**
+ * 把队列滚动到当前播放那行（桌面版 `handleLocateCurrentSong`）。
+ *
+ * 用滚动容器的几何计算而不是 `scrollIntoView`：后者会把**整个页面**一起滚，
+ * 弹层里的队列会因为父级滚动而错位。
+ */
+function locateCurrentInQueue(): void {
+  const content = queueContentRef.value
+  const row = content?.querySelector('.queue-row.current') as HTMLElement | null
+  if (!content || !row) return
+  const top = row.offsetTop - content.clientHeight / 2 + row.clientHeight / 2
+  content.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
 }
 
 /**
