@@ -636,9 +636,41 @@ export class PluginRuntime {
         await library.importPlaylistFromPlugin(this.record.key, params?.pluginId, importerId, value)
         return null
       }
-      case 'ui.pluginUpdate.request':
-        await showToast('插件更新请求已记录，请重新导入新版插件文件')
-        return null
+      case 'ui.pluginUpdate.request': {
+        // 与桌面同口径：只接受 HTTPS 地址，先让用户确认，再走插件自己的
+        // sourceUrl 更新并校验 manifest id 未变。此前移动端只弹一句
+        // 「请重新导入文件」，插件根本无法自更新。
+        let url: URL
+        try {
+          url = new URL(String(params?.url ?? ''))
+        } catch {
+          throw new Error('插件更新地址无效')
+        }
+        if (url.protocol !== 'https:' || url.username || url.password) {
+          throw new Error('插件更新地址必须使用 HTTPS')
+        }
+        const version = String(params?.version ?? '').trim()
+        const notes = String(params?.notes ?? '').trim()
+        const confirm = await alertController.create({
+          header: version ? `更新到 ${version}` : '更新插件',
+          message: notes || '更新将保留现有配置和授权。',
+          buttons: [
+            { text: '取消', role: 'cancel' },
+            { text: '更新', role: 'confirm' }
+          ]
+        })
+        await confirm.present()
+        const { role } = await confirm.onDidDismiss()
+        if (role !== 'confirm') return { accepted: false, updated: false }
+        const { usePluginStore } = await import('@/stores/plugins')
+        try {
+          const updated = await usePluginStore().updateFromUrl(this.record.key)
+          await showToast(`插件已更新到 ${updated.manifest.version || version}`)
+          return { accepted: true, updated: true, version: updated.manifest.version || version }
+        } catch (error) {
+          throw new Error(error instanceof Error ? error.message : '插件更新失败')
+        }
+      }
       case 'guests.list': {
         const { guestStoreFor } = await import('@/services/plugin/guests')
         return guestStoreFor(this.record).list()
