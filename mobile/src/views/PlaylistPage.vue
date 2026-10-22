@@ -57,7 +57,7 @@
           <p class="eyebrow">{{ isLocal ? 'PLAYLIST' : 'FROM PLUGIN' }}</p>
           <h1 class="hero-title">{{ title }}</h1>
           <p v-if="description" class="hero-desc">{{ description }}</p>
-          <p class="hero-meta">{{ tracks.length }} 首 · {{ sourceName }}</p>
+          <p class="hero-meta">{{ playlistStatsText }}</p>
           <div class="hero-actions">
             <ion-button :disabled="!tracks.length || batchMode" @click="playAll">
               <ion-icon slot="start" :icon="playIcon" />
@@ -288,6 +288,7 @@ import { useAuthStore } from '@/stores/auth'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { Clipboard } from '@capacitor/clipboard'
 import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/services/playlistFiles'
+import { describePlaylistStats, summarizePlaylist } from '@/services/playlistStats'
 import { saveAndShareFile } from '@/services/fileExport'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
@@ -492,6 +493,12 @@ const sourceName = computed(() => {
   if (isLocal) return '本地歌单'
   const item = pluginStore.sources.find((entry) => entry.id === source)
   return item?.name || '插件歌单'
+})
+/** 歌单统计：歌曲数 · 总时长 · 歌手数（对齐桌面版「播放列表统计」）。 */
+const playlistStatsText = computed(() => {
+  const parts = [describePlaylistStats(summarizePlaylist(tracks.value))]
+  if (sourceName.value) parts.push(sourceName.value)
+  return parts.join(' · ')
 })
 
 function loadLocal() {
