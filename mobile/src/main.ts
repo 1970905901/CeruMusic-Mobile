@@ -195,6 +195,40 @@ startRoutePreloading(() => settings.settings.routePreloadEnabled)
   }
 })()
 
+/**
+ * 处理 `cerumusic://` 深链：一起听邀请、歌单分享、单曲分享。
+ * 无法解析或非本应用的地址一律忽略（OAuth 回调由 Logto 自己处理）。
+ */
+async function handleDeepLink(url: string): Promise<void> {
+  try {
+    await router.isReady()
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'cerumusic:') return
+    if (parsed.hostname === 'lt' || parsed.hostname === 'listen-together') {
+      const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
+      if (code) await router.push({ path: '/listen-together', query: { code } })
+      return
+    }
+    if (parsed.hostname === 'playlist') {
+      const parts = parsed.pathname.replace(/^\/+/, '').split('/')
+      if (parts[0] === 'share' && parts[1]) {
+        await router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
+      }
+      return
+    }
+    if (parsed.hostname === 'share') {
+      const parts = parsed.pathname.replace(/^\/+/, '').split('/')
+      if (parts[0] === 'playlist' && parts[1]) {
+        await router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
+      } else if (parts[0]) {
+        await router.push({ path: '/shared/song/' + encodeURIComponent(parts[0]) })
+      }
+    }
+  } catch {
+    // 非法深链忽略；不让一次点击把应用留在错误页。
+  }
+}
+
 if (Capacitor.isNativePlatform()) {
   void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
     setNativeActive(isActive)
@@ -202,34 +236,21 @@ if (Capacitor.isNativePlatform()) {
     else useNotificationsStore(pinia).wakeRealtime()
   })
 
-  void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
-    try {
-      const parsed = new URL(url)
-      if (
-        parsed.protocol === 'cerumusic:' &&
-        (parsed.hostname === 'lt' || parsed.hostname === 'listen-together')
-      ) {
-        const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
-        if (code) void router.push({ path: '/listen-together', query: { code } })
-      }
-      if (parsed.protocol === 'cerumusic:' && parsed.hostname === 'playlist') {
-        const parts = parsed.pathname.replace(/^\/+/, '').split('/')
-        if (parts[0] === 'share' && parts[1]) {
-          void router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
-        }
-      }
-      if (parsed.protocol === 'cerumusic:' && parsed.hostname === 'share') {
-        const parts = parsed.pathname.replace(/^\/+/, '').split('/')
-        if (parts[0] === 'playlist' && parts[1]) {
-          void router.push({ path: '/shared/playlist/' + encodeURIComponent(parts[1]) })
-        } else if (parts[0]) {
-          void router.push({ path: '/shared/song/' + encodeURIComponent(parts[0]) })
-        }
-      }
-    } catch {
-      // Invalid deep links are ignored; OAuth callbacks are handled by Logto.
-    }
-  })
+  void CapacitorApp.addListener('appUrlOpen', ({ url }) => handleDeepLink(url))
+
+  /**
+   * 冷启动深链。
+   *
+   * `appUrlOpen` 只在应用**已经运行**时触发。用户从聊天里点一个
+   * `cerumusic://share/...` 链接、应用当时是关闭状态时，系统直接把应用拉起来，
+   * 这条 URL 只会出现在 `getLaunchUrl()` 里——此前没有读它，于是应用停在首页，
+   * 分享链接看着像没反应（再点一次才会好，因为那时进程已在运行）。
+   */
+  void CapacitorApp.getLaunchUrl()
+    .then((result) => {
+      if (result?.url) void handleDeepLink(result.url)
+    })
+    .catch(() => undefined)
 
   void CapacitorApp.addListener('backButton', ({ canGoBack }) => {
     const route = router.currentRoute.value
