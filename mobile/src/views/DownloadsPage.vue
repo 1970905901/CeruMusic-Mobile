@@ -149,6 +149,9 @@ const visibleTasks = computed(() => selectDownloadTasks(downloads.tasks, tab.val
 /** 服务端给的 segment 值是宽泛类型，收敛成三个合法分类。 */
 function setTab(value: unknown) {
   tab.value = value === 'completed' || value === 'failed' ? value : 'active'
+  // 桌面版在切到「已完成」时校验文件是否还在（validateFiles），
+  // 否则被用户在文件管理器里删掉的歌会一直显示「已完成」，点播放才报错。
+  if (tab.value === 'completed') void downloads.validateFiles()
 }
 
 const hasPaused = computed(() => downloads.tasks.some((task) => task.status === 'paused'))

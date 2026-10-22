@@ -23,6 +23,11 @@ import { parseLyrics } from '@/services/lyrics'
 import { blobToDataUrl } from '@/services/imageUtils'
 import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
 import { selectTasksToStart } from '@/services/downloadPump'
+import {
+  MISSING_DOWNLOAD_MESSAGE,
+  isMissingFileError,
+  tasksNeedingValidation
+} from '@/services/downloadValidation'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -491,6 +496,41 @@ export const useDownloadStore = defineStore('downloads', () => {
     await completeDownload(task, path, base64, ext, String(mime))
   }
 
+  /**
+   * 校验已完成的任务，文件已被删除/移动的改判为失败（桌面版 `validateFiles`）。
+   *
+   * 移动到「已完成」分页时调用。只有确认为「不存在」才改判——权限抖动或
+   * 原生桥接异常都当作无法确认而保持原样，避免把整页下载凭空标成失败。
+   */
+  async function validateFiles(): Promise<number> {
+    let changed = 0
+    for (const task of tasksNeedingValidation(tasks.value)) {
+      try {
+        await Filesystem.stat({
+          path: task.relativePath as string,
+          directory: storageDirectory(task)
+        })
+      } catch (error) {
+        if (!isMissingFileError(error)) {
+          console.warn('无法确认下载文件是否存在', task.id, error)
+          continue
+        }
+        updateTask(task.id, { status: 'failed', error: MISSING_DOWNLOAD_MESSAGE })
+        // 歌曲上挂着的下载地址同样失效了；不清掉的话点播放还是会走那个已不存在的路径。
+        const track = library.getTrack(task.trackKey)
+        if (track && track.downloadedRelativePath === task.relativePath) {
+          library.upsertTrack({
+            ...track,
+            downloadedPath: undefined,
+            downloadedRelativePath: undefined
+          })
+        }
+        changed++
+      }
+    }
+    return changed
+  }
+
   async function createDownload(track: Track, quality?: string): Promise<DownloadTask> {
     const directoryMode = settings.settings.downloadDirectoryMode
     if (directoryMode === 'saf') {
@@ -729,6 +769,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     runningCount,
     completed,
     init,
+    validateFiles,
     createDownload,
     createBatchDownloads,
     pause,
