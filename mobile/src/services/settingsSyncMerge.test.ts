@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeCloudSettings, toSyncableSettings } from './settingsSync'
+import { mergeCloudSettings, shouldScheduleUpload, toSyncableSettings } from './settingsSync'
 import type { AppSettings } from '@/stores/settings'
 
 function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -153,5 +153,21 @@ describe('settings sync merge', () => {
       providerOwners: null as unknown as Record<string, string>
     })
     expect(merged.providerOwners).toEqual({ netease: 'plugin-a' })
+  })
+})
+
+describe('settings sync upload scheduling', () => {
+  const base = { stopped: false, applying: false, authenticated: true, cloudSyncEnabled: true }
+
+  it('uploads when signed in with cloud sync on', () => {
+    expect(shouldScheduleUpload(base)).toBe(true)
+  })
+
+  it('stays quiet while signed out, disabled, stopped or applying a cloud merge', () => {
+    // applying 期间必须静默：否则把云端值写进来会立刻触发一次上传，来回打乒乓。
+    expect(shouldScheduleUpload({ ...base, authenticated: false })).toBe(false)
+    expect(shouldScheduleUpload({ ...base, cloudSyncEnabled: false })).toBe(false)
+    expect(shouldScheduleUpload({ ...base, stopped: true })).toBe(false)
+    expect(shouldScheduleUpload({ ...base, applying: true })).toBe(false)
   })
 })

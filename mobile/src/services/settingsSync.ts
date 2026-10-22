@@ -42,6 +42,7 @@ let syncing = false
 let initialized = false
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let watchers: Array<() => void> = []
+let onlineHandler: (() => void) | null = null
 
 /** 仅保留可跨设备同步的字段；敏感字段一律剔除。 */
 export function toSyncableSettings(settings: AppSettings): Partial<AppSettings> {
@@ -263,9 +264,27 @@ export async function checkCloudSettings(interactive = true): Promise<boolean> {
   }
 }
 
+/** 是否应当安排一次上传；抽成纯函数以便单测（停止/应用中/未登录/关闭同步都不传）。 */
+export function shouldScheduleUpload(state: {
+  stopped: boolean
+  applying: boolean
+  authenticated: boolean
+  cloudSyncEnabled: boolean
+}): boolean {
+  return !state.stopped && !state.applying && state.authenticated && state.cloudSyncEnabled
+}
+
 function scheduleUpload() {
-  if (stopped || applying || !useAuthStore().authenticated) return
-  if (!useSettingsStore().settings.cloudSyncEnabled) return
+  if (
+    !shouldScheduleUpload({
+      stopped,
+      applying,
+      authenticated: useAuthStore().authenticated,
+      cloudSyncEnabled: useSettingsStore().settings.cloudSyncEnabled
+    })
+  ) {
+    return
+  }
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     void uploadSettings()
@@ -285,23 +304,47 @@ export function startSettingsSync() {
       scheduleUpload
     )
   )
-  window.addEventListener('online', () => {
+  // 保存引用以便 stop 时移除；每次 start 重新注册同一个函数，不会叠加。
+  onlineHandler = () => {
+    if (stopped) return
     if (useAuthStore().authenticated) void checkCloudSettings(false)
-  })
+  }
+  window.addEventListener('online', onlineHandler)
   if (useAuthStore().authenticated) {
     setTimeout(() => void checkCloudSettings(true), 1500)
   }
 }
 
+/**
+ * 停止同步并真正取消订阅。
+ *
+ * 此前只置 `stopped` 与清防抖定时器，watcher 与 `online` 监听始终留着：
+ * 退出登录后它们仍在跑（虽然 scheduleUpload 会早退），而 `initialized`
+ * 一直是 true，导致下次登录时 startSettingsSync 直接返回、再也不订阅。
+ */
 export function stopSettingsSync() {
   stopped = true
   clearTimeout(debounceTimer)
+  for (const dispose of watchers) {
+    try {
+      dispose()
+    } catch {
+      // 已释放的 watcher 不应阻断后续清理。
+    }
+  }
+  watchers = []
+  if (onlineHandler) {
+    window.removeEventListener('online', onlineHandler)
+    onlineHandler = null
+  }
+  initialized = false
 }
 
 export function restartSettingsSync() {
-  if (!initialized) return
+  // stop 会把 initialized 复位，所以这里不能再用它当「是否运行过」的判据：
+  // 登录切换时必须重新订阅 watcher，否则这次登录后再也不会自动上传。
   stopSettingsSync()
-  stopped = false
+  startSettingsSync()
   if (useAuthStore().authenticated) {
     setTimeout(() => void checkCloudSettings(false), 500)
   }
