@@ -320,6 +320,11 @@ export class PluginRuntime {
     this.pending.clear()
     this.clearScheduledTasks()
     this.clearSockets()
+    // 插件停用/卸载/崩溃后不会再调用 ui.progress.close，
+    // 不清理的话它的进度卡片会永远挂在界面上。
+    void import('@/services/pluginProgress').then(({ clearPluginProgress }) =>
+      clearPluginProgress(this.record.key)
+    )
   }
 
   private invoke(payload: { kind: string; target: string; method?: string; args: any[] }): Promise<any> {
@@ -509,7 +514,7 @@ export class PluginRuntime {
       }
       case 'ui.progress.create': {
         const { createPluginProgress } = await import('@/services/pluginProgress')
-        return createPluginProgress(params)
+        return createPluginProgress(params, this.record.key)
       }
       case 'ui.progress.update': {
         const { updatePluginProgress } = await import('@/services/pluginProgress')

@@ -2,6 +2,8 @@ import { reactive } from 'vue'
 
 export interface PluginProgressItem {
   id: string
+  /** 创建它的插件。插件被卸载/停用时据此清理，避免卡片永远留在屏幕上。 */
+  owner?: string
   title: string
   message?: string
   value: number | null
@@ -26,16 +28,28 @@ function normalizeValue(value: unknown): number | null {
   return null
 }
 
-export function createPluginProgress(request: any): string {
+export function createPluginProgress(request: any, owner?: string): string {
   const id = `plugin-progress-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   pluginProgressState.items.push({
     id,
+    ...(owner ? { owner } : {}),
     title: String(request?.title || request?.message || '插件任务'),
     message: request?.message ? String(request.message) : undefined,
     value: normalizeValue(request?.value ?? request?.progress),
     createdAt: Date.now()
   })
   return id
+}
+
+/**
+ * 插件运行时停止时清理它留下的进度卡片。
+ *
+ * 插件崩溃、被禁用或热重载时，`ui.progress.close` 永远不会再被调用；
+ * 不主动清理的话那张「正在处理…」的卡片会一直挂在界面上。
+ */
+export function clearPluginProgress(owner: string): void {
+  if (!owner) return
+  pluginProgressState.items = pluginProgressState.items.filter((entry) => entry.owner !== owner)
 }
 
 export function updatePluginProgress(id: string, value: any): void {
