@@ -163,6 +163,7 @@
 - 社区评论定位高亮：`services/commentLocate.ts` 把通知里的 `commentId` 映射到「根评论 / 回复」两种落点——命中回复时先展开所属根评论的回复再滚动，命中根评论直接滚动；定位成功后该条评论高亮 1.6s 后褪去，找不到（已删除或未加载）时提示而不是静默失败。社区页此前只预填回复、不滚动，现在与桌面端 `PostDetailModal` 的跳转反馈一致。- 社区。
 - AI 助手。
 - 一起听。
+- 已完成下载的文件校验：对齐桌面端 `DownloadManager.validateFiles`。用户可能在系统文件管理器里删掉下载好的歌，桌面版在打开「已完成」分页时逐个确认文件仍在，缺失的改判为「文件已删除或移动」；移动端此前从不校验，列表一直显示「已完成」，点播放才报错。现在切到「已完成」分页即校验（`services/downloadValidation.ts`）：只查已完成、有应用内相对路径的任务，跳过 SAF（外部授权目录只有 document URI，无法 stat）；**只有确认为「不存在」才改判**，权限抖动或原生桥接异常视为无法确认并保持原样，避免把整页下载凭空标成失败。改判时同时摘掉歌曲上已失效的下载路径，播放不会再指向不存在的文件。
 - 识曲片段定位与结果搜索：对齐桌面端 `views/music/recognize.vue`。移动端此前丢弃了识别结果里的 `startTime`，点播放一律从 0:00 开始，和刚听到的那一段对不上；现在结果卡片显示「识别片段 03:12」，播放后 seek 到该处并提示。结果旁补上桌面版的搜索按钮（歌名 + 歌手跳搜索页）。结果归一化收敛到 `services/recognizeResults.ts`：兼容数组 / `items` / `songs` 三种外壳，封面按 `img`/`artworkUrl`/`cover`/`pic` 取，歌手数组与对象展平成「A / B」，小于 1000 的小数当秒处理（12.5 → 12.5s，而不是 12ms），非对象条目直接丢弃。
 - 歌单转换器。
 - 主题与设置。
@@ -180,9 +181,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：100 个测试文件，634 个测试全部通过
+- `npm run test`：101 个测试文件，641 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后三次提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`）**未触发 CI**——额度已用尽，这几次只经过本地 typecheck / test / build 验证。
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`、下载文件校验 `e5d7bce`）**均未触发 CI**——额度已用尽，这些提交只经过本地 typecheck / test / build 验证。
 
 ## 当前未完成
 
