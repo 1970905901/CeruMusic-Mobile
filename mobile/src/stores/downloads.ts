@@ -30,6 +30,7 @@ import {
   isMissingFileError,
   tasksNeedingValidation
 } from '@/services/downloadValidation'
+import { createProgressThrottle } from '@/services/progressThrottle'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -135,10 +136,18 @@ export const useDownloadStore = defineStore('downloads', () => {
     })
   }
 
+  /**
+   * 进度节流：`xhr.onprogress` 每秒触发几十次，每次都写 IndexedDB 并向所有
+   * 插件广播 `downloads.changed`，写入队列会被排满、界面跟着变卡。
+   * 只有状态跃迁不节流——应用被杀时已完成的任务若停在 running，重开就会重下。
+   */
+  const progressThrottle = createProgressThrottle()
+
   function updateTask(id: string, patch: Partial<DownloadTask>): void {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
     Object.assign(task, patch, { updatedAt: Date.now() })
+    if (!progressThrottle.shouldWrite(id, 'status' in patch)) return
     void persist(task)
   }
 
