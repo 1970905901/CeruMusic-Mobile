@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39636467190`（功能提交 `e02acee`），Android/iOS 均成功
+- 最新 CI：`39701316342`（功能提交 `94a4b7a`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -125,6 +125,7 @@
 - 插件权限判定：`resolvePermissionKey` 把缺省 / 空白 / 非字符串的 `permissionKey` 一律视为未授权（旧实现 `if (!key) return` 会让插件不传 key 就绕过业务能力授权）；同时为 `buildUrl` / `jsonHeaders` 补了协议白名单、凭据拒绝、query 与 header 归一化测试。
 - 音源路由：`pickProviderByProtocol` 只在声明了该协议的 provider 中选择；旧实现找不到匹配项时会回落到 `providers[0]`，可能把请求发给不支持该协议的插件。用户指定的插件若未声明该协议也会被跳过。
 - 设置同步隐私边界：toSyncableSettings 与 mergeCloudSettings 共用同一份 SENSITIVE_KEYS（api key、权限表、引导状态、搜索历史、本机壁纸），上传剔除与云端合并不再各写一份清单。
+- 设置同步的字典字段：`providerOwners` 与 `capabilityOwners` 改成**按键合并**（冲突时云端优先），不再整块替换。这两个映射的键是本机的音源/插件标识，而两台设备装的插件往往不同——原先浅合并会把本机架好的音源实现与能力路由抹掉，静默回落到「自动」。云端缺失或给出非法值时保留本机映射，不会因一次脏数据清空。`tagWriteOptions` 等嵌套对象由读取时的 `normalizeTagWriteOptions` 兜底，部分字段缺失会回落到默认值而不是留下 `undefined`。
 - 一起听位置同步：targetPositionAt 抽成纯函数并先用 finiteOrZero 收敛服务端字段，脏锚点（非数字）不再让播放位置变成 NaN；暂停不补偿、未来锚点不倒扣、负值归零都有测试覆盖。
 - 插件 KV 清理：isPluginKvKey 按 plugin:<key>: 整段前缀匹配；插件 id 只允许 [A-Za-z0-9._-]，因此 com.example.plugin 不再误删 com.example.plugin2 的数据，空 key 直接拒绝。
 - 通知未读角标：subtractUnread 统一处理总数与分类扣减，计数落后于列表时夹到 0，脏计数按 0 处理。
@@ -166,9 +167,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：90 个测试文件，534 个测试全部通过
+- `npm run test`：90 个测试文件，537 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39636467190）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39701316342）
 
 ## 当前未完成
 
