@@ -4,7 +4,7 @@
     :class="{ round }"
     :style="{ width: `${size}px`, height: `${size}px`, borderRadius: round ? '50%' : `${radius}px` }"
   >
-    <img v-if="src && !failed" :src="src" :alt="alt" loading="lazy" @error="failed = true" />
+    <img v-if="resolvedSrc && !failed" :src="resolvedSrc" :alt="alt" loading="lazy" @error="failed = true" />
     <div v-else class="fallback">
       <ion-icon :icon="musicalNotes" />
     </div>
@@ -12,9 +12,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { IonIcon } from '@ionic/vue'
 import { musicalNotes } from 'ionicons/icons'
+import {
+  fetchAndCacheCover,
+  getCachedCover,
+  isCacheableCoverUrl
+} from '@/services/coverCache'
 
 const props = withDefaults(
   defineProps<{
@@ -32,11 +37,29 @@ const props = withDefaults(
   }
 )
 const failed = ref(false)
+/** 命中本地封面缓存时改用 data URL，避开图片 CDN 的短期缓存过期。 */
+const cachedSrc = ref<string | undefined>()
+const resolvedSrc = computed(() => cachedSrc.value ?? props.src)
+
+let requestId = 0
 watch(
   () => props.src,
-  () => {
+  async (src) => {
     failed.value = false
-  }
+    cachedSrc.value = undefined
+    // 换图后旧结果不得回填（列表滚动时同一个组件会复用来渲染不同歌曲）。
+    const current = ++requestId
+    if (!isCacheableCoverUrl(src)) return
+    const hit = await getCachedCover(src)
+    if (current !== requestId) return
+    if (hit) {
+      cachedSrc.value = hit
+      return
+    }
+    // 未命中就先显示网络地址，再补一份到本地，下次直接读缓存。
+    void fetchAndCacheCover(src)
+  },
+  { immediate: true }
 )
 </script>
 

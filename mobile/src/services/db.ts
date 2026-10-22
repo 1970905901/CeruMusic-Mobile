@@ -40,6 +40,17 @@ interface CeruMobileDB extends DBSchema {
     value: LocalTrackRecord
     indexes: { 'by-created-at': number }
   }
+  covers: {
+    key: string
+    value: {
+      url: string
+      data: string
+      mime: string
+      bytes: number
+      usedAt: number
+    }
+    indexes: { 'by-used-at': number }
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<CeruMobileDB>> | null = null
@@ -55,20 +66,27 @@ export function toPlain<T>(value: T): T {
 
 export function getDb(): Promise<IDBPDatabase<CeruMobileDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<CeruMobileDB>('ceru-music-mobile', 1, {
-      upgrade(db) {
-        db.createObjectStore('plugins', { keyPath: 'key' })
-        db.createObjectStore('kv')
-        const tracks = db.createObjectStore('tracks', { keyPath: 'key' })
-        tracks.createIndex('by-plugin', 'pluginKey')
-        db.createObjectStore('playlists', { keyPath: 'id' })
-        db.createObjectStore('favorites', { keyPath: 'key' })
-        const history = db.createObjectStore('history', { keyPath: 'id' })
-        history.createIndex('by-played-at', 'playedAt')
-        const downloads = db.createObjectStore('downloads', { keyPath: 'id' })
-        downloads.createIndex('by-created-at', 'createdAt')
-        const local = db.createObjectStore('localTracks', { keyPath: 'key' })
-        local.createIndex('by-created-at', 'createdAt')
+    dbPromise = openDB<CeruMobileDB>('ceru-music-mobile', 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          db.createObjectStore('plugins', { keyPath: 'key' })
+          db.createObjectStore('kv')
+          const tracks = db.createObjectStore('tracks', { keyPath: 'key' })
+          tracks.createIndex('by-plugin', 'pluginKey')
+          db.createObjectStore('playlists', { keyPath: 'id' })
+          db.createObjectStore('favorites', { keyPath: 'key' })
+          const history = db.createObjectStore('history', { keyPath: 'id' })
+          history.createIndex('by-played-at', 'playedAt')
+          const downloads = db.createObjectStore('downloads', { keyPath: 'id' })
+          downloads.createIndex('by-created-at', 'createdAt')
+          const local = db.createObjectStore('localTracks', { keyPath: 'key' })
+          local.createIndex('by-created-at', 'createdAt')
+        }
+        if (oldVersion < 2) {
+          // 封面缓存：桌面版 v2.2.0 的「封面落盘，下次直接读本地」。
+          const covers = db.createObjectStore('covers', { keyPath: 'url' })
+          covers.createIndex('by-used-at', 'usedAt')
+        }
       }
     })
   }
