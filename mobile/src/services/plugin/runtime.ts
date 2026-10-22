@@ -587,14 +587,28 @@ export class PluginRuntime {
       case 'ui.pickPlaylist': {
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
-        let picked: { id: string; name: string } | null = null
+        // 返回值必须是 SDK 的 LibraryPlaylist：`ref: { id, location }` 与 `writable`。
+        // 此前只给 `{ id, name }`，插件按类型解构 `ref.id` 会拿到 undefined。
+        let picked: {
+          ref: { id: string; location: 'local' }
+          name: string
+          description?: string
+          trackCount?: number
+          writable: boolean
+        } | null = null
         const sheet = await actionSheetController.create({
           header: '选择歌单',
           buttons: [
             ...library.playlists.map((playlist) => ({
               text: playlist.name,
               handler: () => {
-                picked = { id: playlist.id, name: playlist.name }
+                picked = {
+                  ref: { id: playlist.id, location: 'local' as const },
+                  name: playlist.name,
+                  description: playlist.description,
+                  trackCount: playlist.trackKeys.length,
+                  writable: true
+                }
               }
             })),
             { text: '取消', role: 'cancel' as const }
