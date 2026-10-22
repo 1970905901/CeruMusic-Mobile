@@ -622,9 +622,12 @@ async function playAll() {
 async function shuffleAll() {
   const currentList = displayTracks.value.length ? displayTracks.value : tracks.value
   if (!currentList.length) return
-  const shuffled = [...currentList].sort(() => Math.random() - 0.5)
+  // 只随机「从哪首开始」，队列本身按原顺序交给播放器，由 shuffle 模式统一洗牌。
+  // 两边都打乱等于双重随机：洗牌顺序与队列顺序互不对应，
+  // 手动点队列里任意一首时又会重新洗一次，播放顺序完全不可复现。
+  const startIndex = Math.floor(Math.random() * currentList.length)
   player.setMode({ shuffle: true })
-  await play(shuffled[0], shuffled)
+  await play(currentList[startIndex], currentList)
 }
 
 const hasCurrentPlayingTrack = computed(() => {
