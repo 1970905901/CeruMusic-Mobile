@@ -396,6 +396,7 @@ import {
 } from '@/services/playlistFiles'
 import { saveAndShareFile } from '@/services/fileExport'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
+import { publishCurrentLyrics } from '@/services/lyricsBridge'
 import { createIdleControls } from '@/services/idleControls'
 import { lyricJumpStyle } from '@/services/lyricJump'
 import {
@@ -1035,6 +1036,19 @@ watch(
   }
 )
 let currentTrackCacheKey = ''
+
+/**
+ * 歌词变化推给插件（`ctx.events.on('lyrics.changed')`）。
+ *
+ * 桌面版在 PluginHostBridge 里监听全局歌词状态；移动端歌词只在这个组件里，
+ * 所以由这里广播。只在**文档对象换掉**时推（切歌、加载完成、清空），
+ * 不跟当前行或高亮走——插件关心的是整份歌词，不是播放行号。
+ */
+watch(
+  lyricsDoc,
+  (doc) => publishCurrentLyrics(doc),
+  { deep: false, flush: 'post' }
+)
 
 watch(currentLineIndex, (next, previous) => {
   if (isSeekJump(previous, next)) {

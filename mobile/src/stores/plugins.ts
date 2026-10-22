@@ -4,6 +4,7 @@ import { PLUGIN_PUBLIC_SETTINGS, pluginSettingsGet } from '@/services/pluginSett
 import { changedPermissionKeys, settingsChangedKeys } from '@/services/pluginEvents'
 import { pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices } from '@/services/pluginDevices'
+import { onCurrentLyrics } from '@/services/lyricsBridge'
 import { useAuthStore } from '@/stores/auth'
 import { useListenTogetherStore } from '@/stores/listenTogether'
 import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
@@ -693,6 +694,8 @@ export const usePluginStore = defineStore('plugins', () => {
     )
     // 移动端设备列表固定为本机输出，只在启动时推一次，避免无意义的重复事件。
     pluginRuntimeManager.publish('devices.changed', pluginAudioDevices())
+    // 歌词只存在于播放页组件里，通过桥把变化转发给插件（桌面 PluginHostBridge 同口径）。
+    onCurrentLyrics((document) => pluginRuntimeManager.publish('lyrics.changed', document))
   }
 
   return {
