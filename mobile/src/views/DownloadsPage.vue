@@ -265,7 +265,12 @@ async function confirmDelete(task: DownloadTask) {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') await downloads.remove(task.id)
+  if (role !== 'destructive') return
+  try {
+    await downloads.remove(task.id)
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '删除失败', 'danger')
+  }
 }
 
 async function clearCompleted() {
@@ -279,7 +284,14 @@ async function clearCompleted() {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') await downloads.clearCompleted()
+  if (role !== 'destructive') return
+  try {
+    await downloads.clearCompleted()
+  } catch (error) {
+    // 删除文件可能因权限/占用失败；不捕获会变成未处理的 rejection，
+    // 用户点了「清理」却什么提示都没有。
+    await toast(error instanceof Error ? error.message : '清理失败', 'danger')
+  }
 }
 
 /** 同时下载数：范围与桌面版一致（1–5），选完立即生效并补位。 */
@@ -309,7 +321,12 @@ async function confirmClearQueue() {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') await downloads.clearQueue()
+  if (role !== 'destructive') return
+  try {
+    await downloads.clearQueue()
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '清空失败', 'danger')
+  }
 }
 
 async function confirmClearFailed() {
@@ -323,7 +340,12 @@ async function confirmClearFailed() {
   })
   await alert.present()
   const { role } = await alert.onDidDismiss()
-  if (role === 'destructive') await downloads.clearFailed()
+  if (role !== 'destructive') return
+  try {
+    await downloads.clearFailed()
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '清空失败', 'danger')
+  }
 }
 
 async function toast(message: string, color = 'medium') {
