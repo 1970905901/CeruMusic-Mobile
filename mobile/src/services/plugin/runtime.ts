@@ -903,11 +903,16 @@ export class PluginRuntime {
         await Clipboard.write({ string: String(params?.text ?? '') })
         return null
       }
+      // 本地音乐与桌面同口径：读（list / scan / getTags）要 localMusic.read，
+      // 改标签要 localMusic.write。移动端此前一项都不校验，插件可以直接读用户
+      // 本机音乐库、甚至改写音频文件里的标签。
       case 'localMusic.list': {
+        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().localMusicPage(params?.cursor)
       }
       case 'localMusic.scan': {
+        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
         // 插件传了目录句柄就只扫这些目录（Android SAF）；没传则沿用应用自己的扫描范围。
         const handles = Array.isArray(params?.directories) ? params.directories : []
         const folders = handles
@@ -926,18 +931,24 @@ export class PluginRuntime {
         return { taskId: `scan-${Date.now().toString(36)}`, imported: records.length }
       }
       case 'localMusic.getTags': {
+        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().localTags(params?.track)
       }
       case 'localMusic.writeTags': {
+        await this.requirePermission(params?.call?.permissionKey, '本地音乐修改')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().writeLocalTags(params?.track, params?.tags)
       }
       case 'settings.get': {
+        await this.requirePermission(params?.call?.permissionKey, '设置读取')
         const settings = useSettingsStore()
         return pluginSettingsGet(params?.keys ?? [], settings.settings as Record<string, unknown>)
       }
       case 'settings.update': {
+        // 写入同样要授权：公开白名单挡住了密钥类字段，但「改用户的播放设置」
+        // 本身也该由用户同意（桌面 `services.settings.update` 要 settings.write）。
+        await this.requirePermission(params?.call?.permissionKey, '设置修改')
         const settings = useSettingsStore()
         pluginSettingsUpdate(params?.values, settings.settings as Record<string, any>)
         return null
