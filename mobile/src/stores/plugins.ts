@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { PLUGIN_PUBLIC_SETTINGS, pluginSettingsGet } from '@/services/pluginSettings'
+import { settingsChangedKeys } from '@/services/pluginEvents'
 import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { ProviderEntry, PluginLogEntry, PluginRecord, PluginRuntimeInfo } from '@/types/plugin'
 import type { SearchPage, Track } from '@/types/music'
@@ -603,6 +605,41 @@ export const usePluginStore = defineStore('plugins', () => {
     pluginRuntimeManager.publish('theme.changed', { theme })
   }
 
+  function publishSettings(keys: string[]) {
+    if (!keys.length) return
+    pluginRuntimeManager.publish('settings.changed', { keys })
+  }
+
+  /**
+   * 把「设置变化」与「主题变化」真正推给插件。
+   *
+   * `PORTING_STATUS` 一直写着已覆盖这两个事件，但 `publishTheme` /
+   * `publishPermissions` 从未有人调用，`settings.changed` 更是连发布函数都没有——
+   * 插件监听 `ctx.events.on('settings.changed')` 拿不到任何东西。
+   * 这里挂一次深监听：只比较白名单里的公开设置，避免把 API key、权限表等
+   * 内部状态通过事件名泄露给插件（与 `pluginSettingsGet` 同一份白名单）。
+   */
+  let settingsWatchStarted = false
+  function startSettingsEvents(): void {
+    if (settingsWatchStarted) return
+    settingsWatchStarted = true
+    let previousTheme = settings.isDark ? 'dark' : 'light'
+    watch(
+      () => settings.isDark,
+      (dark) => {
+        const theme = dark ? 'dark' : 'light'
+        if (theme === previousTheme) return
+        previousTheme = theme
+        publishTheme(theme)
+      }
+    )
+    watch(
+      () => pluginSettingsGet(PLUGIN_PUBLIC_SETTINGS, settings.settings as Record<string, unknown>),
+      (next, previous) => publishSettings(settingsChangedKeys(previous, next)),
+      { deep: true }
+    )
+  }
+
   return {
     plugins,
     runtimeInfo,
@@ -651,7 +688,9 @@ export const usePluginStore = defineStore('plugins', () => {
     publishLibrary,
     publishDownloads,
     publishPermissions,
-    publishTheme
+    publishTheme,
+    publishSettings,
+    startSettingsEvents
   }
 })
 

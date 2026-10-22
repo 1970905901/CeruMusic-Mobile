@@ -139,7 +139,10 @@ void (async () => {
         }
       }
     )
-    await usePluginStore(pinia).init()
+    const plugins = usePluginStore(pinia)
+    await plugins.init()
+    // 设置/主题变化推给插件（ctx.events.on('settings.changed' / 'theme.changed')）
+    plugins.startSettingsEvents()
     if (settings.settings.autoUpdatePlugins) {
       setTimeout(async () => {
         try {
