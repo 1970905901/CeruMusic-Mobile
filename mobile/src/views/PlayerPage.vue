@@ -816,8 +816,11 @@ async function applyPreferredQuality(quality: string) {
   settings.settings.preferredQuality = quality
   const name = quality ? getQualityDisplayName(quality) : '自动音质'
   try {
-    await player.reloadCurrentTrack()
-    await toast(`已切换到${name}`)
+    // 正在装载另一首时 `reloadCurrentTrack` 会直接放弃（返回 false）。
+    // 此时音质设置已保存、下一首生效，但当前这首歌**没有**换音源——
+    // 仍然报「已切换」会让用户以为现在听到的就是新音质。
+    const reloaded = await player.reloadCurrentTrack()
+    await toast(reloaded ? `已切换到${name}` : `${name}将在下一首生效`)
   } catch (error) {
     await toast(error instanceof Error ? error.message : '切换音质失败', 'danger')
   }
