@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   IonBackButton,
@@ -109,6 +109,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
+import { createRequestGuard } from '@/services/requestGuard'
 import shareApi, { type ShareDetail } from '@/services/shareApi'
 import { readShareDescriptor } from '@/services/pluginSharing'
 import type { Track } from '@/types/music'
@@ -197,11 +198,18 @@ function formatDate(value: number): string {
   ).padStart(2, '0')}`
 }
 
+/**
+ * 分享链接之间的竞态：从一个分享跳到另一个时，旧链接的响应可能后到，
+ * 把上一首的详情写进当前页面。按链接 id 作废旧请求，只接受当前链接的结果。
+ */
+const shareRequests = createRequestGuard()
+
 async function load() {
   if (!id.value) {
     error.value = '分享链接缺少 ID'
     return
   }
+  const token = shareRequests.beginLatest(id.value)
   loading.value = true
   error.value = ''
   try {
@@ -226,12 +234,15 @@ async function load() {
       directTrack.value = buildPluginTrack()
       return
     }
-    detail.value = await shareApi.getById(id.value)
+    const loaded = await shareApi.getById(id.value)
+    if (!shareRequests.isCurrent(token, id.value)) return
+    detail.value = loaded
     directTrack.value = buildDirectTrack()
   } catch (cause) {
+    if (!shareRequests.isCurrent(token, id.value)) return
     error.value = cause instanceof Error ? cause.message : '分享不存在或已过期'
   } finally {
-    loading.value = false
+    if (shareRequests.isCurrent(token, id.value)) loading.value = false
   }
 }
 
@@ -279,6 +290,7 @@ async function toggleFavorite() {
 }
 
 watch(id, load, { immediate: true })
+onBeforeUnmount(() => shareRequests.dispose())
 </script>
 <style scoped>
 .shared-content {
