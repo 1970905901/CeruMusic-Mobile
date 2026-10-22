@@ -90,6 +90,22 @@
               @ionInput="onBassGain"
             />
           </ion-item>
+          <!-- 桌面版AudioEffectSettings 的快捷档位：轻度 3 / 中度 6 / 重度 9 dB -->
+          <ion-item>
+            <ion-segment
+              :value="activeBassPreset"
+              :disabled="!state.bassBoost.enabled"
+              @ionChange="onBassPreset"
+            >
+              <ion-segment-button
+                v-for="preset in BASS_PRESETS"
+                :key="preset.value"
+                :value="preset.value"
+              >
+                <ion-label>{{ preset.label }}</ion-label>
+              </ion-segment-button>
+            </ion-segment>
+          </ion-item>
           <ion-item>
             <ion-label>
               <h2>环绕音效</h2>
@@ -178,6 +194,8 @@ import {
   IonList,
   IonPage,
   IonRange,
+  IonSegment,
+  IonSegmentButton,
   IonSelect,
   IonSelectOption,
   IonTitle,
@@ -187,6 +205,7 @@ import {
 } from '@ionic/vue'
 import { optionsOutline, volumeHighOutline } from 'ionicons/icons'
 import { EQ_FREQUENCIES, type LoudnessTarget, type SurroundMode } from '@/services/audioEffects'
+import { BASS_PRESETS, bassPresetFromGain, bassPresetGain } from '@/services/bassPresets'
 import { useAudioEffectsStore } from '@/stores/audioEffects'
 
 const store = useAudioEffectsStore()
@@ -242,6 +261,20 @@ function onBassEnabled(event: CustomEvent): void {
 
 function onBassGain(event: CustomEvent): void {
   store.setBassBoost(state.bassBoost.enabled, Number(event.detail.value))
+  commit()
+}
+
+/**
+ * 当前增益落在哪个预设档位上。
+ * 手动拖到非预设值（如 4.5 dB）时返回 null，此时不高亮任何一档，
+ * 否则界面会显示一个与滑杆不符的选中项。
+ */
+const activeBassPreset = computed(() => bassPresetFromGain(state.bassBoost.gain) ?? undefined)
+
+function onBassPreset(event: CustomEvent): void {
+  const gain = bassPresetGain(String(event.detail.value ?? ''))
+  if (gain === null) return
+  store.setBassBoost(state.bassBoost.enabled, gain)
   commit()
 }
 
