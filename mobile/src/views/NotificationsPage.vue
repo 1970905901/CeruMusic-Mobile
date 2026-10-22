@@ -123,7 +123,9 @@ async function changeCategory() {
 }
 
 async function openItem(item: InboxMessage) {
-  await notifications.markRead([item])
+  // 标已读先做本地扣减、再回写后端；这里**不能等**它——网络慢时点击后
+  // 要愣住一秒以上才跳转，看起来像没点中。失败回滚在 store 内自行处理。
+  void notifications.markRead([item])
   const target = resolveNotificationTarget(item)
   if (!target) return
   router.push(target.path)
