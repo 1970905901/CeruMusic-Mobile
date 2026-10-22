@@ -1,6 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Track } from '@/types/music'
+import { isAudioContentType, notAudioMessage } from '@/services/downloadContentType'
 
 export interface MediaCacheIndexEntry {
   key: string
@@ -194,17 +195,17 @@ async function downloadAudio(
         : new Blob([data as unknown as BlobPart], {
             type: response.headers?.['content-type'] || 'audio/mpeg'
           })
-    return {
-      buffer: await blob.arrayBuffer(),
-      mime: response.headers?.['content-type'] || 'audio/mpeg'
-    }
+    const mime = String(response.headers?.['content-type'] || 'audio/mpeg')
+    // 与下载同口径：200 但不是音频（登录页、JSON 报错）不能进缓存，
+    // 否则这首歌的缓存永远是坏的，重播也走不出来。
+    if (!isAudioContentType(mime)) throw new Error(notAudioMessage(mime))
+    return { buffer: await blob.arrayBuffer(), mime }
   }
   const response = await fetch(url, { headers })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return {
-    buffer: await response.arrayBuffer(),
-    mime: response.headers.get('content-type') || 'audio/mpeg'
-  }
+  const mime = String(response.headers.get('content-type') || 'audio/mpeg')
+  if (!isAudioContentType(mime)) throw new Error(notAudioMessage(mime))
+  return { buffer: await response.arrayBuffer(), mime }
 }
 
 export async function getMediaCacheStats(): Promise<MediaCacheStats> {
