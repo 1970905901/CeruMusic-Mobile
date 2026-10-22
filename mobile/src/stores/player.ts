@@ -18,7 +18,7 @@ import {
 } from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
 import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
-import { applyAudioOutput } from '@/services/audioOutput'
+import { SYSTEM_OUTPUT_ID, applyAudioOutput } from '@/services/audioOutput'
 import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
 import { timeDomainRms } from '@/services/crossfadeCurve'
 import {
@@ -710,6 +710,25 @@ export const usePlayerStore = defineStore('player', () => {
     return applyAudioOutput(audio, deviceId)
   }
 
+  /**
+   * 启动时恢复用户选过的输出设备。
+   *
+   * 此前只有打开设置页并触发 `refreshOutputDevices` 才会调用 `setSinkId`：
+   * 用户昨天选了蓝牙音箱，今天启动时音频仍从扬声器出来，直到他再进一次
+   * 设置页。桌面版在音频输出 store 初始化时就应用了已保存的设备。
+   */
+  async function applyStoredOutputDevice(): Promise<boolean> {
+    const stored = String(settings.settings.audioOutputDeviceId || '').trim()
+    if (!stored || stored === SYSTEM_OUTPUT_ID) return false
+    if (!canSelectOutput()) return false
+    try {
+      return await applyAudioOutput(audio, stored)
+    } catch {
+      // 设备已拔出/断开时保持系统默认，不阻塞启动。
+      return false
+    }
+  }
+
   function setPlaybackRate(value: number): void {
     if (!Number.isFinite(value)) return
     playbackRate.value = Math.max(0.5, Math.min(3, Math.round(value * 100) / 100))
@@ -810,6 +829,12 @@ export const usePlayerStore = defineStore('player', () => {
       const tail = new Audio()
       tail.preload = 'auto'
       tail.setAttribute('playsinline', 'true')
+      // 尾巴元素负责旧歌的尾段：不跟随主元素的输出设备时，无感过渡期间
+      // 声音会突然从另一台设备（通常是扬声器）冒出来。
+      const stored = String(settings.settings.audioOutputDeviceId || '').trim()
+      if (stored && stored !== SYSTEM_OUTPUT_ID) {
+        void applyAudioOutput(tail, stored).catch(() => false)
+      }
       return tail as unknown as CrossfadeElement
     }
   })
@@ -1248,6 +1273,7 @@ export const usePlayerStore = defineStore('player', () => {
     audioElement,
     canSelectOutput,
     applyOutputDevice,
+    applyStoredOutputDevice,
     next,
     previous,
     toggleShuffle,

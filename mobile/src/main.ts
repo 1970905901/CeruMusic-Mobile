@@ -161,6 +161,9 @@ void (async () => {
     await useDownloadStore(pinia).init()
     const player = usePlayerStore(pinia)
     player.loadPersisted()
+    // 上次选的输出设备要在这里应用：只有设置页会调 setSinkId，
+    // 不进设置页的话每次启动都退回系统默认输出。
+    void player.applyStoredOutputDevice()
     await player.restoreIfAvailable()
     useAudioEffectsStore(pinia)
   } catch (error) {
