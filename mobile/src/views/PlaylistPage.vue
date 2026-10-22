@@ -799,9 +799,14 @@ async function openCoverActions() {
       text: '恢复默认封面（自动使用首曲）',
       role: 'destructive',
       handler: () => {
-        void library.updatePlaylist(remoteId, { cover: null }).then(() => {
-          void toast('已恢复默认封面')
-        })
+        void library
+          .updatePlaylist(remoteId, { cover: null })
+          .then(() => {
+            void toast('已恢复默认封面')
+          })
+          .catch((error) =>
+            toast(error instanceof Error ? error.message : '恢复默认封面失败', 'danger')
+          )
       }
     })
   }
@@ -994,7 +999,12 @@ async function openPlaylistMenu() {
         text: '删除歌单',
         role: 'destructive',
         handler: () => {
-          void library.deletePlaylist(remoteId).then(() => router.replace('/tabs/library'))
+          void library
+            .deletePlaylist(remoteId)
+            .then(() => router.replace('/tabs/library'))
+            .catch((error) =>
+              toast(error instanceof Error ? error.message : '删除歌单失败', 'danger')
+            )
         }
       },
       { text: '取消', role: 'cancel' }

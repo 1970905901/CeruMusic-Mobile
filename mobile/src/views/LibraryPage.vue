@@ -809,7 +809,12 @@ async function confirmClearHistory() {
         text: '清空',
         role: 'destructive',
         handler: () => {
-          void library.clearHistory().then(() => showToast('已清空播放记录'))
+          void library
+            .clearHistory()
+            .then(() => showToast('已清空播放记录'))
+            .catch((error) =>
+              showToast(error instanceof Error ? error.message : '清空失败', 'danger')
+            )
         }
       }
     ]
@@ -824,7 +829,12 @@ function openRecentActions(track: Track) {
         text: '从记录中移除',
         role: 'destructive',
         handler: () => {
-          void library.removeFromHistory(track.key).then(() => showToast('已从播放记录中移除'))
+          void library
+            .removeFromHistory(track.key)
+            .then(() => showToast('已从播放记录中移除'))
+            .catch((error) =>
+              showToast(error instanceof Error ? error.message : '移除失败', 'danger')
+            )
         }
       }
     ]
