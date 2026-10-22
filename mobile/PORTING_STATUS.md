@@ -163,7 +163,11 @@
 - 社区评论定位高亮：`services/commentLocate.ts` 把通知里的 `commentId` 映射到「根评论 / 回复」两种落点——命中回复时先展开所属根评论的回复再滚动，命中根评论直接滚动；定位成功后该条评论高亮 1.6s 后褪去，找不到（已删除或未加载）时提示而不是静默失败。社区页此前只预填回复、不滚动，现在与桌面端 `PostDetailModal` 的跳转反馈一致。- 社区。
 - AI 助手。
 - 一起听。
+- 同时下载数与下载页入口：桌面版下载页顶部有「同时下载数」（1–5），调小会把**最后开始**的在途任务退回队列、调大立即补位。移动端该设置原本只在设置页，且滑杆上限是 4（桌面是 5），改动后虽然会补位，但调小时不会收敛在途任务。现在下载页「进行中」分页有「同时 N 个」入口，设置页与下载页都走 store 的 `setMaxConcurrent`（退回逻辑抽成 `services/downloadPump.ts` 的 `selectTasksToRequeue`），两处口径一致。
 - 已完成下载的文件校验：对齐桌面端 `DownloadManager.validateFiles`。用户可能在系统文件管理器里删掉下载好的歌，桌面版在打开「已完成」分页时逐个确认文件仍在，缺失的改判为「文件已删除或移动」；移动端此前从不校验，列表一直显示「已完成」，点播放才报错。现在切到「已完成」分页即校验（`services/downloadValidation.ts`）：只查已完成、有应用内相对路径的任务，跳过 SAF（外部授权目录只有 document URI，无法 stat）；**只有确认为「不存在」才改判**，权限抖动或原生桥接异常视为无法确认并保持原样，避免把整页下载凭空标成失败。改判时同时摘掉歌曲上已失效的下载路径，播放不会再指向不存在的文件。
+- 本地歌曲标签编辑器：对齐桌面端 `Music/LocalTagEditor.vue`。移动端此前用 `alertController` 的六个输入框编辑本地歌曲，没有封面预览、没有更换封面入口，长歌词挤在固定高度文本框里，也没有在线搜索。现在换成整页 sheet（`components/LocalTagEditorSheet.vue`）：「编辑信息」页可选/换/移除封面（统一裁正方形并压到 600px），标题、歌手、专辑、年份、流派、歌词逐项可改；「在线搜索」页按当前音源联想，候选的「使用」只填入表单并取回封面与歌词，仍需确认后保存。封面用 `CapacitorHttp` 取字节而不是 canvas——封面 CDN 基本不发 CORS 头，canvas 会被污染；抓不到时保留原封面，绝不把远程地址写进标签（`writeLocalTags` 只会当 data URL 解析）。表单校验与候选合并抽在 `services/localTagEditor.ts`。
+- 搜索联想：对齐桌面端 `components/search/searchSuggest.vue`。桌面版输入时弹出「直接搜索：<关键词>」加单曲/歌手/专辑/歌单分组建议；移动端此前只有发现页的纯字符串联想，搜索页本身什么都不给。现在搜索页有同一块面板（`services/searchSuggestions.ts` 归一化三种插件返回形状，按桌面版的组序渲染，单组与总数都有上限以免面板顶掉搜索框），联想走独立请求守卫，快速输入时旧结果不会盖住新结果。
+- 均衡器实时频谱：对齐桌面端 `Settings/EqualizerSettings.vue` 顶部的 canvas。移动端音效页此前只有十根滑杆，看不出各频段在做什么。`components/EqSpectrum.vue` 复用播放页的同一个 AnalyserNode（不额外建链路），柱子按对数分布在 20 Hz–20 kHz（线性频段会把低频挤成一根、把高频铺满半屏），区间映射抽在 `services/eqSpectrum.ts`；拿不到分析节点（跨域直链、未起播）时画一条基线并说明，不伪造跳动。
 - 识曲片段定位与结果搜索：对齐桌面端 `views/music/recognize.vue`。移动端此前丢弃了识别结果里的 `startTime`，点播放一律从 0:00 开始，和刚听到的那一段对不上；现在结果卡片显示「识别片段 03:12」，播放后 seek 到该处并提示。结果旁补上桌面版的搜索按钮（歌名 + 歌手跳搜索页）。结果归一化收敛到 `services/recognizeResults.ts`：兼容数组 / `items` / `songs` 三种外壳，封面按 `img`/`artworkUrl`/`cover`/`pic` 取，歌手数组与对象展平成「A / B」，小于 1000 的小数当秒处理（12.5 → 12.5s，而不是 12ms），非对象条目直接丢弃。
 - 歌单转换器。
 - 主题与设置。
@@ -181,9 +185,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：101 个测试文件，641 个测试全部通过
+- `npm run test`：106 个测试文件，668 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`、下载文件校验 `e5d7bce`）**均未触发 CI**——额度已用尽，这些提交只经过本地 typecheck / test / build 验证。
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39724922381）。此后提交（低音档位 `b817e90`、均衡器预设 `5c8ad0c`、识曲片段 `b6d4db1`、下载文件校验 `e5d7bce`、标签编辑器 `29b406d`、搜索联想 `b004ea0`、均衡器频谱 `9c32372`、下载并发 `40fc676`、设置并发滑杆 `4cba7da`）**均未触发 CI**——额度已用尽，这些提交只经过本地 typecheck / test / build 验证。
 
 ## 当前未完成
 
