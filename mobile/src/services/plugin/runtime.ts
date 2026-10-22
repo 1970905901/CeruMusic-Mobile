@@ -10,6 +10,7 @@ import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDevices'
 import { assertOwnedRefs, type OwnershipContext } from '@/services/plugin/ownership'
+import { checkPermissionDeclaration, permissionLabel } from '@/services/plugin/permissions'
 import {
   parseSocketPayload,
   socketEventName,
@@ -427,8 +428,16 @@ export class PluginRuntime {
       case 'storage.delete':
         await kvDelete(pluginStorageKey(this.record.key, params.key))
         return null
-      case 'permissions.request':
-        return requestPermission(this.record.key, params.key)
+      case 'permissions.request': {
+        // 直接请求权限同样要核对声明：否则插件可以绕过 `requirePermission`
+        // 先把任意 key 授权下来，再在后续调用里使用。
+        const key = resolvePermissionKey(params?.key)
+        const declaration = (this.manifest.permissions ?? []).find(
+          (item) => String(item.key ?? '') === (key ?? '')
+        )
+        if (!key || !declaration) throw new Error('插件未声明该权限')
+        return requestPermission(this.record.key, key)
+      }
       case 'ui.confirm': {
         const alert = await alertController.create({
           header: params?.title || '请确认',
@@ -586,7 +595,7 @@ export class PluginRuntime {
       // 子插件是**嵌在别的插件里运行的第三方脚本**，管理它们要单独授权
       // （桌面 `guests.manage` / `guests.run`）；此前移动端一项都不校验。
       case 'guests.import': {
-        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
+        await this.requirePermission(params?.call?.permissionKey, 'guests.manage')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         const adapterId = String(params?.adapterId || '')
@@ -595,21 +604,21 @@ export class PluginRuntime {
         return store.importFile(adapterId, file)
       }
       case 'guests.select': {
-        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
+        await this.requirePermission(params?.call?.permissionKey, 'guests.manage')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         await store.select(params?.guestId ? String(params.guestId) : null)
         return null
       }
       case 'guests.remove': {
-        await this.requirePermission(params?.call?.permissionKey, '子插件管理')
+        await this.requirePermission(params?.call?.permissionKey, 'guests.manage')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         await store.remove(String(params?.guestId || ''))
         return null
       }
       case 'guests.invoke': {
-        await this.requirePermission(params?.call?.permissionKey, '子插件运行')
+        await this.requirePermission(params?.call?.permissionKey, 'guests.run')
         const { guestStoreFor } = await import('@/services/plugin/guests')
         const store = guestStoreFor(this.record)
         return store.invoke(
@@ -649,7 +658,7 @@ export class PluginRuntime {
       }
       case 'app.openExternal': {
         // 与桌面一致：打开外部链接要授权，且只放行 http(s)、拒绝内嵌凭据的地址。
-        await this.requirePermission(params?.call?.permissionKey, '打开外部链接')
+        await this.requirePermission(params?.call?.permissionKey, 'external.open')
         let target: URL
         try {
           target = new URL(String(params?.url ?? ''))
@@ -665,7 +674,7 @@ export class PluginRuntime {
       }
       case 'account.getSession':
       case 'account.getProfile': {
-        await this.requirePermission(params?.call?.permissionKey, 'account')
+        await this.requirePermission(params?.call?.permissionKey, 'account.profile')
         const { useAuthStore } = await import('@/stores/auth')
         const auth = useAuthStore()
         const identity = auth.authenticated
@@ -683,7 +692,7 @@ export class PluginRuntime {
           : { loggedIn: auth.authenticated, profile }
       }
       case 'account.openLogin': {
-        await this.requirePermission(params?.operation?.permissionKey, 'account')
+        await this.requirePermission(params?.operation?.permissionKey, 'account.profile')
         const { useAuthStore } = await import('@/stores/auth')
         const auth = useAuthStore()
         if (!auth.authenticated) await auth.login()
@@ -695,17 +704,17 @@ export class PluginRuntime {
       // 歌单读写按桌面 `PluginHost` 分级：读取 / 导入 / 删除各自要对应授权，
       // 导入的条目必须是标准歌曲引用（否则会把插件私有结构塞进用户歌单）。
       case 'library.playlists.list': {
-        await this.requirePermission(params?.call?.permissionKey, '歌单读取')
+        await this.requirePermission(params?.call?.permissionKey, 'library.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().asHostPlaylists()
       }
       case 'library.playlists.getTracks': {
-        await this.requirePermission(params?.call?.permissionKey, '歌单读取')
+        await this.requirePermission(params?.call?.permissionKey, 'library.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().asHostTracks(params?.reference, params?.cursor)
       }
       case 'library.playlists.import': {
-        await this.requirePermission(params?.call?.permissionKey, '歌单修改')
+        await this.requirePermission(params?.call?.permissionKey, 'library.write')
         const request = params?.request ?? {}
         const items = Array.isArray(request.items) ? request.items : []
         if (items.some((item: any) => item?.ref?.kind !== 'track')) {
@@ -715,13 +724,13 @@ export class PluginRuntime {
         return useLibraryStore().importHostPlaylist(request)
       }
       case 'library.playlists.removeTracks': {
-        await this.requirePermission(params?.call?.permissionKey, '歌单删除')
+        await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().removeHostTracks(params?.reference, params?.tracks)
         return null
       }
       case 'library.playlists.clearPlaylist': {
-        await this.requirePermission(params?.call?.permissionKey, '歌单删除')
+        await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().clearHostPlaylist(params?.reference)
         return null
@@ -730,12 +739,12 @@ export class PluginRuntime {
       // 读操作要 player.read，其余要 player.control；带 track 引用的操作还要求
       // 该引用属于本插件声明的 provider，否则插件可以往队列里塞别的音源的歌。
       case 'player.getState': {
-        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
+        await this.requirePermission(params?.call?.permissionKey, 'player.read')
         const { usePlayerStore } = await import('@/stores/player')
         return usePlayerStore().hostState()
       }
       case 'player.play': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         // 桌面版同样只在传了 track 时校验（`data.args?.[0] != null`）。
         if (params?.track != null) {
           assertOwnedRefs([params.track.ref], 'track', this.ownershipContext())
@@ -745,48 +754,48 @@ export class PluginRuntime {
         return null
       }
       case 'player.pause': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().pause()
         return null
       }
       case 'player.next': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().next()
         return null
       }
       case 'player.previous': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().previous()
         return null
       }
       case 'player.seek': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().seek(Number(params?.positionMs) || 0)
         return null
       }
       case 'player.setVolume': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().setVolume(Number(params?.volume) || 0)
         return null
       }
       case 'player.setMode': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().setMode(params?.mode)
         return null
       }
       case 'queue.get': {
-        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
+        await this.requirePermission(params?.call?.permissionKey, 'player.read')
         const { usePlayerStore } = await import('@/stores/player')
         return usePlayerStore().hostQueue()
       }
       case 'queue.append': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -797,7 +806,7 @@ export class PluginRuntime {
         return null
       }
       case 'queue.replace': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -808,49 +817,49 @@ export class PluginRuntime {
         return null
       }
       case 'queue.remove': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().removeHostTracks(params?.keys ?? [])
         return null
       }
       case 'queue.reorder': {
-        await this.requirePermission(params?.call?.permissionKey, '播放控制')
+        await this.requirePermission(params?.call?.permissionKey, 'player.control')
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().reorderHostTracks(params?.keys ?? [])
         return null
       }
       // 收藏 / 历史 / 下载：与桌面 `PluginHost` 同一套授权与归属规则。
       case 'favorites.contains': {
-        await this.requirePermission(params?.call?.permissionKey, '资料库读取')
+        await this.requirePermission(params?.call?.permissionKey, 'library.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().isFavorite(params?.track?.ref ?? params?.track)
       }
       case 'favorites.add': {
-        await this.requirePermission(params?.call?.permissionKey, '资料库写入')
+        await this.requirePermission(params?.call?.permissionKey, 'library.write')
         assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().addHostFavorite(params?.track)
         return null
       }
       case 'favorites.remove': {
-        await this.requirePermission(params?.call?.permissionKey, '资料库写入')
+        await this.requirePermission(params?.call?.permissionKey, 'library.write')
         assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
         await useLibraryStore().removeHostFavorite(params?.track)
         return null
       }
       case 'history.list': {
-        await this.requirePermission(params?.call?.permissionKey, '播放状态读取')
+        await this.requirePermission(params?.call?.permissionKey, 'player.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().historyPage(params?.cursor)
       }
       case 'downloads.list': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         return useDownloadStore().asHostTasks()
       }
       case 'downloads.create': {
-        await this.requirePermission(params?.call?.permissionKey, '创建下载')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.create')
         const request = params?.request ?? {}
         const tracks = Array.isArray(request.tracks) ? request.tracks : []
         // 与桌面同口径：一次 1–100 个任务，且只能下载自己声明的资源。
@@ -862,31 +871,31 @@ export class PluginRuntime {
         return useDownloadStore().createHostDownloads(request)
       }
       case 'downloads.pause': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().pause(params?.ids ?? [])
         return null
       }
       case 'downloads.resume': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().resume(params?.ids ?? [])
         return null
       }
       case 'downloads.cancel': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().cancel(params?.ids ?? [])
         return null
       }
       case 'downloads.retry': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         useDownloadStore().retry(params?.ids ?? [])
         return null
       }
       case 'downloads.reveal': {
-        await this.requirePermission(params?.call?.permissionKey, '下载管理')
+        await this.requirePermission(params?.call?.permissionKey, 'downloads.manage')
         const { useDownloadStore } = await import('@/stores/downloads')
         await useDownloadStore().share(params?.id)
         return null
@@ -947,12 +956,12 @@ export class PluginRuntime {
       // 改标签要 localMusic.write。移动端此前一项都不校验，插件可以直接读用户
       // 本机音乐库、甚至改写音频文件里的标签。
       case 'localMusic.list': {
-        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
+        await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().localMusicPage(params?.cursor)
       }
       case 'localMusic.scan': {
-        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
+        await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')
         // 插件传了目录句柄就只扫这些目录（Android SAF）；没传则沿用应用自己的扫描范围。
         const handles = Array.isArray(params?.directories) ? params.directories : []
         const folders = handles
@@ -971,30 +980,30 @@ export class PluginRuntime {
         return { taskId: `scan-${Date.now().toString(36)}`, imported: records.length }
       }
       case 'localMusic.getTags': {
-        await this.requirePermission(params?.call?.permissionKey, '本地音乐读取')
+        await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().localTags(params?.track)
       }
       case 'localMusic.writeTags': {
-        await this.requirePermission(params?.call?.permissionKey, '本地音乐修改')
+        await this.requirePermission(params?.call?.permissionKey, 'localMusic.write')
         const { useLibraryStore } = await import('@/stores/library')
         return useLibraryStore().writeLocalTags(params?.track, params?.tags)
       }
       case 'settings.get': {
-        await this.requirePermission(params?.call?.permissionKey, '设置读取')
+        await this.requirePermission(params?.call?.permissionKey, 'settings.read')
         const settings = useSettingsStore()
         return pluginSettingsGet(params?.keys ?? [], settings.settings as Record<string, unknown>)
       }
       case 'settings.update': {
         // 写入同样要授权：公开白名单挡住了密钥类字段，但「改用户的播放设置」
         // 本身也该由用户同意（桌面 `services.settings.update` 要 settings.write）。
-        await this.requirePermission(params?.call?.permissionKey, '设置修改')
+        await this.requirePermission(params?.call?.permissionKey, 'settings.write')
         const settings = useSettingsStore()
         pluginSettingsUpdate(params?.values, settings.settings as Record<string, any>)
         return null
       }
       case 'tasks.schedule': {
-        await this.requirePermission(params?.call?.permissionKey, 'background')
+        await this.requirePermission(params?.call?.permissionKey, 'background.run')
         const task = validateScheduledTask(params?.request ?? {}, this.info.actions)
         this.scheduleTask(task)
         return { id: task.id }
@@ -1007,16 +1016,16 @@ export class PluginRuntime {
         return null
       }
       case 'sharing.create': {
-        await this.requirePermission(params?.call?.permissionKey, '分享')
+        await this.requirePermission(params?.call?.permissionKey, 'sharing.publish')
         return createShareDescriptor(params?.request ?? {})
       }
       case 'sharing.resolve':
         return shareDescriptorFromUrl(String(params?.url ?? ''))
       case 'sharing.revoke':
-        await this.requirePermission(params?.call?.permissionKey, '撤销分享')
+        await this.requirePermission(params?.call?.permissionKey, 'sharing.revoke')
         return null
       case 'rooms.getState': {
-        await this.requirePermission(params?.call?.permissionKey, '一起听状态读取')
+        await this.requirePermission(params?.call?.permissionKey, 'rooms.read')
         const { useListenTogetherStore } = await import('@/stores/listenTogether')
         const room = useListenTogetherStore()
         return pluginRoomState({
@@ -1026,7 +1035,7 @@ export class PluginRuntime {
         })
       }
       case 'rooms.join': {
-        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        await this.requirePermission(params?.call?.permissionKey, 'rooms.control')
         const { useListenTogetherStore } = await import('@/stores/listenTogether')
         const room = useListenTogetherStore()
         await room.resolveAndJoin(String(params?.inviteCode ?? ''))
@@ -1037,13 +1046,13 @@ export class PluginRuntime {
         })
       }
       case 'rooms.leave': {
-        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        await this.requirePermission(params?.call?.permissionKey, 'rooms.control')
         const { useListenTogetherStore } = await import('@/stores/listenTogether')
         await useListenTogetherStore().leave()
         return null
       }
       case 'rooms.requestTrack': {
-        await this.requirePermission(params?.call?.permissionKey, '一起听控制')
+        await this.requirePermission(params?.call?.permissionKey, 'rooms.control')
         const { useListenTogetherStore } = await import('@/stores/listenTogether')
         const room = useListenTogetherStore()
         const { usePlayerStore } = await import('@/stores/player')
@@ -1054,16 +1063,16 @@ export class PluginRuntime {
         return null
       }
       case 'devices.list': {
-        await this.requirePermission(params?.call?.permissionKey, '音频设备控制')
+        await this.requirePermission(params?.call?.permissionKey, 'devices.control')
         return pluginAudioDevices()
       }
       case 'devices.select': {
-        await this.requirePermission(params?.call?.permissionKey, '音频设备控制')
+        await this.requirePermission(params?.call?.permissionKey, 'devices.control')
         selectPluginAudioDevice(params?.id)
         return null
       }
       case 'ai.generate': {
-        await this.requirePermission(params?.call?.permissionKey, 'AI 服务')
+        await this.requirePermission(params?.call?.permissionKey, 'ai.use')
         const settings = useSettingsStore()
         return generatePluginAI(params?.request ?? {}, {
           provider: settings.settings.aiProvider,
@@ -1111,11 +1120,21 @@ export class PluginRuntime {
     return { manifestId: this.manifest.id, manifest: this.manifest }
   }
 
-  private async requirePermission(key: string | undefined, group: string): Promise<void> {
+  /**
+   * 校验「插件声明了这个权限」+「用户已授权」。
+   *
+   * 两步都不能省：只查授权会让插件随手造 key 弹出没有理由的授权框，
+   * 从而绕开 manifest 声明；只查声明则等于没问过用户。
+   */
+  private async requirePermission(key: string | undefined, name: string): Promise<void> {
     const resolved = resolvePermissionKey(key)
+    const declared = checkPermissionDeclaration(this.manifest.permissions, resolved ?? '', name)
+    if (declared) throw new Error(declared)
     const status = resolved ? await requestPermission(this.record.key, resolved) : 'denied'
     if (status !== 'granted') {
-      throw new Error('此功能尚未获得授权，请在插件权限中允许“' + group + '”后重试')
+      throw new Error(
+        '此功能尚未获得授权，请在插件权限中允许“' + permissionLabel(name) + '”后重试'
+      )
     }
   }
 
