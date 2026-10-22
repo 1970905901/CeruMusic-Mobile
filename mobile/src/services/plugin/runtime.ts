@@ -16,6 +16,7 @@ import {
   checkStorageKey,
   storageValueBytes
 } from '@/services/plugin/pluginStorage'
+import { isPrivateUrl } from '@/services/plugin/networkScope'
 import {
   parseSocketPayload,
   socketEventName,
@@ -429,8 +430,13 @@ export class PluginRuntime {
 
   private async dispatchRpc(method: string, params: any): Promise<any> {
     switch (method) {
-      case 'http.request':
+      case 'http.request': {
+        // 局域网/本机地址要额外声明并获批 network.private（桌面 requestNetwork 同口径）。
+        if (isPrivateUrl(String(params?.url ?? ''))) {
+          await this.requirePrivateNetwork(params?.permissionKey)
+        }
         return performHttp(params)
+      }
       // 键与值都要校验（桌面 `PluginStorage.invoke` 同口径）：脏键会永久留在
       // 数据库里，超大值会把整个 IndexedDB 撑到影响所有插件与本地数据。
       case 'storage.get': {
@@ -1109,6 +1115,10 @@ export class PluginRuntime {
       case 'sockets.connect': {
         const options = validateSocketOptions(params?.options ?? {})
         await this.requirePermission(options.permissionKey, 'network.socket')
+        // Socket 同 HTTP：连本机/内网还要 network.private。
+        if (isPrivateUrl(String(options.url ?? ''))) {
+          await this.requirePrivateNetwork(options.permissionKey)
+        }
         const socket = await this.connectSocket(options)
         return { id: socket.id }
       }
@@ -1139,6 +1149,24 @@ export class PluginRuntime {
     }
   }
 
+
+  /**
+   * 访问局域网/本机地址的额外授权。
+   *
+   * 插件可能把 `network.private` 声明成一个独立的 key，也可能只在 scope 里注明；
+   * 这里按「manifest 里声明了名字为 network.private 的条目」去授权，用的仍是
+   * 那条声明自己的 key——与桌面 `declarations().some(p => p.name === 'network.private')`
+   * 一致，不会凭空生成一个用户没见过的权限。
+   */
+  private async requirePrivateNetwork(fallbackKey?: string): Promise<void> {
+    const declaration = (this.manifest.permissions ?? []).find(
+      (item) => String(item.name ?? '') === 'network.private'
+    )
+    if (!declaration) {
+      throw new Error('插件未声明权限：' + permissionLabel('network.private'))
+    }
+    await this.requirePermission(String(declaration.key ?? fallbackKey ?? ''), 'network.private')
+  }
 
   /** 归属校验上下文：本插件的 manifest id 与声明的 provider。 */
   private ownershipContext(): OwnershipContext {

@@ -544,7 +544,9 @@ async function httpRequest(input: any): Promise<any> {
     form: input.form,
     body: input.body,
     timeoutMs: input.timeoutMs,
-    responseType: input.responseType
+    responseType: input.responseType,
+    // 宿主侧要据此判断内网访问是否另有授权；不传会让局域网请求一律被拒。
+    permissionKey
   })
   if (input.throwHttpErrors !== false && (response.status < 200 || response.status >= 300)) {
     const error = new Error(`HTTP ${response.status}`) as Error & { status?: number; response?: any }
