@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39703890469`（功能提交 `738f020`），Android/iOS 均成功
+- 最新 CI：`39705446039`（功能提交 `5815e63`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -110,6 +110,7 @@
 - 插件歌单导入器。
 - 插件歌词转换器，支持解析与导出。
 - 插件周期任务 `ctx.tasks.schedule / cancel`。
+- 插件进度卡片归属与清理：`services/pluginProgress.ts` 的卡片现在记录创建它的插件。此前卡片只在插件主动调用 `ui.progress.close` 时才移除，插件崩溃、被禁用或热重载时那个调用永远不会发生，「正在处理…」的卡片会一直挂在界面上，只能靠用户点 × 关掉。现在运行时 `dispose` 会按 owner 清掉该插件的卡片，并且**只清自己的**——宿主自己创建的批量匹配进度没有 owner，其它插件的任务也照常保留。
 - 插件 AI 调用 `ctx.ai.generate`。
 - 插件数据分享 `ctx.sharing.create / resolve / revoke`。
 - 插件一起听 `ctx.rooms.*`。
@@ -168,9 +169,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：90 个测试文件，539 个测试全部通过
+- `npm run test`：91 个测试文件，546 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39703890469）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39705446039）
 
 ## 当前未完成
 
