@@ -1118,10 +1118,22 @@ export const usePlayerStore = defineStore('player', () => {
     publishQueue()
   }
 
+  /**
+   * 按 key 顺序重排队列。
+   *
+   * 调用方（拖动排序或插件的 `queue.reorder`）必须给出**完整**的 key 列表：
+   * 此前直接按 keys 重建队列，少于当前队列长度时会把剩下的歌**静默丢弃**——
+   * 插件少传一个 id，用户就少了一首歌，而且没有任何提示。
+   */
   function reorderHostTracks(keys: string[]): void {
     const currentKey = currentTrack.value?.key
     const map = new Map(queue.value.map((track) => [track.key, track]))
-    queue.value = keys.map((key) => map.get(key)).filter((track): track is Track => !!track)
+    const next = keys.map((key) => map.get(key)).filter((track): track is Track => !!track)
+    if (next.length !== queue.value.length) {
+      // 与现有队列对不上（缺 key、重复 key 或含未知 key）时保持原样。
+      return
+    }
+    queue.value = next
     const nextIndex = currentKey ? queue.value.findIndex((track) => track.key === currentKey) : -1
     currentIndex.value = nextIndex >= 0 ? nextIndex : Math.min(currentIndex.value, queue.value.length - 1)
     // 拖动排序只改队列展现顺序；洗牌顺序是独立的，成员没变就不该重洗，
