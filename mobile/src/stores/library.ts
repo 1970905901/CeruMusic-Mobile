@@ -928,7 +928,13 @@ export const useLibraryStore = defineStore('library', () => {
       record.year = Number.isFinite(year) && year > 0 ? Math.trunc(year) : undefined
     }
     if (tags?.genre !== undefined) record.genre = String(tags.genre).trim() || undefined
-    if (tags?.lyrics != null) record.lyrics = String(tags.lyrics)
+    // SDK 的 writeTags 契约里 lyrics 是 LyricsDocument（`{ lines, format }`），
+    // 插件按契约传对象时 `String()` 会得到 `[object Object]`，歌词就此丢失。
+    // 字符串（页内编辑）原样保留，结构化文档转成 LRC 再存。
+    if (tags?.lyrics != null) {
+      record.lyrics =
+        typeof tags.lyrics === 'string' ? tags.lyrics : lyricValueToLrc(tags.lyrics)
+    }
     if (tags?.cover !== undefined) record.cover = String(tags.cover).trim() || undefined
 
     let fileTagWritten = false
