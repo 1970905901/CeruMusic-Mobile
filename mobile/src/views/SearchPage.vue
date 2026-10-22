@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   IonButton,
   IonButtons,
@@ -480,13 +480,24 @@ function openPlaylist(item: any) {
 
 watch(kind, () => void runSearch(true))
 
-onMounted(() => {
-  const q = String(route.query.q ?? '')
-  if (q) {
-    query.value = q
+/**
+ * 带着关键词进入搜索页。
+ *
+ * 底部标签页是常驻的：用户在发现页点了一个「搜索 XXX」，路由跳到
+ * `/tabs/search?q=XXX` 时组件**不会重新挂载**，`onMounted` 只跑过一次，
+ * 关键词被静默忽略——界面还停在上一次的搜索结果上。所以这里监听 query 本身，
+ * 每次变化都按新关键词搜索（与当前输入相同时不重复请求）。
+ */
+watch(
+  () => String(route.query.q ?? ''),
+  (value) => {
+    const next = value.trim()
+    if (!next || next === query.value.trim()) return
+    query.value = next
     void runSearch(true)
-  }
-})
+  },
+  { immediate: true }
+)
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
