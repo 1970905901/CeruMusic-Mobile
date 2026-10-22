@@ -1000,13 +1000,25 @@ export class PluginRuntime {
   }
 
   private capabilityList() {
-    const call = (service: string, methods: string[], permissionGroups: string[]) => ({
+    const call = (
+      service: string,
+      methods: string[],
+      permissionGroups: string[],
+      available = true,
+      reason?: 'host-not-connected' | 'unsupported'
+    ) => ({
       service,
       version: '1.0.0',
-      available: true,
+      available,
+      ...(reason ? { reason } : {}),
       methods,
       permissionGroups
     })
+    // 插件应当先看 `available` 再调用。移动端有两处能力是**真的没有**，
+    // 标成可用只会让插件在运行时撞上一句「未实现」，不如提前说明：
+    // - window：手机上没有「最小化/最大化/迷你播放器」这类桌面窗口动作；
+    // - files.pickDirectory：iOS/Web 没有可延续的目录句柄（Android SAF 才有）。
+    const directoryPicking = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
     return [
       call('account', ['getSession', 'getProfile', 'openLogin'], ['account']),
       call('app', ['getInfo', 'openSettings', 'openExternal'], ['external']),
@@ -1016,12 +1028,19 @@ export class PluginRuntime {
       call('favorites', ['contains', 'add', 'remove'], ['libraryRead', 'libraryManage']),
       call('history', ['list'], ['playbackRead']),
       call('downloads', ['list', 'create', 'pause', 'resume', 'cancel', 'retry', 'reveal'], ['downloads']),
-      call('files', ['pick', 'pickDirectory', 'readText', 'readBase64', 'saveText', 'writeText'], ['files']),
+      call(
+        'files',
+        directoryPicking
+          ? ['pick', 'pickDirectory', 'readText', 'readBase64', 'saveText', 'writeText']
+          : ['pick', 'readText', 'readBase64', 'saveText', 'writeText'],
+        ['files']
+      ),
       call('clipboard', ['readText', 'writeText'], ['clipboardRead', 'clipboardWrite']),
       call('localMusic', ['list', 'scan', 'getTags', 'writeTags'], ['localMusic']),
       call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
       call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
-      call('window', ['control'], ['window']),
+      // 桌面窗口动作（最小化/最大化/迷你播放器）在手机上不存在：如实标记不可用。
+      call('window', ['control'], ['window'], false, 'unsupported'),
       call('tasks', ['schedule', 'cancel'], ['background']),
       call('ai', ['generate'], ['ai']),
       call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
