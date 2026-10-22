@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUrl, jsonHeaders } from './runtime'
+import { buildUrl, jsonHeaders, safeExportName } from './runtime'
 
 describe('plugin http url building', () => {
   it('only allows http and https, normalising case and host', () => {
@@ -54,5 +54,31 @@ describe('plugin http headers', () => {
   it('stringifies values and tolerates missing headers', () => {
     expect(jsonHeaders(undefined)).toEqual({})
     expect(jsonHeaders({ 'x-count': 3 as unknown as string })).toEqual({ 'x-count': '3' })
+  })
+})
+
+describe('export file names', () => {
+  it('strips directory components so a plugin cannot escape exports/', () => {
+    // `exports/../../library.json` 会写到 exports 之外，覆盖用户文件。
+    expect(safeExportName('../../library.json')).toBe('library.json')
+    expect(safeExportName('a/b/c.txt')).toBe('c.txt')
+    expect(safeExportName('..\..\win.ini')).toBe('win.ini')
+  })
+
+  it('rejects illegal characters and leading dots', () => {
+    expect(safeExportName('..hidden')).toBe('hidden')
+    expect(safeExportName('a<b>c.txt')).toBe('abc.txt')
+    expect(safeExportName('a\u0000b.txt')).toBe('ab.txt')
+  })
+
+  it('falls back for empty or unusable names', () => {
+    expect(safeExportName('')).toBe('ceru-export.txt')
+    expect(safeExportName('   ')).toBe('ceru-export.txt')
+    expect(safeExportName('...')).toBe('ceru-export.txt')
+    expect(safeExportName(undefined)).toBe('ceru-export.txt')
+  })
+
+  it('caps very long names', () => {
+    expect(safeExportName('x'.repeat(400)).length).toBeLessThanOrEqual(120)
   })
 })

@@ -78,6 +78,21 @@ function pluginStorageKey(pluginKey: string, key: string) {
   return `plugin:${pluginKey}:${key}`
 }
 
+/**
+ * 导出文件名清洗：插件给的 `suggestedName` 会被拼进 `exports/<name>`。
+ * 必须剥掉路径分隔符与 `..`，否则插件能把文件写到 `exports/` 之外，
+ * 覆盖应用目录里的其它文件（桌面版走的是系统保存对话框，没有这个问题）。
+ */
+export function safeExportName(value: unknown): string {
+  const raw = String(value ?? '').trim() || 'ceru-export.txt'
+  const base = raw.split(/[\\/]/).pop() ?? ''
+  const cleaned = base
+    .replace(/[\u0000-\u001f<>:"|?*]/g, '')
+    .replace(/^\.+/, '')
+    .slice(0, 120)
+  return cleaned || 'ceru-export.txt'
+}
+
 export function jsonHeaders(headers?: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(headers ?? {}).map(([key, value]) => [key.toLowerCase(), String(value)])
@@ -955,8 +970,10 @@ export class PluginRuntime {
         return this.blobToBase64(file)
       }
       case 'files.saveText': {
+        // 写文件同样要 files.write；此前只校验了 readText/readBase64/writeText。
+        await this.requirePermission(params?.operation?.permissionKey, 'files.write')
         const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
-        const name = String(params?.request?.suggestedName || 'ceru-export.txt')
+        const name = safeExportName(params?.request?.suggestedName)
         const relativePath = `exports/${name}`
         await Filesystem.writeFile({
           path: relativePath,
@@ -970,8 +987,12 @@ export class PluginRuntime {
       case 'files.writeText': {
         await this.requirePermission(params?.call?.permissionKey, 'files.write')
         const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
+        const path = String(params?.file?.id || '')
+        // 只能写回 `saveText` 给出的导出路径；否则插件可以借句柄覆盖
+        // Documents 下的任意文件（包括用户自己的音频与歌词）。
+        if (!path.startsWith('exports/')) throw new Error('只能写入导出的文件')
         await Filesystem.writeFile({
-          path: String(params?.file?.id || 'exports/ceru-export.txt'),
+          path,
           data: String(params?.text ?? ''),
           directory: Directory.Documents,
           encoding: Encoding.UTF8,
