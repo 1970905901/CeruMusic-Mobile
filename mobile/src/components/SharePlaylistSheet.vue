@@ -60,6 +60,9 @@
             <p class="hint">分享链接仅用于在 Ceru Music App 内打开并导入歌单，暂不支持网页在线播放。</p>
             <p v-if="skippedCount" class="hint">已跳过 {{ skippedCount }} 首本地或下载歌曲。</p>
 
+            <!-- 与歌曲分享共用同一份合规承诺（桌面版 ShareConsentBar） -->
+            <ShareConsent v-model="consented" />
+
             <div v-if="statusText" class="status-row" role="status">
               <ion-spinner name="crescent" />
               <span>{{ statusText }}</span>
@@ -76,7 +79,7 @@
             <ion-button
               expand="block"
               class="create-btn"
-              :disabled="phase === 'loading'"
+              :disabled="phase === 'loading' || !consented"
               @click="createShare"
             >
               <ion-spinner v-if="phase === 'loading'" name="crescent" />
@@ -134,6 +137,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import ShareConsent from '@/components/ShareConsent.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useAuthStore } from '@/stores/auth'
 import { playlistTracksToCloud } from '@/services/cloudSongList'
@@ -152,6 +156,8 @@ const library = useLibraryStore()
 const auth = useAuthStore()
 
 const phase = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
+/** ShareConsent 在挂载时回填已完成承诺，未完成时为 false 并禁用生成按钮。 */
+const consented = ref(false)
 const statusText = ref('')
 const error = ref('')
 const shareUrl = ref('')

@@ -68,15 +68,8 @@
             />
             <p class="expiry">预计 {{ expiryText }} 失效，最多 7 天。</p>
 
-            <label class="consent-row">
-              <ion-toggle
-                :checked="consented"
-                @ionChange="consented = $event.detail.checked"
-              />
-              <span>
-                我确认允许将当前音源的播放解析模块上传到澜音服务器，仅用于解析此分享链接。模块可能包含插件所需的音源配置。
-              </span>
-            </label>
+            <!-- 合规承诺（桌面版 ShareConsentBar）：三项逐条确认并持久化 -->
+            <ShareConsent v-model="consented" />
 
             <div v-if="statusText" class="status-row" role="status">
               <ion-spinner name="crescent" />
@@ -159,6 +152,7 @@ import {
 import { Clipboard } from '@capacitor/clipboard'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import ShareConsent from '@/components/ShareConsent.vue'
 import { useShareStore } from '@/stores/share'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
@@ -194,7 +188,8 @@ watch(
   (open) => {
     if (!open) return
     ttlDays.value = 3
-    consented.value = false
+    // 不再每次打开强制重置：ShareConsent 会在挂载时读回已完成的合规承诺。
+    // 未承诺时它自己把 consented 置回 false。
     phase.value = 'idle'
     statusText.value = ''
     error.value = ''
@@ -523,21 +518,6 @@ ion-range {
   margin: 2px 0 16px;
   color: var(--ceru-text-secondary);
   font-size: 11px;
-}
-.consent-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--ceru-bg-soft);
-  color: var(--ceru-text-secondary);
-  font-size: 11px;
-  line-height: 1.55;
-}
-.consent-row ion-toggle {
-  flex: 0 0 auto;
-  margin-top: -3px;
 }
 .status-row {
   display: flex;
