@@ -762,11 +762,17 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
-  function asHostTracks(reference: any, cursor?: string) {
+  /** 分页返回歌单曲目；游标非法时抛错，避免插件翻页死循环。 */
+  function asHostTracks(reference: any, cursor?: string, limit?: number) {
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return { items: [], totalEstimate: 0 }
-    const items = playlistTracks(playlist.id).map((track) => track.raw)
-    return { items, totalEstimate: items.length, ...(cursor ? {} : {}) }
+    const page = paginate(
+      playlistTracks(playlist.id).map((track) => track.raw),
+      cursor,
+      limit
+    )
+    if (!page) throw new Error('分页游标无效')
+    return page
   }
 
   async function importHostPlaylist(request: any) {
