@@ -285,7 +285,12 @@
             </button>
           </div>
         </div>
-        <ion-reorder-group :disabled="false" @ionItemReorder="reorderQueue">
+        <!-- 一起听房间内没有控制权时，改队列只会被服务端覆盖回去；
+             桌面端同样在这种情况下禁用拖拽与移除（`lt.isInRoom && !lt.canControl`）。 -->
+        <p v-if="roomReadOnly" class="queue-room-notice">
+          一起听房间内由房主 / 管理员控制播放队列，你的改动不会生效。
+        </p>
+        <ion-reorder-group :disabled="roomReadOnly" @ionItemReorder="reorderQueue">
           <div v-for="(item, index) in player.queue" :key="item.key" class="queue-row" :class="{ current: index === player.currentIndex }">
             <button class="queue-main" type="button" @click="playQueueItem(item)">
               <span class="queue-index">{{ index + 1 }}</span>
@@ -295,10 +300,16 @@
                 <span class="queue-sub ceru-truncate">{{ item.artists.join(' / ') }}</span>
               </span>
             </button>
-            <button class="queue-remove" type="button" :aria-label="`移除 ${item.title}`" @click="removeQueueItem(item)">
+            <button
+              v-if="!roomReadOnly"
+              class="queue-remove"
+              type="button"
+              :aria-label="`移除 ${item.title}`"
+              @click="removeQueueItem(item)"
+            >
               <ion-icon :icon="closeCircle" />
             </button>
-            <ion-reorder />
+            <ion-reorder v-if="!roomReadOnly" />
           </div>
         </ion-reorder-group>
       </ion-content>
@@ -390,6 +401,7 @@ import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
+import { useListenTogetherStore } from '@/stores/listenTogether'
 import { useDownloadStore } from '@/stores/downloads'
 import { useShareStore } from '@/stores/share'
 import { useAuthStore } from '@/stores/auth'
@@ -430,6 +442,17 @@ import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
 const player = usePlayerStore()
+const listenTogether = useListenTogetherStore()
+/**
+ * 一起听房间内且没有控制权时，队列是只读的。
+ *
+ * 房间里的队列由服务端广播、房主/管理员改动；普通成员本地拖动或移除
+ * 会在下一次 `queue:update` 时被覆盖回去，表现为「拖了一下又弹回」。
+ * 桌面端 `PlaylistDrawer` 在这种情况直接禁用拖拽与移除。
+ */
+const roomReadOnly = computed(
+  () => listenTogether.inRoom && !listenTogether.canControl
+)
 const ionRouter = useIonRouter()
 const library = useLibraryStore()
 const pluginStore = usePluginStore()
@@ -839,6 +862,10 @@ async function playQueueItem(item: Track) {
 }
 
 function reorderQueue(event: any) {
+  if (roomReadOnly.value) {
+    event.detail.complete()
+    return
+  }
   const keys = player.queue.map((item) => item.key)
   const [moved] = keys.splice(event.detail.from, 1)
   keys.splice(event.detail.to, 0, moved)
@@ -935,6 +962,10 @@ async function onQueueFile(event: Event) {
 }
 
 async function clearQueue() {
+  if (roomReadOnly.value) {
+    await toast('一起听房间内不能清空共享队列', 'warning')
+    return
+  }
   const alert = await alertController.create({
     header: '清空播放队列',
     message: '将移除队列中的全部歌曲并停止播放。',
@@ -1890,6 +1921,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.queue-room-notice {
+  margin: 0;
+  padding: 8px 16px 2px;
+  color: var(--ceru-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 .queue-clear {
   display: inline-flex;
