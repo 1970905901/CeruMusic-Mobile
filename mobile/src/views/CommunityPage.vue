@@ -244,6 +244,12 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import TextNoteCover from '@/components/TextNoteCover.vue'
+import { cloudSongListApi } from '@/services/cloudSongList'
+import {
+  createRemoteCoverCache,
+  localAttachmentCover,
+  needsRemoteCover
+} from '@/services/postAttachmentCover'
 import { useAuthStore } from '@/stores/auth'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -321,12 +327,45 @@ function imageUrl(image: PostImageOrUrl): string {
   return typeof image === 'string' ? image : image.url
 }
 
+/**
+ * 附件封面。歌单附件没有自带封面时按 `listId` 去云端补一次
+ * （桌面版 usePostAttachmentCover 同口径），结果按歌单缓存，失败也缓存。
+ */
+const remoteCoverCache = createRemoteCoverCache()
+const remoteCovers = ref<Record<string, string>>({})
+
 function attachmentCover(post: CommunityPost): string {
   const value = post.attachment
   if (!value) return ''
-  return value.type === 'song'
-    ? String(value.song?.img || '')
-    : String(value.cover || value.preview?.[0]?.img || '')
+  const local = localAttachmentCover(value)
+  if (local || !needsRemoteCover(value)) return local
+  const listId = String(value.listId || '')
+  if (listId in remoteCovers.value) return remoteCovers.value[listId]
+  void loadRemoteCover(listId)
+  return ''
+}
+
+/** 同一个歌单只请求一次；结果（含失败）写入响应式表并同步进缓存。 */
+const remoteCoverPending = new Set<string>()
+async function loadRemoteCover(listId: string): Promise<void> {
+  const cached = remoteCoverCache.get(listId)
+  if (cached !== undefined) {
+    remoteCovers.value = { ...remoteCovers.value, [listId]: cached }
+    return
+  }
+  if (remoteCoverPending.has(listId)) return
+  remoteCoverPending.add(listId)
+  let cover = ''
+  try {
+    const detail = await cloudSongListApi.getSongListDetail(listId, 'asc', 1)
+    cover = String(detail?.list?.[0]?.img || '')
+  } catch {
+    // 歌单不可用时保持无封面，帖子仍然按文字渲染。
+  } finally {
+    remoteCoverPending.delete(listId)
+    remoteCoverCache.set(listId, cover)
+    remoteCovers.value = { ...remoteCovers.value, [listId]: cover }
+  }
 }
 
 function attachmentTitle(post: CommunityPost): string {
