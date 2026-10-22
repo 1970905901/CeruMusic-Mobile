@@ -217,6 +217,11 @@ async function openTaskActions(task: DownloadTask) {
     buttons.push({ text: '播放', handler: () => void playTask(task) })
     buttons.push({ text: '分享 / 导出', handler: () => void shareTask(task) })
   }
+  if (task.status === 'completed') {
+    // 已完成的任务没有「重试」入口：文件坏了或想换音质重下，只能先删掉记录再重新找歌。
+    // 重新下载会**覆盖原文件**，不会在同目录多出一份「歌名 (1).mp3」。
+    buttons.push({ text: '重新下载', handler: () => downloads.redownload(task.id) })
+  }
   if (task.status === 'running' || task.status === 'queued') {
     buttons.push({ text: '暂停', handler: () => downloads.pause([task.id]) })
   }

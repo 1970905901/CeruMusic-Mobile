@@ -706,6 +706,39 @@ export const useDownloadStore = defineStore('downloads', () => {
     }
   }
 
+  /**
+   * 重新下载一个已完成的任务（文件损坏、想换音质重下）。
+   *
+   * 与 `retry` 不同：`retry` 明确跳过已完成的任务，这里要把它退回队列。
+   * 先删掉旧文件再入队：`resolveDownloadPath` 是按「同名文件是否已存在」挑名字的，
+   * 旧文件留着就会写成「歌名 (1).mp3」，点一次「重新下载」反而多出一份。
+   * 代价是重下失败时旧文件已经没了——但任务会留在列表里可再次重试，
+   * 比悄悄堆一份重复文件更诚实。
+   */
+  async function redownload(id: string): Promise<void> {
+    const task = tasks.value.find((item) => item.id === id)
+    if (!task) return
+    try {
+      if (task.directory === 'saf') {
+        if (task.filePath) await deleteSafDocument(task.filePath)
+      } else if (task.relativePath) {
+        await Filesystem.deleteFile({
+          path: task.relativePath,
+          directory: storageDirectory(task)
+        })
+      }
+    } catch {
+      // 文件可能已被用户删掉；无论是否存在都继续重下。
+    }
+    updateTask(id, {
+      ...retryPatch(),
+      filePath: undefined,
+      relativePath: undefined,
+      totalBytes: undefined
+    })
+    void runTask(id)
+  }
+
   async function remove(id: string, deleteFile = true): Promise<void> {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
@@ -823,6 +856,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     resume,
     cancel,
     retry,
+    redownload,
     remove,
     share,
     play,
