@@ -17,6 +17,7 @@ import {
   storageValueBytes
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
+import { assertNavigationRequest } from '@shiqianjiang/ceru-plugin-sdk'
 import {
   parseSocketPayload,
   socketEventName,
@@ -578,19 +579,51 @@ export class PluginRuntime {
         return null
       }
       case 'ui.navigation.open': {
+        // 用 SDK 自带的校验：页面白名单、query 长度、sectionId 必须由本插件声明。
+        // 此前未知页面会被静默跳到「发现」页，插件以为导航成功了。
+        assertNavigationRequest(params ?? {}, this.manifest)
         const { default: router } = await import('@/router')
-        const page = params?.page
+        const page = params.page as string
         if (page === 'search') {
-          await router.push({ path: '/tabs/search', query: { q: params?.query ?? '' } })
-        } else if (page === 'playlist' || page === 'library') {
-          await router.push('/tabs/library')
-        } else if (page === 'settings') {
-          await router.push('/tabs/settings')
-        } else if (page === 'player') {
-          await router.push('/player')
-        } else {
-          await router.push('/tabs/discover')
+          await router.push({ path: '/tabs/search', query: { q: params.query ?? '' } })
+          return null
         }
+        if (page === 'playlist') {
+          const ref = params.ref
+          if (!ref || ref.kind !== 'playlist') {
+            // 没给具体歌单时退回到歌单列表，而不是假装打开了某张歌单。
+            await router.push('/tabs/library')
+            return null
+          }
+          await router.push({
+            path:
+              '/playlist/remote-' +
+              encodeURIComponent(String(ref.providerId ?? '')) +
+              '-' +
+              encodeURIComponent(String(ref.id ?? '')),
+            query: {
+              source: String(ref.providerId ?? ''),
+              providerId: String(ref.providerId ?? ''),
+              remoteId: String(ref.id ?? ''),
+              kind: 'playlist'
+            }
+          })
+          return null
+        }
+        if (page === 'charts') {
+          await router.push('/tabs/discover')
+          return null
+        }
+        if (page === 'downloads') {
+          await router.push('/downloads')
+          return null
+        }
+        if (page === 'account') {
+          await router.push('/account')
+          return null
+        }
+        // settings
+        await router.push('/tabs/settings')
         return null
       }
       case 'ui.progress.create': {
