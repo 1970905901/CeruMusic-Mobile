@@ -880,6 +880,14 @@ async function onLocalFiles(event: Event) {
       color: 'success'
     })
     await toast.present()
+    return
+  }
+  // 一首都没进来时必须说明原因（文件过大、格式不支持、存储写满），
+  // 否则用户点了导入、界面毫无反应。
+  if (records.failed.length) {
+    const first = records.failed[0]
+    const more = records.failed.length > 1 ? ` 等 ${records.failed.length} 个文件` : ''
+    await showToast(`${first.name}${more}：${first.message}`, 'danger')
   }
 }
 

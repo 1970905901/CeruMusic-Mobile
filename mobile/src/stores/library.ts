@@ -19,6 +19,15 @@ import { blobToDataUrl } from '@/services/imageUtils'
 export const HISTORY_LIMIT = 200
 
 /**
+ * 单个本地音频文件的导入上限。
+ *
+ * 导入路径会把整个文件读进内存、再转成 base64 写进 IndexedDB，峰值内存约是
+ * 文件大小的 2–3 倍。没有上限时，误选一个几百 MB 的无损文件就能让 WebView
+ * 直接因内存不足崩溃，且没有任何提示。200 MB 已覆盖绝大多数无损单曲。
+ */
+export const MAX_LOCAL_IMPORT_BYTES = 200 * 1024 * 1024
+
+/**
  * 把新记录并入历史：同 key 只保留最新一条，并裁剪到上限。
  * 抽成纯函数，是为了让「去重 + 上限」这条规则可以被断言，而不是埋在 store 里。
  */
@@ -474,6 +483,11 @@ export const useLibraryStore = defineStore('library', () => {
     if (options.minSizeKb && options.minSizeKb > 0 && file.size > 0 && file.size < options.minSizeKb * 1024) {
       return { record: null, reason: 'size' }
     }
+    if (file.size > MAX_LOCAL_IMPORT_BYTES) {
+      throw new Error(
+        `文件超过 ${Math.round(MAX_LOCAL_IMPORT_BYTES / 1024 / 1024)} MB，请压缩后再导入`
+      )
+    }
     const existing = options.sourcePath
       ? localRecords.value.find((item) => item.sourcePath === options.sourcePath)
       : undefined
@@ -555,19 +569,31 @@ export const useLibraryStore = defineStore('library', () => {
     return { record }
   }
 
-  async function importLocalFiles(files: File[]): Promise<LocalTrackRecord[]> {
+  /**
+   * 批量导入本地文件。
+   *
+   * 单个文件失败不中断整批；失败原因挂在返回数组的 `failed` 上，
+   * 由界面一并提示——此前只写 console.warn，用户完全不知道
+   * 某个文件为什么没进来（过大、格式不支持、存储写满）。
+   */
+  async function importLocalFiles(
+    files: File[]
+  ): Promise<LocalTrackRecord[] & { failed: Array<{ name: string; message: string }> }> {
     importingLocal.value = true
     const imported: LocalTrackRecord[] = []
+    const failed: Array<{ name: string; message: string }> = []
     try {
       for (const file of files) {
         try {
           const record = await importLocalFile(file)
           if (record) imported.push(record)
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
           console.warn('导入本地歌曲失败', file.name, error)
+          failed.push({ name: file.name, message })
         }
       }
-      return imported
+      return Object.assign(imported, { failed })
     } finally {
       importingLocal.value = false
     }
