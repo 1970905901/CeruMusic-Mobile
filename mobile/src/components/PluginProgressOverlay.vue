@@ -3,7 +3,7 @@
     <div v-for="item in pluginProgressState.items" :key="item.id" class="plugin-progress-card">
       <div class="plugin-progress-head">
         <span class="plugin-progress-title">{{ item.title }}</span>
-        <button type="button" aria-label="关闭进度" @click="closePluginProgress(item.id)">×</button>
+        <button type="button" aria-label="关闭进度" @click="dismissPluginProgress(item.id)">×</button>
       </div>
       <p v-if="item.message" class="plugin-progress-message">{{ item.message }}</p>
       <div class="plugin-progress-track">
@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { pluginProgressState, closePluginProgress } from '@/services/pluginProgress'
+import { pluginProgressState, dismissPluginProgress } from '@/services/pluginProgress'
 </script>
 <style scoped>
 .plugin-progress-host {

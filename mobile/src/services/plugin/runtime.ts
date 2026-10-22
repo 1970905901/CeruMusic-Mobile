@@ -632,12 +632,14 @@ export class PluginRuntime {
       }
       case 'ui.progress.update': {
         const { updatePluginProgress } = await import('@/services/pluginProgress')
-        if (params?.id) updatePluginProgress(String(params.id), params.value ?? params)
+        if (params?.id) {
+          updatePluginProgress(String(params.id), params.value ?? params, this.record.key)
+        }
         return null
       }
       case 'ui.progress.close': {
         const { closePluginProgress } = await import('@/services/pluginProgress')
-        if (params?.id) closePluginProgress(String(params.id))
+        if (params?.id) closePluginProgress(String(params.id), this.record.key)
         return null
       }
       case 'ui.openView': {
