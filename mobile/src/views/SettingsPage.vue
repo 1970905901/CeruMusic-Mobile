@@ -749,7 +749,7 @@
           <ion-range
             :value="settings.settings.maxConcurrentDownloads"
             :min="1"
-            :max="4"
+            :max="5"
             :step="1"
             @ionChange="changeMaxConcurrentDownloads(Number($event.detail.value))"
           />
@@ -1454,11 +1454,12 @@ async function changeOutputDevice(value: unknown) {
     await toast(error instanceof Error ? error.message : '切换输出设备失败', 'danger')
   }
 }
-/** 调高并发数后，队列里等待的任务应立即补上，而不是等下一次有任务结束。 */
+/**
+ * 调高并发数后，队列里等待的任务应立即补上；调低时把多出来的在途任务退回队列。
+ * 两件事都在 store 的 setMaxConcurrent 里，与下载页共用同一份实现。
+ */
 function changeMaxConcurrentDownloads(value: number): void {
-  const next = Number.isFinite(value) ? Math.min(4, Math.max(1, Math.round(value))) : 1
-  settings.settings.maxConcurrentDownloads = next
-  downloadStore.pumpQueue()
+  downloadStore.setMaxConcurrent(Number.isFinite(value) ? value : 1)
 }
 
 const sleepLabel = computed(() => {
