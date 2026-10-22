@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { assertDownloadIds, buildUrl, jsonHeaders, safeExportName } from './runtime'
+import {
+  MAX_QUEUE_MUTATION_ITEMS,
+  assertDownloadIds,
+  assertQueueSize,
+  buildUrl,
+  jsonHeaders,
+  safeExportName
+} from './runtime'
 
 describe('plugin http url building', () => {
   it('only allows http and https, normalising case and host', () => {
@@ -105,5 +112,22 @@ describe('download task ids', () => {
   it('caps a single batch', () => {
     const many = Array.from({ length: 201 }, () => 'dl-1')
     expect(() => assertDownloadIds(tasks, many)).toThrow('一次最多操作 200 个下载任务')
+  })
+})
+
+describe('queue mutation size', () => {
+  it('accepts a reasonable queue operation', () => {
+    expect(() => assertQueueSize([{ ref: {} }])).not.toThrow()
+    expect(() => assertQueueSize(undefined)).not.toThrow()
+  })
+
+  it('rejects an oversized batch before it reaches the player', () => {
+    // 上万条引用会让 queue.replace 整队重建、界面卡死。
+    const huge = Array.from({ length: MAX_QUEUE_MUTATION_ITEMS + 1 }, () => 'k')
+    expect(() => assertQueueSize(huge)).toThrow('一次最多操作')
+  })
+
+  it('rejects a non-array argument', () => {
+    expect(() => assertQueueSize('not-a-list')).toThrow('队列操作参数无效')
   })
 })

@@ -85,6 +85,23 @@ function pluginStorageKey(pluginKey: string, key: string) {
  * 覆盖应用目录里的其它文件（桌面版走的是系统保存对话框，没有这个问题）。
  */
 /**
+ * 队列操作的数量上限。
+ *
+ * 插件可以一次推上万个引用：`queue.replace` 会整队重建、`queue.reorder`
+ * 会按 key 逐条查找，几千条就足以让界面卡住一瞬，十万条直接卡死。
+ * 与桌面 `services.queue.*` 一样在入口处挡住。
+ */
+export const MAX_QUEUE_MUTATION_ITEMS = 2000
+
+export function assertQueueSize(value: unknown): void {
+  if (value === null || value === undefined) return
+  if (!Array.isArray(value)) throw new Error('队列操作参数无效')
+  if (value.length > MAX_QUEUE_MUTATION_ITEMS) {
+    throw new Error(`一次最多操作 ${MAX_QUEUE_MUTATION_ITEMS} 首歌曲`)
+  }
+}
+
+/**
  * 校验插件传来的下载任务 id：必须是非空字符串数组，且每个 id 都真实存在。
  * 桌面 `services.downloads.*` 对不存在的任务会直接抛错，移动端此前静默跳过。
  */
@@ -955,6 +972,7 @@ export class PluginRuntime {
       }
       case 'queue.append': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
+        assertQueueSize(params?.tracks)
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -966,6 +984,7 @@ export class PluginRuntime {
       }
       case 'queue.replace': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
+        assertQueueSize(params?.tracks)
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -977,12 +996,14 @@ export class PluginRuntime {
       }
       case 'queue.remove': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
+        assertQueueSize(params?.keys)
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().removeHostTracks(params?.keys ?? [])
         return null
       }
       case 'queue.reorder': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
+        assertQueueSize(params?.keys)
         const { usePlayerStore } = await import('@/stores/player')
         usePlayerStore().reorderHostTracks(params?.keys ?? [])
         return null
