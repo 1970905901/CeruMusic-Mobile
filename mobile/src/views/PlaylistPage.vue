@@ -290,6 +290,8 @@ import { Clipboard } from '@capacitor/clipboard'
 import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/services/playlistFiles'
 import { describePlaylistStats, summarizePlaylist } from '@/services/playlistStats'
 import { saveAndShareFile } from '@/services/fileExport'
+import { batchQualityChoices } from '@/services/batchDownloadQuality'
+import { getQualityDisplayName } from '@/services/qualityNames'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import { useTrackBatchSelection } from '@/services/trackBatch'
@@ -381,10 +383,52 @@ async function addToPlaylistSelected() {
   exitBatchMode()
 }
 
+/**
+ * 选中歌曲可用的音质（并集，按音源清单顺序低→高），
+ * 与桌面版批量下载前的「选择批量下载音质(自动降级)」同口径。
+ */
+function batchQualityOptions(): string[] {
+  const order =
+    pluginStore.sources.find((item) => item.id === source)?.implementations[0]?.qualities ?? []
+  return batchQualityChoices(selectedTracks.value, order)
+}
+
+/** 弹一次音质选择；用户取消时返回 null，不下载任何东西。 */
+async function chooseBatchQuality(options: string[]): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    let picked: string | null = null
+    void actionSheetController
+      .create({
+        header: '选择批量下载音质（自动降级）',
+        buttons: [
+          ...[...options].reverse().map((quality) => ({
+            text: getQualityDisplayName(quality),
+            handler: () => {
+              picked = quality
+            }
+          })),
+          { text: '取消', role: 'cancel' }
+        ]
+      })
+      .then(async (sheet) => {
+        await sheet.present()
+        await sheet.onDidDismiss()
+        resolve(picked)
+      })
+  })
+}
+
 async function downloadSelected() {
   if (!selectedTracks.value.length) return
+  const options = batchQualityOptions()
+  const quality = options.length ? await chooseBatchQuality(options) : null
+  if (options.length && !quality) return
   try {
-    const enqueued = await downloads.createBatchDownloads(selectedTracks.value)
+    const enqueued = await downloads.createBatchDownloads(
+      selectedTracks.value,
+      quality ?? undefined,
+      options
+    )
     if (enqueued > 0) {
       await toast(`已添加 ${enqueued} 首歌曲到下载队列`)
     } else {

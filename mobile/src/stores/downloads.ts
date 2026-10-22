@@ -23,6 +23,7 @@ import { parseLyrics } from '@/services/lyrics'
 import { blobToDataUrl } from '@/services/imageUtils'
 import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
 import { selectTasksToRequeue, selectTasksToStart } from '@/services/downloadPump'
+import { resolveTrackQuality } from '@/services/batchDownloadQuality'
 import {
   MISSING_DOWNLOAD_MESSAGE,
   isMissingFileError,
@@ -576,11 +577,23 @@ export const useDownloadStore = defineStore('downloads', () => {
     return task
   }
 
-  async function createBatchDownloads(items: Track[], quality?: string): Promise<number> {
+  /**
+   * 批量下载。`quality` 给定时对**每首歌**各自降级到它支持的档位
+   * （桌面版 `handleDownloadBatch` 的 `calculateBestQuality`），
+   * 而不是把同一个档位硬塞给所有歌。
+   */
+  async function createBatchDownloads(
+    items: Track[],
+    quality?: string,
+    qualityOrder: readonly string[] = []
+  ): Promise<number> {
     const candidates = selectBatchDownloadCandidates(items, tasks.value)
     let enqueued = 0
     for (const track of candidates) {
-      await createDownload(track, quality)
+      const perTrack = quality
+        ? resolveTrackQuality(track, quality, qualityOrder) ?? quality
+        : undefined
+      await createDownload(track, perTrack)
       enqueued++
     }
     return enqueued
