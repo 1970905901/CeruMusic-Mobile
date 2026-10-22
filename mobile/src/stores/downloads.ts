@@ -23,6 +23,7 @@ import { parseLyrics } from '@/services/lyrics'
 import { blobToDataUrl } from '@/services/imageUtils'
 import { embedsAnyTag, serializeTagLyrics, tagLyricExtension } from '@/services/tagWriteOptions'
 import { selectTasksToRequeue, selectTasksToStart } from '@/services/downloadPump'
+import { isAudioContentType, notAudioMessage } from '@/services/downloadContentType'
 import { resolveTrackQuality } from '@/services/batchDownloadQuality'
 import {
   MISSING_DOWNLOAD_MESSAGE,
@@ -435,7 +436,14 @@ export const useDownloadStore = defineStore('downloads', () => {
         }
         try {
           const blob = xhr.response as Blob
-          const mime = blob.type || xhr.getResponseHeader('content-type') || 'audio/mpeg'
+          const declared = blob.type || xhr.getResponseHeader('content-type') || ''
+          // 与原生路径同口径：200 但不是音频（登录页、JSON 错误体）要报错，
+          // 不能存成 mp3 让用户拿到一首坏歌。
+          if (declared && !isAudioContentType(declared)) {
+            reject(new Error(notAudioMessage(declared)))
+            return
+          }
+          const mime = declared || 'audio/mpeg'
           const ext = extFromMime(mime, url)
           const path = await resolveDownloadPath(task, ext)
           const rawBase64 = await blobToBase64(blob)
@@ -494,9 +502,16 @@ export const useDownloadStore = defineStore('downloads', () => {
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`下载失败：HTTP ${response.status}`)
     }
-    const mime =
+    const rawType = String(
       (response.headers && (response.headers['content-type'] || response.headers['Content-Type'])) ||
-      'audio/mpeg'
+        ''
+    ).toLowerCase()
+    // 返回 200 但不是音频（插件鉴权失效时的 HTML 登录页、CDN 的 JSON 错误体）
+    // 会被当成 mp3 存下来，用户得到一首「坏歌」，事后很难看出原因。
+    if (rawType && !isAudioContentType(rawType)) {
+      throw new Error(notAudioMessage(rawType))
+    }
+    const mime = rawType || 'audio/mpeg'
     const ext = extFromMime(String(mime), url)
     const path = await resolveDownloadPath(task, ext)
     const rawBase64 = await responseToBase64(response.data)
