@@ -852,6 +852,9 @@ export class PluginRuntime {
         )
       }
       case 'app.getInfo':
+        // `hostApi` 报的是宿主实现的协议版本，必须与桌面一致（1.0.0）。
+        // 此前写成 `2.0.0`，插件按版本分支时会以为这里支持桌面新协议，
+        // 去调用移动端根本没有实现的方法。
         return {
           name: '澜音',
           version: __APP_VERSION__,
@@ -859,7 +862,7 @@ export class PluginRuntime {
           platformName: platform,
           locale: navigator.language || 'zh-CN',
           theme: useSettingsStore().isDark ? 'dark' : 'light',
-          hostApi: '2.0.0'
+          hostApi: '1.0.0'
         }
       case 'app.openSettings': {
         const { default: router } = await import('@/router')
