@@ -8,7 +8,7 @@
 - 分支：`main`
 - 版本：`2.5.13`
 - 最后提交：见 `git log -1`
-- 最新 CI：`39711515310`（功能提交 `bad6614`），Android/iOS 均成功
+- 最新 CI：`39714577453`（功能提交 `355559f`），Android/iOS 均成功
 - 移植目标：iOS 14+（iPhone/iPad）、Android 7.0+（arm64-v8a）
 - CI 触发：`.github/workflows/mobile-build.yml`，手动 workflow `Build Ceru Music Mobile`
 - iOS 构建稳定性：工作流缓存 `~/.cocoapods/repos` 与 CocoaPods 本地缓存，`cap sync ios` 与 `pod install` 各带 3 次递增重试；所有 pod 均为 `node_modules` 本地路径依赖，失败基本只来自 trunk 规格索引抖动。
@@ -82,6 +82,7 @@
 - SAF 导入跳过原因：`importLocalFile` 原先对「重复文件」与「被时长过滤」都返回 `null`，调用方分不清，于是 `filteredDuration` 永远是 0，界面只能笼统报「跳过/过滤」——用户看不出过滤规则到底有没有生效，也分不清某首歌到底是「本来就有」还是「被判太短」。现在导入会带回原因（`size` / `duration` / `duplicate`），文件夹导入分别统计，结果提示里「已存在 N 首」与「过滤 N 首」分行说明。
 - Android SAF 下载目录。
 - 下载管理与批量操作：支持下载全部暂停、全部开始、清空队列（含部分已下载临时文件清理）与清空失败/取消记录，配套二次确认弹窗。
+- 下载文件名模板：`utils/filename.ts` 现在同时接受桌面版的 `%t/%s/%a/%u/%d/%q` 与移动原有的 `{title}` 写法。此前移动端只认花括号，且没有平台与日期字段——把桌面端的模板搬过来会得到一个满是字面 `%t` 的文件名。`%u` 取音源名（缺失时回落音源 id），`%d` 为当天日期（`YYYY-MM-DD`），未知的 `%x` 原样保留；设置页的模板说明也改成列出真实可用的占位符。
 - 下载队列补位：`services/downloadPump.ts` 把「现在该拉起哪些任务」抽成纯函数。原先并发位只在任务完成或失败时才重新评估，于是**暂停或取消一个正在下载的任务会白白空出一个位置**，队列里剩下的歌要等下一次有任务结束才动；「全部暂停」后再「全部开始」最明显——只有前 N 首会重新跑。现在暂停、取消、恢复、删除任务以及修改并发数之后都会统一补位，按队列顺序拉起直到占满空闲位置。
 - 下载标签写入：对齐桌面版 `tagWriteOptions`，把原先单一的 `downloadWriteTags` 开关拆成「基础信息 / 封面 / 歌词 / 单独下载歌词文件 / 歌词导出格式」五项，设置页「下载与存储」逐项可调。此前只有布尔开关，只写标题、艺术家与专辑——下载时拉到的封面与歌词都被丢弃。现在封面会经过 `CapacitorHttp` 拉取并转 data URL 内嵌到 MP3 / FLAC / M4A；歌词由 `services/tagWriteOptions.ts` 统一序列化，内嵌与外置共用同一份文本；「单独下载歌词文件」在音频同目录写同名歌词，应用私有目录与 Android SAF 两种落点都支持，且内容为空时绝不写空文件。与桌面版 downloadWorker 同口径：封面或歌词获取失败只记警告并跳过，不会把已完成的下载变成失败。歌词格式只提供 LRC 与 TTML 两项——桌面版的 9 种格式依赖 AMLL 内置导出器，移动端未打包该依赖，非交互的下载流程也无法弹出插件转换器；LRC 只保留逐行时间，TTML 额外保留翻译与音译。旧布尔值在读取时迁移为「基础信息」，升级后行为不变，直到用户主动开启更多。
 - Android SAF 文件分享。
@@ -172,9 +173,9 @@ npm run build
 当前验证结果：
 
 - `npm run typecheck`：通过
-- `npm run test`：92 个测试文件，563 个测试全部通过
+- `npm run test`：92 个测试文件，569 个测试全部通过
 - `npm run build`：通过
-- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39711515310）
+- GitHub CI：Android arm64 APK 与 iOS unsigned IPA 均构建成功（最新 Run ID 39714577453）
 
 ## 当前未完成
 
