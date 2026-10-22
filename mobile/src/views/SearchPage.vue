@@ -57,6 +57,27 @@
           </ion-segment-button>
         </ion-segment>
 
+        <!-- 输入中的联想（桌面版 searchSuggest）：直接搜索 + 单曲/歌手/专辑/歌单 -->
+        <div v-if="query.trim() && (suggestions.length || !loading)" class="suggest-panel ceru-card">
+          <button type="button" class="suggest-direct" @click="searchNow">
+            <ion-icon :icon="searchOutline" />
+            <span class="ceru-truncate">直接搜索：{{ query.trim() }}</span>
+          </button>
+          <template v-for="group in suggestionGroups" :key="group.kind">
+            <div class="suggest-group-title">{{ group.label }}</div>
+            <button
+              v-for="item in group.items"
+              :key="group.kind + item.text"
+              type="button"
+              class="suggest-row"
+              @click="pickSuggestion(item)"
+            >
+              <span class="ceru-truncate">{{ item.text }}</span>
+              <small v-if="item.hint" class="ceru-truncate">{{ item.hint }}</small>
+            </button>
+          </template>
+        </div>
+
         <div v-if="!query && history.length" class="history">
           <div class="history-head">
             <span>最近搜索</span>
@@ -180,6 +201,11 @@ import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { openTrackActions } from '@/services/trackActions'
 import { createRequestGuard } from '@/services/requestGuard'
+import {
+  SUGGESTION_GROUPS,
+  normalizeSuggestions,
+  type SuggestionItem
+} from '@/services/searchSuggestions'
 import type { Track } from '@/types/music'
 
 const route = useRoute()
@@ -271,7 +297,61 @@ let timer: ReturnType<typeof setTimeout> | null = null
 function onInput(event: any) {
   query.value = String(event.detail?.value ?? '')
   if (timer) clearTimeout(timer)
+  scheduleSuggestions()
   timer = setTimeout(() => void runSearch(true), 380)
+}
+
+/* ---------- 联想 ---------- */
+
+const suggestions = ref<SuggestionItem[]>([])
+let suggestTimer: ReturnType<typeof setTimeout> | null = null
+/** 联想单独一条竞态守卫：连续输入只认最后一次结果。 */
+const suggestRequests = createRequestGuard()
+
+const suggestionGroups = computed(() =>
+  SUGGESTION_GROUPS.map((group) => ({
+    ...group,
+    items: suggestions.value.filter((item) => item.kind === group.kind)
+  })).filter((group) => group.items.length)
+)
+
+function scheduleSuggestions(): void {
+  if (suggestTimer) clearTimeout(suggestTimer)
+  const text = query.value.trim()
+  if (!text || !source.value) {
+    suggestRequests.invalidate()
+    suggestions.value = []
+    return
+  }
+  suggestTimer = setTimeout(async () => {
+    const identity = `${source.value?.id ?? ''}|${text}`
+    const token = suggestRequests.beginLatest(identity)
+    try {
+      const result = await pluginStore.suggest(source.value?.id ?? '', text)
+      if (!suggestRequests.isCurrent(token, identity)) return
+      suggestions.value = normalizeSuggestions(result)
+    } catch {
+      // 联想只是锦上添花：失败就当作没有建议，不打扰用户。
+      if (suggestRequests.isCurrent(token, identity)) suggestions.value = []
+    }
+  }, 260)
+}
+
+/** 清空联想并立即搜索（面板里的「直接搜索」）。 */
+function searchNow(): void {
+  suggestionRequestsClear()
+  void runSearch(true)
+}
+
+function suggestionRequestsClear(): void {
+  suggestRequests.invalidate()
+  suggestions.value = []
+}
+
+function pickSuggestion(item: SuggestionItem): void {
+  query.value = item.text
+  suggestionRequestsClear()
+  void runSearch(true)
 }
 
 async function runSearch(reset = false) {
@@ -284,6 +364,7 @@ async function runSearch(reset = false) {
     nextCursor.value = undefined
     loading.value = false
     error.value = null
+    suggestionRequestsClear()
     return
   }
   if (!source.value) {
@@ -326,6 +407,7 @@ async function runSearch(reset = false) {
 
 function clearSearch() {
   searchRequests.invalidate()
+  suggestionRequestsClear()
   query.value = ''
   results.value = []
   playlists.value = []
@@ -387,7 +469,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
+  if (suggestTimer) clearTimeout(suggestTimer)
   searchRequests.dispose()
+  suggestRequests.dispose()
 })
 </script>
 
@@ -441,6 +525,51 @@ ion-searchbar {
   --background: var(--ceru-bg-elevated);
   border-radius: 12px;
   padding: 3px;
+}
+.suggest-panel {
+  margin-top: 12px;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+.suggest-direct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-brand);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 14px;
+  text-align: left;
+}
+.suggest-direct ion-icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+.suggest-group-title {
+  padding: 8px 14px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ceru-text-secondary);
+}
+.suggest-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ceru-text);
+  font-size: 14px;
+  padding: 9px 14px;
+  text-align: left;
+}
+.suggest-row small {
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  min-width: 0;
 }
 .history {
   margin-top: 22px;
