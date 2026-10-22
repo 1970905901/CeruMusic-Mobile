@@ -69,6 +69,28 @@ const RECORD_KEYS: Array<keyof AppSettings> = ['providerOwners', 'capabilityOwne
  */
 export function mergeCloudSettings(current: AppSettings, cloud: Partial<AppSettings>): AppSettings {
   const merged: AppSettings = { ...current, ...(cloud || {}) }
+  // 逐字段核对类型：云端可能来自旧版本、另一端的字段迁移，或者干脆是脏数据。
+  // 直接展开会把 `theme: null`、`maxConcurrentDownloads: "abc"` 这类值写进本机，
+  // 之后界面就会拿 null 去比较、用字符串做算术。类型不符时保留本机值。
+  const target = merged as unknown as Record<string, unknown>
+  for (const [key, value] of Object.entries(cloud || {})) {
+    const name = key as keyof AppSettings
+    const local = current[name]
+    if (value === undefined || value === null) {
+      target[name] = local
+      continue
+    }
+    if (Array.isArray(local)) {
+      if (!Array.isArray(value)) target[name] = local
+      continue
+    }
+    if (local !== null && typeof local === 'object') {
+      // 嵌套对象（tagWriteOptions 等）由读取侧的 normalize* 兜底，这里只要不是标量。
+      if (typeof value !== 'object') target[name] = local
+      continue
+    }
+    if (typeof value !== typeof local) target[name] = local
+  }
   for (const key of RECORD_KEYS) {
     const fromCloud = cloud?.[key]
     if (!fromCloud || typeof fromCloud !== 'object' || Array.isArray(fromCloud)) {

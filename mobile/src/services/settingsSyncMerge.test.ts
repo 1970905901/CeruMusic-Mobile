@@ -171,3 +171,34 @@ describe('settings sync upload scheduling', () => {
     expect(shouldScheduleUpload({ ...base, applying: true })).toBe(false)
   })
 })
+
+describe('settings sync type guard', () => {
+  it('keeps the local value when the cloud sends null or the wrong type', () => {
+    // 云端可能来自旧版本或另一端迁移，脏值不能覆盖本机的合法设置——
+    // 否则 theme 变 null、并发数变字符串，界面会拿它们去比较和算术。
+    const local = localSettings()
+    const merged = mergeCloudSettings(local, {
+      theme: null as unknown as AppSettings['theme'],
+      maxConcurrentDownloads: 'abc' as unknown as number,
+      accent: 42 as unknown as string
+    })
+    expect(merged.theme).toBe(local.theme)
+    expect(merged.maxConcurrentDownloads).toBe(local.maxConcurrentDownloads)
+    expect(merged.accent).toBe(local.accent)
+  })
+
+  it('keeps the local array when the cloud sends a non-array', () => {
+    const local = localSettings({ searchHistory: ['A'] })
+    const merged = mergeCloudSettings(local, {
+      searchHistory: 'nope' as unknown as string[]
+    })
+    // searchHistory 在敏感字段里，本来也不会被云端覆盖；这里确认类型守卫生效。
+    expect(Array.isArray(merged.searchHistory)).toBe(true)
+  })
+
+  it('still accepts a well-typed cloud value', () => {
+    const merged = mergeCloudSettings(localSettings(), { theme: 'light', maxConcurrentDownloads: 4 })
+    expect(merged.theme).toBe('light')
+    expect(merged.maxConcurrentDownloads).toBe(4)
+  })
+})
