@@ -1007,16 +1007,20 @@ export const usePlayerStore = defineStore('player', () => {
       positionMs.value = restorePositionMs
       durationMs.value = track.durationMs ?? 0
       setStatus('paused')
+      // 监听必须在 `applyMetadata` 之前挂上：它可能要去插件取高清封面（一次网络
+      // 往返），而元数据通常在这一步之内就已经就绪，`loadedmetadata` 早已错过——
+      // 于是「接着上次的进度」静默失效，每次都从头开始。
+      if (restorePositionMs > 0) {
+        const applyRestoreSeek = () => {
+          const total = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
+          audio.currentTime = total
+            ? Math.min(restorePositionMs / 1000, total)
+            : restorePositionMs / 1000
+        }
+        if (audio.readyState >= 1) applyRestoreSeek()
+        else audio.addEventListener('loadedmetadata', applyRestoreSeek, { once: true })
+      }
       await applyMetadata(track)
-      audio.addEventListener(
-        'loadedmetadata',
-        () => {
-          if (restorePositionMs > 0) {
-            audio.currentTime = Math.min(restorePositionMs / 1000, durationMs.value / 1000 || restorePositionMs / 1000)
-          }
-        },
-        { once: true }
-      )
     } catch {
       setStatus('idle')
     }
