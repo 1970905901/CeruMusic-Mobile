@@ -955,16 +955,58 @@ export const useLibraryStore = defineStore('library', () => {
     return page
   }
 
+  /**
+   * 把插件传来的实体变成本地 Track。
+   *
+   * 插件收藏/取消收藏的是它自己刚搜出来的歌，多半还没进过 `tracks` 表；
+   * 此前 `getTrack(key)` 取不到就**静默跳过**——插件以为收藏成功，
+   * 用户的收藏列表却没有任何变化，也没有任何报错。
+   * 取不到就按实体自身的元数据构造一条（与播放路径 `rawEntityToTrack` 同口径）。
+   */
+  function hostEntityToTrack(entity: any): Track | null {
+    const ref = entity?.ref
+    if (!ref || ref.kind !== 'track' || !ref.id) return null
+    const pluginKey =
+      pluginStore.providers.find((item) => item.providerId === ref.providerId)?.pluginKey ??
+      (typeof ref.pluginId === 'string' ? ref.pluginId : undefined)
+    const key = `${pluginKey ?? ref.providerId}:${ref.providerId}:${ref.id}`
+    const existing = getTrack(key) ?? (entity?.key ? getTrack(String(entity.key)) : undefined)
+    if (existing) return existing
+    const metadata = entity?.metadata ?? {}
+    const artists = Array.isArray(metadata.artists)
+      ? metadata.artists.map(String)
+      : String(entity?.subtitle ?? '')
+          .split(/[/,，、]/)
+          .map((item: string) => item.trim())
+          .filter(Boolean)
+    return {
+      key,
+      ...(pluginKey ? { pluginKey } : {}),
+      ref,
+      title: String(entity?.title ?? '未知歌曲'),
+      subtitle: entity?.subtitle,
+      artists,
+      album: metadata.album?.title,
+      albumId: metadata.album?.id ? String(metadata.album.id) : undefined,
+      durationMs: Number(entity?.durationMs ?? metadata.durationMs ?? 0) || undefined,
+      artworkUrl: metadata.artworkUrl,
+      qualities: Array.isArray(metadata.qualities) ? metadata.qualities.map(String) : [],
+      playable: entity?.playable !== false,
+      raw: toPlain(entity),
+      source: 'plugin'
+    }
+  }
+
   async function addHostFavorite(track: any) {
-    const key = track?.key ?? (track?.ref ? `${track.ref.providerId}:${track.ref.id}` : '')
-    const local = getTrack(key)
-    if (local) await addFavorite(local)
+    const resolved = hostEntityToTrack(track)
+    if (!resolved) throw new Error('收藏的歌曲引用无效')
+    await addFavorite(resolved)
   }
 
   async function removeHostFavorite(track: any) {
-    const key = track?.key ?? (track?.ref ? `${track.ref.providerId}:${track.ref.id}` : '')
-    const local = getTrack(key)
-    if (local) await removeFavorite(local)
+    const resolved = hostEntityToTrack(track)
+    if (!resolved) throw new Error('取消收藏的歌曲引用无效')
+    await removeFavorite(resolved)
   }
 
   async function importSharedPlaylist(
