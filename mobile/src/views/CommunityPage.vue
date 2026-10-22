@@ -49,7 +49,9 @@
               </div>
             </header>
 
-            <p v-if="post.content" class="post-content">{{ post.content }}</p>
+            <!-- 没有配图时用桌面端的「音乐随记」文字封面，而不是只剩一段纯文字 -->
+            <TextNoteCover v-if="!post.images.length" :seed="post.id" :content="post.content" />
+            <p v-else-if="post.content" class="post-content">{{ post.content }}</p>
 
             <div v-if="post.images.length" class="image-grid" :class="imageGridClass(post.images.length)">
               <button
@@ -241,6 +243,7 @@ import {
 } from 'ionicons/icons'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
+import TextNoteCover from '@/components/TextNoteCover.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
