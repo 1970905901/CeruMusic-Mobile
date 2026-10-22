@@ -119,6 +119,7 @@ import {
 } from '@/services/sharedPlaylist'
 import { openTrackActions } from '@/services/trackActions'
 import { dedupeByKey } from '@/services/listMerge'
+import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import { createRequestGuard } from '@/services/requestGuard'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -208,13 +209,12 @@ async function load(reset: boolean) {
       (track) => track.key
     )
     const added = tracks.value.length - before
-    barrenPages = added === 0 ? barrenPages + 1 : 0
+    barrenPages = nextBarrenCount(added, barrenPages)
     const cursor = sharedPlaylistNextPos(page.playlist.songs ?? [])
     nextPos.value = cursor
     const total = Number(page.playlist.total || tracks.value.length)
     hasMore.value =
-      barrenPages < 2 &&
-      (page.playlist.songs ?? []).length > 0 &&
+      pagingShouldContinue((page.playlist.songs ?? []).length > 0, barrenPages) &&
       tracks.value.length < total
   } catch (cause) {
     if (!shareRequests.isCurrent(token, id.value)) return
