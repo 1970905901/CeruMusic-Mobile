@@ -1229,7 +1229,9 @@ export class PluginRuntime {
       case 'localMusic.getTags': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.read')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().localTags(params?.track)
+        // 契约是 `Promise<JsonObject>`：取不到时返回空对象，
+        // 而不是 null（插件直接解构 null 会抛错）。桌面同口径。
+        return useLibraryStore().localTags(params?.track) ?? {}
       }
       case 'localMusic.writeTags': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.write')
