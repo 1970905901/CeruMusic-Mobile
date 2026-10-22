@@ -12,7 +12,7 @@
             <ion-icon slot="icon-only" :icon="refreshOutline" />
           </ion-button>
           <ion-button v-if="notifications.items.length" fill="clear" :disabled="notifications.clearing" @click="clearRead">
-            {{ notifications.clearing ? '清理中' : '清理' }}
+            {{ notifications.clearing ? '清理中' : '清理已读' }}
           </ion-button>
         </ion-buttons>
       </ion-toolbar>
@@ -75,7 +75,7 @@
   </ion-page>
 </template><script setup lang="ts">
 import { onMounted } from 'vue'
-import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSegment, IonSegmentButton, IonSpinner, IonTitle, IonToolbar, toastController, useIonRouter } from '@ionic/vue'
+import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSegment, IonSegmentButton, IonSpinner, IonTitle, IonToolbar, alertController, toastController, useIonRouter } from '@ionic/vue'
 import { mailOpenOutline, notificationsOffOutline, refreshOutline } from 'ionicons/icons'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar } from '@/services/ossImage'
@@ -128,7 +128,24 @@ async function openItem(item: InboxMessage) {
   }
 }
 
-async function clearRead() {
+/**
+ * 清理已读：先在确认框里说清楚「只删已读、未读保留」。
+ *
+ * 桌面版在删除前会弹确认；移动端原来点一下就直接调用接口，
+ * 误触后已读消息无法恢复。
+ */
+async function clearRead(): Promise<void> {
+  const alert = await alertController.create({
+    header: '清理已读消息',
+    message: '清理所有分类中已经读过的消息，未读消息会保留。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '清理已读', role: 'destructive' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'destructive') return
   if (await notifications.clearRead()) await toast('已清理已读消息')
 }
 
