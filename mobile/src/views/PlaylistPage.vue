@@ -33,6 +33,16 @@
             <ion-button v-if="isLocal" fill="clear" @click="openPlaylistMenu">
               <ion-icon slot="icon-only" :icon="ellipsisHorizontal" />
             </ion-button>
+            <!-- 远程歌单（插件/排行榜）可以整单存成自己的歌单，桌面版同入口 -->
+            <ion-button
+              v-else
+              fill="clear"
+              :disabled="!tracks.length || savingToLocal"
+              title="保存到本地"
+              @click="saveToLocalPlaylist"
+            >
+              <ion-icon slot="icon-only" :icon="saveOutline" />
+            </ion-button>
           </template>
         </ion-buttons>
       </ion-toolbar>
@@ -265,6 +275,7 @@ import {
   checkmarkDoneOutline,
   searchOutline,
   ellipsisHorizontal,
+  saveOutline,
   play as playIcon,
   shuffle,
   swapVerticalOutline,
@@ -315,6 +326,8 @@ const playlistActionTrack = ref<Track | null>(null)
 const playlistActionOpen = computed(() => playlistActionTrack.value !== null)
 const shareOpen = ref(false)
 const reorderMode = ref(false)
+/** 远程歌单「保存到本地」进行中：拉全部分页可能耗时，避免重复触发。 */
+const savingToLocal = ref(false)
 
 const searchQuery = ref('')
 const searchActive = ref(false)
@@ -976,6 +989,49 @@ async function onReorder(
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '排序保存失败', 'danger')
     loadLocal()
+  }
+}
+
+/**
+ * 把远程歌单整单保存成本地歌单（桌面版 list.vue「保存到本地」）。
+ *
+ * 关键点：
+ * - 分页还没拉完时先补拉，否则「保存」只会存下当前可见的一页，
+ *   用户以为存了整单、实际少了后面几十首；补拉有页数上限，避免异常分页空转。
+ * - 同名歌单已存在时不覆盖也不静默重名，直接提示，避免出现两个一模一样的名字。
+ * - 先建歌单再批量加歌，封面用远程歌单封面，避免列表里是一张空白卡。
+ */
+async function saveToLocalPlaylist(): Promise<void> {
+  if (isLocal || savingToLocal.value || !tracks.value.length) return
+  const name = title.value.trim() || '歌单'
+  if (library.playlists.some((item) => item.name === name)) {
+    await toast('已存在同名的本地歌单', 'warning')
+    return
+  }
+  const alert = await alertController.create({
+    header: '保存到本地',
+    message: `确定将歌单「${name}」保存为本地歌单吗？`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  savingToLocal.value = true
+  try {
+    let guard = 0
+    while (nextCursor.value && guard++ < 50) await loadRemote(false)
+    const playlist = library.createPlaylist(name, description.value)
+    const added = await library.addTracksToPlaylist(playlist.id, tracks.value)
+    if (cover.value) await library.updatePlaylist(playlist.id, { cover: cover.value })
+    await toast(`已保存 ${added} 首到本地歌单「${name}」`, 'success')
+    router.replace(`/playlist/${playlist.id}`)
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '保存失败', 'danger')
+  } finally {
+    savingToLocal.value = false
   }
 }
 
