@@ -12,6 +12,7 @@ import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writ
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
+import { trackKeyFor } from '@/services/trackKey'
 import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
 
@@ -1050,7 +1051,7 @@ export const useLibraryStore = defineStore('library', () => {
     const pluginKey =
       pluginStore.providers.find((item) => item.providerId === ref.providerId)?.pluginKey ??
       (typeof ref.pluginId === 'string' ? ref.pluginId : undefined)
-    const key = `${pluginKey ?? ref.providerId}:${ref.providerId}:${ref.id}`
+    const key = trackKeyFor(ref, pluginKey ?? ref.providerId)
     const existing = getTrack(key) ?? (entity?.key ? getTrack(String(entity.key)) : undefined)
     if (existing) return existing
     const metadata = entity?.metadata ?? {}

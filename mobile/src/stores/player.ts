@@ -9,6 +9,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
+import { trackKeyFor } from '@/services/trackKey'
 import { isAudioContentType, notAudioMessage } from '@/services/downloadContentType'
 import {
   bindAudioPipelineElement,
@@ -45,7 +46,10 @@ function rawEntityToTrack(entity: any, pluginKey?: string): Track {
         .map((item: string) => item.trim())
         .filter(Boolean)
   return {
-    key: `${pluginKey ?? ref.providerId}:${ref.providerId}:${ref.id}`,
+    // 与其它入口共用同一条 key 规则：公共资源不带插件前缀，
+    // 否则同一首歌从「搜索结果」和「插件推入队列」会得到两个 key，
+    // 队列里出现两条、按 key 查找（收藏、定位、去重）全部漏掉。
+    key: trackKeyFor(ref, pluginKey ?? String(ref.providerId ?? '')),
     pluginKey,
     ref,
     title: String(entity?.title ?? '未知歌曲'),

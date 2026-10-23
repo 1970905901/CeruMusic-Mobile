@@ -5,6 +5,7 @@ import { changedPermissionKeys, settingsChangedKeys } from '@/services/pluginEve
 import { pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices } from '@/services/pluginDevices'
 import { onCurrentLyrics } from '@/services/lyricsBridge'
+import { trackKeyFor } from '@/services/trackKey'
 import { useAuthStore } from '@/stores/auth'
 import { useListenTogetherStore } from '@/stores/listenTogether'
 import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
@@ -26,9 +27,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { resolveHiresCover } from '@/services/smtcArtwork'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
-  const ref = entity?.ref ?? {}
-  if (ref.scope === 'provider') return `${ref.providerId}:${ref.id}`
-  return `${pluginKey}:${ref.providerId}:${ref.id}`
+  return trackKeyFor(entity?.ref, pluginKey)
 }
 
 function normalizeTrack(pluginKey: string, entity: any): Track {
