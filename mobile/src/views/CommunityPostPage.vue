@@ -275,7 +275,7 @@ import {
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import { ossAvatar, ossCard, ossDetail } from '@/services/ossImage'
-import { loadCloudPlaylist } from '@/services/cloudPlaylistTracks'
+import { durationMsOf, loadCloudPlaylist } from '@/services/cloudPlaylistTracks'
 import {
   attachmentCover as attachmentCoverOf,
   attachmentSubtitle as attachmentSubtitleOf,
@@ -644,7 +644,9 @@ async function playAttachment() {
     },
     title: String(song.name || '未知歌曲'),
     subtitle: String(song.singer || ''),
-    durationMs: Number(song.interval || 0) * 1000,
+    // `interval` 在云端是「秒数」或「分:秒」两种写法都可能出现；
+    // 直接 `Number()` 遇到 "4:05" 会得到 NaN，时长与进度条一起坏掉。
+    durationMs: durationMsOf(song.interval) ?? 0,
     playable: true,
     metadata: {
       artists: String(song.singer || '').split(/[\/,，、]/).map((item) => item.trim()).filter(Boolean),
