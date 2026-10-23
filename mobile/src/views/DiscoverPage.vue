@@ -110,6 +110,18 @@
             </div>
           </template>
 
+          <!--
+            排行榜与分类是两次独立请求：一边失败不该连带隐藏另一边。
+            桌面版 find.vue 同样对分类歌单单独给出错误与「重新加载」。
+          -->
+          <PlaylistLoadError
+            v-if="sourceError && !loading"
+            :message="sourceError"
+            :has-items="charts.length > 0 || categories.length > 0"
+            :retrying="retryingSource"
+            @retry="retrySourceData"
+          />
+
           <SectionHeader
             v-if="charts.length"
             title="排行榜"
@@ -193,7 +205,10 @@
             />
           </div>
 
-          <div v-if="!charts.length && !categories.length && !recent.length && !favoriteTracks.length" class="ceru-empty">
+          <div
+            v-if="!charts.length && !categories.length && !recent.length && !favoriteTracks.length && !sourceError"
+            class="ceru-empty"
+          >
             <ion-icon :icon="compassOutline" />
             <div class="empty-title">还没有可展示的内容</div>
             <div class="empty-desc">试试搜索，或从音乐库导入本地音乐。</div>
@@ -238,7 +253,9 @@ import { useRouter } from 'vue-router'
 import SectionHeader from '@/components/SectionHeader.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import CoverImage from '@/components/CoverImage.vue'
+import PlaylistLoadError from '@/components/PlaylistLoadError.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
+import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -257,6 +274,9 @@ const suggestions = ref<string[]>([])
 const charts = ref<any[]>([])
 const categories = ref<any[]>([])
 const loading = ref(false)
+/** 榜单/分类请求失败的说明；为空表示最近一次加载没有出错。 */
+const sourceError = ref('')
+const retryingSource = ref(false)
 let suggestionTimer: ReturnType<typeof setTimeout> | null = null
 /**
  * 联想词与首页数据各自独立的竞态守卫：
@@ -373,19 +393,34 @@ async function loadSourceData() {
     sourceDataRequests.invalidate()
     charts.value = []
     categories.value = []
+    sourceError.value = ''
     loading.value = false
     return
   }
   const token = sourceDataRequests.beginLatest(source)
   loading.value = true
+  sourceError.value = ''
+  /**
+   * 两个请求各自 `catch` 成空列表，可插件报错（未授权、限流、网络断了）时
+   * 首页会安静地变成「还没有可展示的内容」——用户只会以为这个音源没内容，
+   * 不知道是需要去授权或换网络。这里把失败原因留下来交给统一的错误提示。
+   * 只有一边失败时另一边照常展示，所以取第一个错误即可。
+   */
+  const failures: unknown[] = []
+  const settle = <T,>(promise: Promise<T>) =>
+    promise.catch((cause: unknown) => {
+      failures.push(cause)
+      return { items: [] as T[] }
+    })
   try {
     const [chartPage, categoryPage] = await Promise.all([
-      pluginStore.charts(source).catch(() => ({ items: [] })),
-      pluginStore.playlistCategories(source).catch(() => ({ items: [] }))
+      settle(pluginStore.charts(source)),
+      settle(pluginStore.playlistCategories(source))
     ])
     if (!sourceDataRequests.isCurrent(token, selectedSource.value?.id ?? '')) return
     charts.value = chartPage.items ?? []
     categories.value = categoryPage.items ?? []
+    if (failures.length) sourceError.value = playlistLoadErrorMessage(failures[0])
   } finally {
     if (sourceDataRequests.isCurrent(token, selectedSource.value?.id ?? '')) loading.value = false
   }
@@ -437,6 +472,17 @@ async function play(track: Track) {
 
 function openMore(track: Track) {
   void openTrackActions(track)
+}
+
+/** 错误卡片上的「重新加载」：拉取期间禁用按钮，避免连点叠加请求。 */
+async function retrySourceData(): Promise<void> {
+  if (retryingSource.value || loading.value) return
+  retryingSource.value = true
+  try {
+    await loadSourceData()
+  } finally {
+    retryingSource.value = false
+  }
 }
 
 async function refresh(event: any) {
