@@ -133,6 +133,7 @@
 - 插件一起听 `ctx.rooms.*`。
 - 插件音频设备 `ctx.devices.list / select`，当前只暴露本机系统输出。
 - 插件 Socket，支持原生 WebSocket 与 Socket.IO。
+- 歌单结构变化事件补全：`library.changed` 此前只有「插件自己改歌单」这一条路径会发；用户在界面上新建或删除本地歌单时插件收不到，插件侧的歌单列表一直停在旧数据，点到已删除的条目才报错。现在 `stores/library.ts` 的 `publishLibraryChange` 统一在新建（`created`）与删除（`deleted`）时广播，payload 与桌面 `{ target: { id, location }, reason }` 一致，reason 取值沿用 SDK 的 `created | updated | deleted | synced`。收藏变化**不**在广播范围内——桌面端同样不发，收藏不是 `PlaylistReference`，这里照搬而不是自己发明一个假 id 的事件。
 - 插件主机事件 `ctx.events.on`，已覆盖 `settings.changed`、`theme.changed`：此前这条只写在文档里——`publishTheme` 没有任何调用方，`settings.changed` 连发布函数都没有，插件监听这两个事件收不到任何东西。现在 `stores/plugins.ts` 监听**与 `pluginSettingsGet` 同一份公开设置白名单**，变化时推送变更键名；亮暗模式切换推送 `theme.changed`。白名单保证 API key、权限表等内部状态不会通过事件名泄露给插件。启动时由 `main.ts` 调用 `startSettingsEvents()` 挂载（只挂一次）。此外补齐桌面版 `PluginHostBridge` 里其余三条推送：`account.changed`（**逐插件生成** `sha256(manifestId:userId)`，与 `account.getSession` 同口径，避免一个插件借事件跨插件关联同一用户）、`rooms.changed`（沿用 `rooms.getState` 的同一份快照）、`devices.changed`（移动端输出路由固定，只推一次）、`permissions.changed`（只推**变更的键名**、不推授权状态，与桌面 `setGrantedPermissions` 一致），以及 `lyrics.changed`——移动端歌词只存在于播放页组件里，`services/lyricsBridge.ts` 做了一层最小事件桥：播放页在歌词文档被替换（切歌、加载完成、清空）时广播，插件 store 订阅后转发给所有运行时；单个订阅者抛错不会影响其它订阅者，取消订阅即停止投递。
 - 插件设置访问限制：只能读写公开设置白名单，不能读 AI API key、权限表等内部状态。
 - 社区图片 OSS 预设：`services/ossImage.ts` 与桌面端 `utils/ossImage.ts` 同源，只对 OSS 域名拼接 `x-oss-process`（整体 URL encode），社区列表用 `ossCard`、详情大图用 `ossDetail`、头像用 `ossAvatar`，外部域名原样返回。
