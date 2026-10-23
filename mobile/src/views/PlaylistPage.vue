@@ -148,7 +148,13 @@
         <ion-spinner name="crescent" />
         <span>正在加载歌曲…</span>
       </div>
-      <p v-if="error" class="error">{{ error }}</p>
+      <PlaylistLoadError
+        v-if="error && !loading"
+        :message="error"
+        :has-items="tracks.length > 0"
+        :retrying="retrying"
+        @retry="retryLoad"
+      />
 
       <p v-if="reorderMode" class="reorder-hint ceru-pad">拖动右侧手柄调整歌曲顺序，完成后自动保存。</p>
 
@@ -295,6 +301,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import TrackRow from '@/components/TrackRow.vue'
 import TrackBatchBar from '@/components/TrackBatchBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import PlaylistLoadError from '@/components/PlaylistLoadError.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import PlaylistItemActions from '@/components/PlaylistItemActions.vue'
 import PlaylistItemActionSheet from '@/components/PlaylistItemActionSheet.vue'
@@ -321,6 +328,7 @@ import { useTrackBatchSelection } from '@/services/trackBatch'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
+import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
 
 const route = useRoute()
 const router = useRouter()
@@ -506,7 +514,19 @@ let barrenPages = 0
 const loading = ref(false)
 /** 远程歌单/榜单的分页请求守卫；本地歌单是同步读取，不参与竞态。 */
 const remoteRequests = createRequestGuard()
+/**
+ * 加载失败的说明文案（已翻译成用户能照着做的话，见 `services/playlistLoadError.ts`）。
+ * 原始错误只进 console，页面上不再直接显示插件抛出的英文/堆栈片段。
+ */
 const error = ref<string | null>(null)
+const retrying = ref(false)
+/**
+ * 失败发生在「从头加载」还是「加载更多」。
+ *
+ * 两者重试方式不同：从头失败要清空重拉（避免半份残留列表），分页失败只需接着拉下一页；
+ * 分页失败时从头上重来会让已经看到的歌曲闪一下。
+ */
+let retryFromStart = true
 
 const localPlaylist = computed(() => library.playlists.find((item) => item.id === remoteId))
 /**
@@ -627,7 +647,9 @@ async function loadCloud(): Promise<void> {
     tracks.value = items
   } catch (cause) {
     if (!remoteRequests.isCurrent(token, identity)) return
-    error.value = cause instanceof Error ? cause.message : String(cause)
+    console.error('获取云端歌单失败:', cause)
+    retryFromStart = true
+    error.value = playlistLoadErrorMessage(cause)
   } finally {
     if (remoteRequests.isCurrent(token, identity)) loading.value = false
   }
@@ -694,9 +716,32 @@ async function loadRemote(reset = false) {
       : undefined
   } catch (cause) {
     if (!remoteRequests.isCurrent(token, identity)) return
-    error.value = cause instanceof Error ? cause.message : String(cause)
+    console.error('获取网络歌单失败:', cause)
+    retryFromStart = reset
+    // 从头加载失败就丢掉这次的结果，避免半份列表被当成完整歌单展示。
+    if (reset) tracks.value = []
+    error.value = playlistLoadErrorMessage(cause)
   } finally {
     if (remoteRequests.isCurrent(token, identity)) loading.value = false
+  }
+}
+
+/**
+ * 重试当前出错的加载。
+ *
+ * 从头失败的歌单已经清空，按「重新加载整单」处理；分页失败则接着拉下一页——
+ * `loadRemote(false)` 在没有游标时会直接返回，因此分页重试只在游标仍存在时才有意义，
+ * 否则退回首屏重拉，至少能把可见内容恢复出来。
+ */
+async function retryLoad(): Promise<void> {
+  if (retrying.value || loading.value) return
+  retrying.value = true
+  try {
+    if (isCloud) await loadCloud()
+    else if (retryFromStart || !nextCursor.value) await loadRemote(true)
+    else await loadRemote(false)
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -1459,12 +1504,6 @@ onBeforeUnmount(() => {
   padding: 32px;
   color: var(--ceru-text-secondary);
   font-size: 13px;
-}
-.error {
-  color: var(--ceru-danger);
-  font-size: 12px;
-  padding: 16px;
-  line-height: 1.5;
 }
 .list-block {
   margin: 18px 8px 0;

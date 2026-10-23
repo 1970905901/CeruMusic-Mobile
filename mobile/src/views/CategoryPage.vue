@@ -20,7 +20,13 @@
         <ion-spinner name="crescent" />
         <span>正在加载歌单…</span>
       </div>
-      <p v-if="error" class="error">{{ error }}</p>
+      <PlaylistLoadError
+        v-if="error && !loading"
+        :message="error"
+        :has-items="items.length > 0"
+        :retrying="retrying"
+        @retry="retryLoad"
+      />
 
       <div v-if="items.length" class="playlist-list">
         <button
@@ -78,6 +84,8 @@ import {
 import { albumsOutline, chevronForward } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
 import CoverImage from '@/components/CoverImage.vue'
+import PlaylistLoadError from '@/components/PlaylistLoadError.vue'
+import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
 import { dedupeByKey } from '@/services/listMerge'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import EmptyState from '@/components/EmptyState.vue'
@@ -97,6 +105,9 @@ const nextCursor = ref<string | undefined>()
 let barrenPages = 0
 const loading = ref(false)
 const error = ref<string | null>(null)
+const retrying = ref(false)
+/** 失败发生在首屏还是翻页：决定重试是从头拉还是接着拉。 */
+let retryFromStart = true
 /** 分类页只按路由参数加载一次，分页请求之间用 capture 并存。 */
 const listRequests = createRequestGuard()
 
@@ -136,7 +147,11 @@ async function load(reset = false) {
       : undefined
   } catch (cause) {
     if (!listRequests.isCurrent(token, categoryId)) return
-    error.value = cause instanceof Error ? cause.message : String(cause)
+    console.error('获取分类歌单失败:', cause)
+    retryFromStart = reset
+    // 首屏失败不留半份列表：用户会以为这个分类只有这几张。
+    if (reset) items.value = []
+    error.value = playlistLoadErrorMessage(cause)
   } finally {
     if (listRequests.isCurrent(token, categoryId)) loading.value = false
   }
@@ -147,6 +162,17 @@ async function loadMore(event: any) {
     await load(false)
   } finally {
     event.target.complete()
+  }
+}
+
+/** 重试失败的那一页；游标已在失败时被丢弃时退回首屏重拉。 */
+async function retryLoad(): Promise<void> {
+  if (retrying.value || loading.value) return
+  retrying.value = true
+  try {
+    await load(retryFromStart || !nextCursor.value)
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -197,12 +223,6 @@ onBeforeUnmount(() => {
   padding: 32px;
   color: var(--ceru-text-secondary);
   font-size: 13px;
-}
-.error {
-  color: var(--ceru-danger);
-  font-size: 12px;
-  padding: 16px;
-  line-height: 1.5;
 }
 .playlist-list {
   margin: 18px 0 0;
