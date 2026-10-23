@@ -5,6 +5,7 @@ import {
   isTrackCacheable,
   mediaCacheKeyForTrack,
   qualityRank,
+  qualitySatisfiesRequest,
   shouldCacheQuality
 } from './mediaCache'
 import type { Track } from '@/types/music'
