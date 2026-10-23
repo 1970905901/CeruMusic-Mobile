@@ -157,6 +157,18 @@
         </div>
         <div v-else class="comments-empty">还没有评论，说说你的看法</div>
 
+        <!--
+          翻页失败同样要提示：错误块只在「一条评论都没有」时显示，
+          已有评论时点「加载更多评论」失败是无声的。
+        -->
+        <div
+          v-if="comments.length && commentsError && !commentsLoadingMore"
+          class="load-more-error"
+          role="status"
+        >
+          <p>{{ commentsError }}</p>
+          <ion-button size="small" fill="outline" @click="loadComments(false)">重试</ion-button>
+        </div>
         <div v-if="commentsHasMore" class="load-more">
           <ion-button fill="clear" :disabled="commentsLoadingMore" @click="loadComments(false)">
             {{ commentsLoadingMore ? '加载中…' : '加载更多评论' }}
@@ -450,12 +462,13 @@ async function loadComments(reset: boolean) {
   if (reset) {
     commentsPage.value = 1
     comments.value = []
-    commentsError.value = ''
     commentsLoading.value = true
   } else {
     if (!commentsHasMore.value) return
     commentsLoadingMore.value = true
   }
+  // 每次请求都清掉旧错误，否则重试成功后提示还挂在列表下方。
+  commentsError.value = ''
   try {
     const result = await communityApi.listComments(postId, commentsPage.value, 20)
     const known = new Set(comments.value.map((item) => item.id))
@@ -1058,6 +1071,21 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   padding: 10px;
+}
+.load-more-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  color: var(--ceru-danger);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.load-more-error p {
+  margin: 0;
 }
 .loading {
   display: flex;
