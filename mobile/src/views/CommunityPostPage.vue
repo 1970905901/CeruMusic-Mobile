@@ -33,7 +33,7 @@
             <CoverImage :src="ossAvatar(post.userAvatar)" :size="44" :radius="22" :alt="post.username" />
             <div class="author-copy">
               <div class="author-name">{{ post.username || '音乐同好' }}</div>
-              <div class="post-time">{{ communityMetaLine(formatTime(post.createdAt), post.ipLocation) }}</div>
+              <div class="post-time">{{ communityMetaLine(formatRelativeTime(post.createdAt), post.ipLocation) }}</div>
             </div>
             <button v-if="isOwnPost" type="button" class="mini-action" @click="startEdit">编辑</button>
           </header>
@@ -64,7 +64,7 @@
           <div class="post-stats">
             <button type="button" class="stat" :class="{ active: post.liked }" @click="togglePostLike">
               <ion-icon :icon="post.liked ? heart : heartOutline" />
-              {{ formatCount(post.likeCount) }}
+              {{ formatCommunityCount(post.likeCount) }}
             </button>
             <span class="stat"><ion-icon :icon="chatbubbleOutline" /> {{ post.commentCount }}</span>
             <button type="button" class="stat share" @click="sharePost">
@@ -95,7 +95,7 @@
               </div>
               <p class="comment-text">{{ comment.content }}</p>
               <div class="comment-meta">
-                <span>{{ communityMetaLine(formatTime(comment.createdAt), comment.ipLocation) }}</span>
+                <span>{{ communityMetaLine(formatRelativeTime(comment.createdAt), comment.ipLocation) }}</span>
                 <button type="button" class="meta-btn" :class="{ active: comment.liked }" @click="toggleCommentLike(comment)">
                   <ion-icon :icon="comment.liked ? heart : heartOutline" />
                   <span v-if="comment.likeCount">{{ comment.likeCount }}</span>
@@ -122,7 +122,7 @@
                     </div>
                     <p class="comment-text">{{ reply.content }}</p>
                     <div class="comment-meta">
-                      <span>{{ communityMetaLine(formatTime(reply.createdAt), reply.ipLocation) }}</span>
+                      <span>{{ communityMetaLine(formatRelativeTime(reply.createdAt), reply.ipLocation) }}</span>
                       <button type="button" class="meta-btn" :class="{ active: reply.liked }" @click="toggleCommentLike(reply)">
                         <ion-icon :icon="reply.liked ? heart : heartOutline" />
                         <span v-if="reply.likeCount">{{ reply.likeCount }}</span>
@@ -284,6 +284,7 @@ import {
 import { COMMENT_HIGHLIGHT_MS, locateComment } from '@/services/commentLocate'
 import { showSupportNotice } from '@/services/communitySupport'
 import { communityMetaLine } from '@/services/communityLocation'
+import { formatCommunityCount, formatRelativeTime } from '@/services/communityFormat'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'
@@ -367,23 +368,6 @@ const repliesByParent = computed<Record<string, CommunityComment[]>>(() => {
 
 function imageUrl(image: PostImageOrUrl): string {
   return typeof image === 'string' ? image : image.url
-}
-
-function formatCount(value: number): string {
-  if (!value) return '0'
-  if (value < 10000) return String(value)
-  return (value / 10000).toFixed(1) + '万'
-}
-
-function formatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const diff = Date.now() - date.getTime()
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
-  if (diff < 604800000) return Math.floor(diff / 86400000) + ' 天前'
-  return date.toLocaleDateString()
 }
 
 function isOwnComment(comment: CommunityComment): boolean {

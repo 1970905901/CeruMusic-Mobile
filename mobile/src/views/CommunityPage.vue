@@ -45,7 +45,7 @@
               />
               <div class="author-copy">
                 <div class="author-name ceru-truncate">{{ post.username || '音乐同好' }}</div>
-                <div class="post-time">{{ communityMetaLine(formatTime(post.createdAt), post.ipLocation) }}</div>
+                <div class="post-time">{{ communityMetaLine(formatRelativeTime(post.createdAt), post.ipLocation) }}</div>
               </div>
             </header>
 
@@ -82,11 +82,11 @@
                 @click.stop="toggleLike(post)"
               >
                 <ion-icon :icon="post.liked ? heart : heartOutline" />
-                <span>{{ formatCount(post.likeCount) }}</span>
+                <span>{{ formatCommunityCount(post.likeCount) }}</span>
               </button>
               <button type="button" class="action" @click.stop="openPost(post)">
                 <ion-icon :icon="chatbubbleOutline" />
-                <span>{{ formatCount(post.commentCount) }}</span>
+                <span>{{ formatCommunityCount(post.commentCount) }}</span>
               </button>
               <button type="button" class="action" @click.stop="sharePost(post)">
                 <ion-icon :icon="shareOutline" />
@@ -266,6 +266,7 @@ import { createRequestGuard } from '@/services/requestGuard'
 import { ossAvatar, ossCard } from '@/services/ossImage'
 import { showSupportNotice } from '@/services/communitySupport'
 import { communityMetaLine } from '@/services/communityLocation'
+import { formatCommunityCount, formatRelativeTime } from '@/services/communityFormat'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 
@@ -388,23 +389,6 @@ function imageGridClass(count: number): string {
   if (count === 1) return 'one'
   if (count === 2) return 'two'
   return 'many'
-}
-
-function formatCount(value: number): string {
-  if (!value) return '0'
-  if (value < 10000) return String(value)
-  return (value / 10000).toFixed(value < 100000 ? 1 : 0) + '万'
-}
-
-function formatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const diff = Date.now() - date.getTime()
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
-  if (diff < 604800000) return Math.floor(diff / 86400000) + ' 天前'
-  return date.toLocaleDateString()
 }
 
 async function load(reset = false) {

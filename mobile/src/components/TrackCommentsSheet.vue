@@ -23,7 +23,7 @@
             >
               {{ entry.label }}
               <span v-if="states[entry.kind].total" class="tab-count">
-                {{ formatCount(states[entry.kind].total) }}
+                {{ formatCommunityCount(states[entry.kind].total) }}
               </span>
             </button>
           </div>
@@ -124,7 +124,7 @@
                 <div class="comment-footer">
                   <span class="like">
                     <ion-icon :icon="heartOutline" />
-                    {{ formatCount(comment.likedCount) }}
+                    {{ formatCommunityCount(comment.likedCount) }}
                   </span>
                 </div>
               </div>
@@ -193,6 +193,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { createRequestGuard } from '@/services/requestGuard'
 import { ossCard, ossDetail } from '@/services/ossImage'
+import { formatCommunityCount } from '@/services/communityFormat'
 import {
   COMMENT_PAGE_SIZE,
   commentKindLabel,
@@ -268,15 +269,6 @@ const hasMore = computed(() =>
 
 function handleDismiss() {
   emit('close')
-}
-
-function formatCount(value: number): string {
-  const count = Math.max(0, Number(value) || 0)
-  if (count >= 10000) {
-    const text = (count / 10000).toFixed(count >= 100000 ? 0 : 1)
-    return text.replace(/\.0$/, '') + 'w'
-  }
-  return String(count)
 }
 
 function isExpanded(id: string): boolean {
