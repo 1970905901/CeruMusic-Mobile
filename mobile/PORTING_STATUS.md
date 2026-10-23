@@ -212,6 +212,7 @@
 - 隐藏页面的频谱空转：Ionic 把离开的页面留在 DOM 里（只设 `visibility: hidden`），组件不卸载、`requestAnimationFrame` 照样回调，音效页的频谱在设置页压栈时仍以 30fps 读频域并重绘。现在每帧先判定可见性，不可见则跳过采样与绘制，回到页面立即恢复。
 - 新建歌单的写盘失败：`createPlaylist` 用 `void getDb().then(...)` 落库且没有 catch，IndexedDB 写入失败时成为未处理的 rejection——歌单已出现在列表里、重启后却消失，用户看不到任何提示。现在失败会记录下来。
 - 通知权限的申请时机：一起听通知与插件的系统通知都只在 App 后台发送，而系统不会在后台弹权限对话框——首次真正需要发通知时才申请会被直接忽略，用户收不到任何东西。现在开启「一起听通知」时就在前台申请（已拒绝过不再徒劳追问），失败时提示去系统设置开启。
+- 插件下载引用的解析也改用 `playlistKeyCandidates`：`createHostDownloads` 原本自己拼两种 key 去查歌，规则调整后容易再次走样。
 - 曲目 key 规则收敛：同一首歌在不同入口必须得到同一个 key，否则按 key 查找全部会漏。此前这条规则散落三份，其中两份写错——`stores/player.ts` 对公共资源也加插件前缀，`stores/library.ts` 把私有资源写成 `import:providerId:id`。结果是同一首歌从搜索进队列与从插件推入队列得到两个 key：队列里出现两条、收藏判定认不出、歌单里删不掉。现在统一走 `services/trackKey.ts` 的 `trackKeyFor`，并补单测锁定「公共资源不带前缀、私有资源按真实归属」。
 - 插件导入歌单的曲目 key：`importHostPlaylist` 自己拼 key，私有资源被写成 `import:provider:id`，而全应用其它地方（`makeTrackKey`）用的是 `pluginId:provider:id`。后果是按引用删不掉、收藏判定认不出、库里多一份重复条目。现在复用收藏路径的 `hostEntityToTrack`，key 与元数据口径与全应用一致。
 - 插件操作不存在的歌单：`library.playlists.removeTracks` / `clearPlaylist` 在歌单不存在时，store 静默返回 `{ removed: 0 }`，插件拿到「成功」却发现列表毫无变化（与已修的「下载任务 id 不存在」同一类问题）。现在两者都先核对目标歌单，不存在即抛错。
