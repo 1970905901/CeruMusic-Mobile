@@ -208,7 +208,10 @@
                 '--lyric-size':
                   Math.round(settings.settings.lyricFontSize * settings.settings.lyricFontScale) + 'px',
                 '--lyric-weight': String(settings.settings.lyricFontWeight),
-                '--lyric-accent': lyricAccent
+                '--lyric-accent': lyricAccent,
+                // 空串表示「跟随系统」：留空让元素继承应用默认字体，
+                // 而不是写一个并不存在的字体名。
+                '--lyric-font': lyricFontStack(settings.settings.lyricFontFamily) || 'inherit'
               }"
             >
               <p
@@ -437,6 +440,7 @@ import { startLowFreqSampler } from '@/services/audioVisualizer'
 import { useAppBackground } from '@/services/appVisibility'
 import { crossfadeState } from '@/services/crossfade'
 import { getQualityDisplayName } from '@/services/qualityNames'
+import { lyricFontStack } from '@/services/lyricFonts'
 import { createRequestGuard } from '@/services/requestGuard'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
@@ -1815,6 +1819,7 @@ onBeforeUnmount(() => {
 .lyric-line {
   font-size: var(--lyric-size, 22px);
   font-weight: var(--lyric-weight, 400);
+  font-family: var(--lyric-font, inherit);
   margin: 0;
   padding: 10px 6px;
   color: rgba(245, 248, 251, 0.28);

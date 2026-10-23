@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getBackgroundRenderer, type BackgroundRendererType } from '@/services/backgroundRenderers'
 import { reconcilePermissionNames } from '@/services/plugin/permissions'
+import { normalizeLyricFont } from '@/services/lyricFonts'
 import {
   normalizeGlobalBackground,
   type GlobalBackgroundSettings
@@ -90,6 +91,8 @@ export interface AppSettings {
   lyricFontWeight: number
   /** 歌词字号倍率，叠加在字号之上 */
   lyricFontScale: number
+  /** 歌词字体预设 id，取值见 `services/lyricFonts.ts` */
+  lyricFontFamily: string
   /** 音频输出设备 id；空或 default 表示跟随系统 */
   audioOutputDeviceId: string
 }
@@ -156,6 +159,7 @@ const defaults: AppSettings = {
   ltDanmakuFontScale: 1,
   lyricFontWeight: 400,
   lyricFontScale: 1,
+  lyricFontFamily: 'system',
   audioOutputDeviceId: 'default'
 }
 
@@ -219,7 +223,10 @@ function load(): AppSettings {
       ),
       playerBackgroundRenderer: getBackgroundRenderer(
         String(parsed.playerBackgroundRenderer ?? defaults.playerBackgroundRenderer)
-      ).value
+      ).value,
+      // 字体预设来自本机存档或云端同步，可能是已移除的 id 或任意字符串；
+      // 非法值直接写进 font-family 会让整页歌词悄悄换字体。
+      lyricFontFamily: normalizeLyricFont(parsed.lyricFontFamily)
     }
   } catch {
     return { ...defaults }

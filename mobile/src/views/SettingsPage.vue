@@ -546,6 +546,32 @@
         <ion-item>
           <ion-icon slot="start" :icon="textOutline" color="primary" />
           <ion-label>
+            <h2>歌词字体</h2>
+            <p>{{ currentLyricFontLabel }}</p>
+          </ion-label>
+          <ion-select
+            :value="settings.settings.lyricFontFamily"
+            interface="action-sheet"
+            cancel-text="取消"
+            @ionChange="settings.settings.lyricFontFamily = String($event.detail.value)"
+          >
+            <ion-select-option
+              v-for="preset in LYRIC_FONT_PRESETS"
+              :key="preset.id"
+              :value="preset.id"
+            >
+              {{ preset.label }}
+            </ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item lines="none" class="hint-item">
+          <ion-note class="field-hint">
+            移动端只提供跨平台都能命中的字体预设：系统不开放字体枚举，手填字体名在多数手机上会静默回落。
+          </ion-note>
+        </ion-item>
+        <ion-item>
+          <ion-icon slot="start" :icon="textOutline" color="primary" />
+          <ion-label>
             <h2>歌词字重</h2>
             <p>{{ settings.settings.lyricFontWeight }}</p>
           </ion-label>
@@ -1129,6 +1155,7 @@ import {
 } from 'ionicons/icons'
 import { Browser } from '@capacitor/browser'
 import { useSettingsStore } from '@/stores/settings'
+import { LYRIC_FONT_PRESETS, lyricFontLabel } from '@/services/lyricFonts'
 import { useLyricExtrasStore } from '@/stores/lyricExtras'
 import { buildDonutArcs, cacheUsageOf, summarizeCacheQualities } from '@/services/cacheQuality'
 import { describeDownloadLocation, summarizeDownloadStorage } from '@/services/downloadStorage'
@@ -1186,6 +1213,9 @@ import {
 } from '@/services/qualityNames'
 
 const settings = useSettingsStore()
+const currentLyricFontLabel = computed(() =>
+  lyricFontLabel(settings.settings.lyricFontFamily)
+)
 const pluginStore = usePluginStore()
 const player = usePlayerStore()
 const lyricExtras = useLyricExtrasStore()
@@ -1984,6 +2014,17 @@ async function toast(message: string, color = 'medium') {
   color: var(--ceru-text-secondary);
   letter-spacing: 0.04em;
   padding: 0 18px 8px;
+}
+.hint-item {
+  --min-height: 0;
+  --padding-top: 0;
+  --padding-bottom: 10px;
+}
+.field-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ceru-text-secondary);
+  white-space: normal;
 }
 .storage-usage {
   padding: 4px 16px 14px;
