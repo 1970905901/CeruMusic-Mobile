@@ -269,6 +269,13 @@ export async function checkCloudSettings(interactive = true): Promise<boolean> {
         })
         await alert.present()
         const { role } = await alert.onDidDismiss()
+        // 点背景关闭（`backdrop`）不能当成「保留本机」：那会静默把本机设置
+        // 上传覆盖云端，而用户只是关掉了一个弹窗。只有明确点了按钮才做选择。
+        if (role !== 'confirm' && role !== 'cancel') {
+          settingsSyncState.status = 'idle'
+          settingsSyncState.message = '已跳过本次同步'
+          return false
+        }
         choice = role === 'confirm' ? 'cloud' : 'local'
       }
       if (choice === 'cloud') {
