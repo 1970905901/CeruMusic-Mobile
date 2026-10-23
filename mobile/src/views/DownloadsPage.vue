@@ -82,6 +82,8 @@
                 <span v-if="task.quality">{{ task.quality }}</span>
                 <span v-if="task.totalBytes">{{ formatSize(task.receivedBytes) }} / {{ formatSize(task.totalBytes) }}</span>
                 <span v-else-if="task.receivedBytes">{{ formatSize(task.receivedBytes) }}</span>
+                <!-- 桌面版下载页同样在进度旁显示实时速率；取不到时整段隐藏 -->
+                <span v-if="speeds[task.id]" class="task-speed">{{ speeds[task.id] }}</span>
               </div>
             </div>
             <button class="task-more" type="button" aria-label="下载任务操作" @click="openTaskActions(task)">
@@ -111,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   IonBackButton,
   IonButton,
@@ -142,6 +144,7 @@ import {
   selectDownloadTasks,
   type DownloadTab
 } from '@/services/downloadGroups'
+import { downloadSpeedMeter, formatDownloadSpeed } from '@/services/downloadSpeed'
 
 const downloads = useDownloadStore()
 const player = usePlayerStore()
@@ -189,6 +192,35 @@ function statusLabel(status: DownloadTask['status']): string {
       return '已取消'
   }
 }
+
+/**
+ * 下载中任务的实时速率。`speedTick` 每两秒推进一次，让速率文案跟着刷新——
+ * 速率表本身不是响应式的（它只是普通 Map 包装），不重算就永远停在第一次的值。
+ */
+const speedTick = ref(0)
+let speedTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  speedTimer = setInterval(() => {
+    speedTick.value += 1
+  }, 2000)
+})
+onBeforeUnmount(() => {
+  if (speedTimer) clearInterval(speedTimer)
+  speedTimer = null
+})
+
+/** `id → 速率文案`；只对下载中的任务取值，其余为空串（模板据此隐藏）。 */
+const speeds = computed(() => {
+  // 读 tick 让整张表随它重算；速率表本身不是响应式的。
+  void speedTick.value
+  const map: Record<string, string> = {}
+  for (const task of visibleTasks.value) {
+    if (task.status !== 'running') continue
+    const text = formatDownloadSpeed(downloadSpeedMeter.speedOf(task.id))
+    if (text) map[task.id] = text
+  }
+  return map
+})
 
 function formatSize(bytes?: number): string {
   if (!bytes) return '0 B'
@@ -434,6 +466,11 @@ async function toast(message: string, color = 'medium') {
 }
 .status-running,
 .status-queued {
+  color: var(--ceru-brand);
+}
+/* 速率跟在大小后面，用等宽数字避免每两秒跳一次宽度 */
+.task-speed {
+  font-variant-numeric: tabular-nums;
   color: var(--ceru-brand);
 }
 .status-failed {

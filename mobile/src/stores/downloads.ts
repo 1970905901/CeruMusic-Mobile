@@ -31,6 +31,7 @@ import {
   tasksNeedingValidation
 } from '@/services/downloadValidation'
 import { createProgressThrottle } from '@/services/progressThrottle'
+import { downloadSpeedMeter } from '@/services/downloadSpeed'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
@@ -147,8 +148,16 @@ export const useDownloadStore = defineStore('downloads', () => {
   function updateTask(id: string, patch: Partial<DownloadTask>): void {
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
+    const statusChanged = 'status' in patch && patch.status !== task.status
     Object.assign(task, patch, { updatedAt: Date.now() })
-    if (!progressThrottle.shouldWrite(id, 'status' in patch)) return
+    // 速率采样必须在节流之前：界面每秒都会读速率表，但写库仍按原节奏。
+    if (typeof patch.receivedBytes === 'number') {
+      downloadSpeedMeter.sample(id, patch.receivedBytes)
+    }
+    // 真正的状态跃迁意味着这一轮传输结束或重启，旧样本不能再算进新一段的平均值。
+    // 进度回调每次都会重复带上 `status: 'running'`，那种不算跃迁。
+    if (statusChanged) downloadSpeedMeter.reset(id)
+    if (!progressThrottle.shouldWrite(id, statusChanged)) return
     void persist(task)
   }
 
@@ -785,6 +794,8 @@ export const useDownloadStore = defineStore('downloads', () => {
     const db = await getDb()
     await db.delete('downloads', id)
     tasks.value = tasks.value.filter((item) => item.id !== id)
+    // 任务没了还留着样本：任务 id 不会复用，但那是一条永远不会被读到的内存。
+    downloadSpeedMeter.reset(id)
     // 删除一个正在下载的任务同样空出了并发位；不补位的话队列会停在这里。
     pumpQueue()
   }
