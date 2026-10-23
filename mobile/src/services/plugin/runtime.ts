@@ -305,6 +305,86 @@ export function resolvePermissionKey(key: string | undefined | null): string | n
   return value ? value : null
 }
 
+export interface HostCapability {
+  service: string
+  version: string
+  available: boolean
+  reason?: 'host-not-connected' | 'unsupported'
+  methods: string[]
+  permissionGroups: string[]
+}
+
+/**
+ * `ctx.services.capabilities.list` 返回的能力表。
+ *
+ * 拆成纯函数是为了能单测：这张表必须与**真正执行的授权校验**一致。
+ * 插件会先读 `permissionGroups` 再决定申请哪些权限；表里漏一组，插件就以为
+ * 自己不需要那一项，直到真调用时才撞上「未声明权限」。
+ *
+ * @param directoryPicking 是否有可延续的目录句柄（仅 Android SAF 有）
+ */
+export function buildCapabilityList(directoryPicking: boolean): HostCapability[] {
+  const call = (
+    service: string,
+    methods: string[],
+    permissionGroups: string[],
+    available = true,
+    reason?: 'host-not-connected' | 'unsupported'
+  ): HostCapability => ({
+    service,
+    version: '1.0.0',
+    available,
+    ...(reason ? { reason } : {}),
+    methods,
+    permissionGroups
+  })
+  return [
+    call('account', ['getSession', 'getProfile', 'openLogin'], ['account']),
+    call('app', ['getInfo', 'openSettings', 'openExternal'], ['external']),
+    // 删除类方法单独要 `library.delete`（见 `library.playlists.removeTracks` /
+    // `clearPlaylist` 的授权校验）。此前这里只列了 libraryRead/libraryManage，
+    // 与桌面 `PluginHost.SERVICE_CAPABILITIES` 不一致。
+    call(
+      'library',
+      [
+        'playlists.list',
+        'playlists.getTracks',
+        'playlists.import',
+        'playlists.removeTracks',
+        'playlists.clearPlaylist'
+      ],
+      ['libraryRead', 'libraryManage', 'libraryDelete']
+    ),
+    call('player', ['getState', 'play', 'pause', 'next', 'previous', 'seek', 'setVolume', 'setMode'], ['playbackRead', 'playbackControl']),
+    call('queue', ['get', 'append', 'replace', 'remove', 'reorder'], ['playbackRead', 'playbackControl']),
+    call('favorites', ['contains', 'add', 'remove'], ['libraryRead', 'libraryManage']),
+    call('history', ['list'], ['playbackRead']),
+    call('downloads', ['list', 'create', 'pause', 'resume', 'cancel', 'retry', 'reveal'], ['downloads']),
+    call(
+      'files',
+      directoryPicking
+        ? ['pick', 'pickDirectory', 'readText', 'readBase64', 'saveText', 'writeText']
+        : ['pick', 'readText', 'readBase64', 'saveText', 'writeText'],
+      ['files']
+    ),
+    call('clipboard', ['readText', 'writeText'], ['clipboardRead', 'clipboardWrite']),
+    call('localMusic', ['list', 'scan', 'getTags', 'writeTags'], ['localMusic']),
+    call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
+    // 子插件的增删改查都要 `guests.manage` / `guests.run`，属于 guestPlugins 组。
+    call('guests', ['list', 'import', 'select', 'remove', 'invoke'], ['guestPlugins']),
+    // 桌面窗口动作（最小化/最大化/迷你播放器）在手机上不存在：如实标记不可用。
+    call('window', ['control'], ['window'], false, 'unsupported'),
+    call('tasks', ['schedule', 'cancel'], ['background']),
+    call('ai', ['generate'], ['ai']),
+    call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
+    call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl']),
+    // `connect` 要 `network.socket`，连内网还要 `network.private`——
+    // 这两项分别属于 SDK 的 network 与 localNetwork 组。
+    call('sockets', ['connect', 'send', 'emit', 'disconnect'], ['network', 'localNetwork']),
+    call('devices', ['list', 'select'], ['devices'])
+  ]
+}
+
 export class PluginRuntime {
   readonly record: PluginRecord
   readonly manifest: PluginManifest
@@ -1439,54 +1519,12 @@ export class PluginRuntime {
   }
 
   private capabilityList() {
-    const call = (
-      service: string,
-      methods: string[],
-      permissionGroups: string[],
-      available = true,
-      reason?: 'host-not-connected' | 'unsupported'
-    ) => ({
-      service,
-      version: '1.0.0',
-      available,
-      ...(reason ? { reason } : {}),
-      methods,
-      permissionGroups
-    })
     // 插件应当先看 `available` 再调用。移动端有两处能力是**真的没有**，
     // 标成可用只会让插件在运行时撞上一句「未实现」，不如提前说明：
     // - window：手机上没有「最小化/最大化/迷你播放器」这类桌面窗口动作；
     // - files.pickDirectory：iOS/Web 没有可延续的目录句柄（Android SAF 才有）。
     const directoryPicking = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
-    return [
-      call('account', ['getSession', 'getProfile', 'openLogin'], ['account']),
-      call('app', ['getInfo', 'openSettings', 'openExternal'], ['external']),
-      call('library', ['playlists.list', 'playlists.getTracks', 'playlists.import', 'playlists.removeTracks', 'playlists.clearPlaylist'], ['libraryRead', 'libraryManage']),
-      call('player', ['getState', 'play', 'pause', 'next', 'previous', 'seek', 'setVolume', 'setMode'], ['playbackRead', 'playbackControl']),
-      call('queue', ['get', 'append', 'replace', 'remove', 'reorder'], ['playbackRead', 'playbackControl']),
-      call('favorites', ['contains', 'add', 'remove'], ['libraryRead', 'libraryManage']),
-      call('history', ['list'], ['playbackRead']),
-      call('downloads', ['list', 'create', 'pause', 'resume', 'cancel', 'retry', 'reveal'], ['downloads']),
-      call(
-        'files',
-        directoryPicking
-          ? ['pick', 'pickDirectory', 'readText', 'readBase64', 'saveText', 'writeText']
-          : ['pick', 'readText', 'readBase64', 'saveText', 'writeText'],
-        ['files']
-      ),
-      call('clipboard', ['readText', 'writeText'], ['clipboardRead', 'clipboardWrite']),
-      call('localMusic', ['list', 'scan', 'getTags', 'writeTags'], ['localMusic']),
-      call('settings', ['get', 'update'], ['settingsRead', 'settingsWrite']),
-      call('guests', ['list', 'import', 'select', 'remove', 'invoke'], []),
-      // 桌面窗口动作（最小化/最大化/迷你播放器）在手机上不存在：如实标记不可用。
-      call('window', ['control'], ['window'], false, 'unsupported'),
-      call('tasks', ['schedule', 'cancel'], ['background']),
-      call('ai', ['generate'], ['ai']),
-      call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
-      call('rooms', ['getState', 'join', 'leave', 'requestTrack'], ['roomsRead', 'roomsControl']),
-      call('sockets', ['connect', 'send', 'emit', 'disconnect'], ['network']),
-      call('devices', ['list', 'select'], ['devices'])
-    ]
+    return buildCapabilityList(directoryPicking)
   }
 
   private scheduleTask(task: PluginScheduledTask) {
