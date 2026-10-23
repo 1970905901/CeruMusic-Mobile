@@ -92,10 +92,23 @@ import {
 } from '@/services/recognizeResults'
 import { usePluginStore } from '@/stores/plugins'
 import { usePlayerStore } from '@/stores/player'
+import { useSettingsStore } from '@/stores/settings'
+import { pickRecognizeAction } from '@/services/recognizeAction'
 
 const router = useIonRouter()
 const plugins = usePluginStore()
 const player = usePlayerStore()
+const settings = useSettingsStore()
+/**
+ * 识曲走的是「当前音源」的插件，与搜索页同一口径：设置里的 lastSource 为准，
+ * 没选过时用第一个可用音源。
+ */
+const currentSource = computed(() => {
+  const selected = settings.settings.lastSource
+  return (
+    plugins.sources.find((item) => item.id === selected)?.id ?? plugins.sources[0]?.id ?? ''
+  )
+})
 const recording = ref(false)
 const busy = ref(false)
 const elapsed = ref(0)
@@ -109,9 +122,28 @@ let chunks: Blob[] = []
 let timer: ReturnType<typeof setInterval> | null = null
 let startedAt = 0
 
+/**
+ * 识曲动作（桌面端 `getV2Action(source, 'recognize')`）：
+ * 只认 action 名，不按标题模糊匹配——标题里带「识别」的普通命令
+ * 会被旧实现当成识曲动作，用识曲参数去调用。能力路由的显式选择优先。
+ */
 const recognizeAction = computed(() =>
-  plugins.actions.find((item) =>
-    /recognize|识别|听歌识曲/i.test(item.id + ' ' + item.title + ' ' + item.action)
+  pickRecognizeAction(
+    plugins.actions.map((item) => ({
+      pluginKey: item.pluginKey,
+      action: item.action,
+      // `id` 是命令 id，不是注册时的 action 名；调用必须用 `action`。
+      id: item.id,
+      title: item.title
+    })),
+    {
+      ownerKey: currentSource.value
+        ? settings.capabilityOwner(currentSource.value, 'action:recognize')
+        : undefined,
+      selectedKey: currentSource.value
+        ? plugins.selectedProvider(currentSource.value)?.pluginKey
+        : undefined
+    }
   )
 )
 
@@ -182,7 +214,9 @@ async function recognizeBlob(blob: Blob): Promise<void> {
     const fingerprint = await (window as any).GenerateFP(slice)
     if (!fingerprint) throw new Error('无法生成音频指纹')
     statusText.value = '正在向音源识别…'
-    const response = await plugins.invokeAction(action.pluginKey, action.id, {
+    // 与桌面 `requestSdk('recognize')` 同口径：用能力路由选中的插件执行，
+    // 但 `source` 仍是当前音源（插件据此决定去哪个平台识别）。
+    const response = await plugins.invokeAction(action.pluginKey, action.action, {
       source: source.providerId,
       fp: fingerprint,
       duration: slice.length / 8000

@@ -35,6 +35,12 @@ export const MOBILE_ROUTABLE_CAPABILITIES: readonly CapabilityLabel[] = [
     label: '搜索建议',
     description: '输入关键词时提供搜索建议',
     action: 'search.tips'
+  },
+  {
+    capability: 'action:recognize',
+    label: '听歌识曲',
+    description: '根据音频指纹识别歌曲',
+    action: 'recognize'
   }
 ]
 

@@ -97,7 +97,7 @@
           <ion-icon slot="start" :icon="chatbubblesOutline" color="primary" />
           <ion-label>
             <h2>能力来源</h2>
-            <p>为相同音源选择由哪个插件提供评论与搜索建议</p>
+            <p>为相同音源选择由哪个插件提供评论、搜索建议与识曲</p>
           </ion-label>
         </ion-item>
         <ion-item v-if="pluginStore.sources.length" button detail @click="openSourceRouting">
@@ -1800,7 +1800,7 @@ async function checkPluginUpdates() {
   }
 }
 
-/* ---------------- 能力路由（评论与搜索建议） ---------------- */
+/* ---------------- 能力路由（评论 / 搜索建议 / 识曲） ---------------- */
 
 const capabilityGroups = computed(() =>
   buildCapabilityGroups({

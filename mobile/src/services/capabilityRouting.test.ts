@@ -113,7 +113,8 @@ describe('mobile routable capability table', () => {
     expect(MOBILE_ROUTABLE_CAPABILITIES.map((item) => item.action)).toEqual([
       'comments.hot',
       'comments.get',
-      'search.tips'
+      'search.tips',
+      'recognize'
     ])
     expect(MOBILE_ROUTABLE_CAPABILITIES.every((item) => item.capability.startsWith('action:'))).toBe(
       true
