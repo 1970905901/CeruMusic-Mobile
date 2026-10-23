@@ -302,6 +302,7 @@ import { encryptPlaylistTracks, packPlaylistFile, playlistFileName } from '@/ser
 import { describePlaylistStats, summarizePlaylist } from '@/services/playlistStats'
 import { saveAndShareFile } from '@/services/fileExport'
 import { batchQualityChoices } from '@/services/batchDownloadQuality'
+import { describeCloudOverwrite } from '@/services/cloudPlaylistOverwrite'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
@@ -785,6 +786,45 @@ async function syncPlaylistToCloud(): Promise<void> {
   }
 }
 
+/**
+ * 从云端覆盖本地歌单（桌面版 `handleSyncFromCloud`）。
+ *
+ * 覆盖是破坏性操作：本地的排序、后加的本地文件都会没有。所以先按云端内容
+ * 算出这次会丢什么，把代价写进确认框，用户点确认后才真正写盘。
+ */
+async function overwriteFromCloud(): Promise<void> {
+  const playlist = localPlaylist.value
+  if (!playlist) return
+  if (!playlist.cloudId) {
+    await toast('这个歌单还没有关联云端副本', 'warning')
+    return
+  }
+  let plan: Awaited<ReturnType<typeof library.previewCloudOverwrite>>
+  try {
+    plan = await library.previewCloudOverwrite(playlist.id, pluginStore.providers)
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '无法读取云端歌单', 'danger')
+    return
+  }
+  const confirm = await alertController.create({
+    header: '从云端覆盖',
+    message: describeCloudOverwrite(plan) + '此操作无法撤销。',
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '覆盖', role: 'destructive' }
+    ]
+  })
+  await confirm.present()
+  const { role } = await confirm.onDidDismiss()
+  if (role !== 'destructive') return
+  try {
+    const result = await library.applyCloudOverwrite(playlist.id, plan)
+    await toast(`已从云端覆盖 ${result.replaced} 首歌曲`, 'success')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '覆盖失败', 'danger')
+  }
+}
+
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2200, color })
   await element.present()
@@ -949,6 +989,18 @@ async function openPlaylistMenu() {
           void syncPlaylistToCloud()
         }
       },
+      // 桌面版「从云端覆盖」只在关联了云端歌单时出现；没有副本时列出来
+      // 只会让用户点出一个「未关联」的提示。
+      ...(localPlaylist.value.cloudId
+        ? [
+            {
+              text: '从云端覆盖',
+              handler: () => {
+                void overwriteFromCloud()
+              }
+            }
+          ]
+        : []),
       ...playlistMenus.value.map((menu) => ({
         text: menu.title,
         handler: () => {

@@ -11,6 +11,7 @@ import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
+import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPlaylistOverwrite'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { trackKeyFor } from '@/services/trackKey'
 import { paginate } from '@/services/plugin/paging'
@@ -1196,6 +1197,61 @@ export const useLibraryStore = defineStore('library', () => {
     return created.id
   }
 
+  /**
+   * 拉取云端副本并算出覆盖计划，**不改动任何本地数据**。
+   *
+   * 覆盖前要先把代价（会少几首本地文件、有几首播不了）如实告诉用户，
+   * 所以读取与写入分两步：界面先拿这份计划拼确认框，确认后才调用
+   * `applyCloudOverwrite`。
+   */
+  async function previewCloudOverwrite(
+    playlistId: string,
+    providers: ReadonlyArray<{ pluginKey: string; providerId: string; qualities: readonly string[] }>
+  ): Promise<CloudOverwritePlan> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist) throw new Error('歌单不存在')
+    if (!playlist.cloudId) throw new Error('未关联云端歌单')
+    const detail = await cloudSongListApi.getSongListDetail(playlist.cloudId, 'asc')
+    const plan = planCloudOverwrite(
+      Array.isArray(detail?.list) ? detail.list : [],
+      playlistTracks(playlist.id),
+      providers
+    )
+    if (!plan.tracks.length) throw new Error('云端歌单是空的，没有内容可覆盖')
+    return plan
+  }
+
+  /**
+   * 把（已经算好的）云端内容写进本地歌单，桌面版 `handleSyncFromCloud` 的等价实现。
+   *
+   * 只在计划完整拿到后才调用，因此不会把歌单改成半截状态：曲目先入库、
+   * 再一次性替换 `trackKeys`。
+   */
+  async function applyCloudOverwrite(
+    playlistId: string,
+    plan: CloudOverwritePlan
+  ): Promise<{ playlist: Playlist; replaced: number }> {
+    const playlist = playlists.value.find((item) => item.id === playlistId)
+    if (!playlist) throw new Error('歌单不存在')
+    if (!plan.tracks.length) throw new Error('云端歌单是空的，没有内容可覆盖')
+
+    const db = await getDb()
+    // 曲目先入库再改歌单：中途断电也只是多几条没人引用的曲目记录，
+    // 不会出现「歌单引用了查不到的 key」。
+    const tx = db.transaction('tracks', 'readwrite')
+    for (const track of plan.tracks) {
+      tracks.value[track.key] = track
+      tx.store.put(toPlain(track))
+    }
+    await tx.done
+
+    playlist.trackKeys = plan.tracks.map((track) => track.key)
+    playlist.updatedAt = Date.now()
+    await db.put('playlists', toPlain(playlist))
+    pluginStore.publishLibrary({ id: playlist.id, location: 'local' }, 'updated')
+    return { playlist, replaced: plan.tracks.length }
+  }
+
   async function syncPlaylistToCloud(playlistId: string): Promise<string> {
     const playlist = playlists.value.find((item) => item.id === playlistId)
     if (!playlist) throw new Error('歌单不存在')
@@ -1269,6 +1325,8 @@ export const useLibraryStore = defineStore('library', () => {
     importPlaylistFromPlugin,
     importSharedPlaylist,
     uploadPlaylistToCloud,
-    syncPlaylistToCloud
+    syncPlaylistToCloud,
+    previewCloudOverwrite,
+    applyCloudOverwrite
   }
 })
