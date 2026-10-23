@@ -12,6 +12,7 @@ import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writ
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
 import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
 import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPlaylistOverwrite'
+import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { trackKeyFor } from '@/services/trackKey'
 import { paginate } from '@/services/plugin/paging'
@@ -1198,6 +1199,62 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
+   * 拉取账号下的云端歌单，并与本机歌单合并（桌面版 `songlist.vue` 的 `loadPlaylists`）。
+   *
+   * 换设备登录后，云端那些没有落到本机的歌单在手机上原本完全看不见。
+   * 这里顺带把「云端记着 localId、本地却没写 cloudId」的条目补上关联——
+   * 不补的话同一个歌单会以本地、云端两份同时列出。补关联失败不影响展示。
+   */
+  async function refreshCloudPlaylists(): Promise<CloudPlaylistView[]> {
+    const records = await cloudSongListApi.getUserSongLists()
+    const merge = mergeCloudPlaylists(playlists.value, records)
+    if (merge.links.length) {
+      const db = await getDb()
+      for (const link of merge.links) {
+        const playlist = playlists.value.find((item) => item.id === link.localId)
+        if (!playlist || playlist.cloudId) continue
+        playlist.cloudId = link.cloudId
+        await db.put('playlists', toPlain(playlist))
+      }
+    }
+    return merge.cloudOnly
+  }
+
+  /** 云端歌单的曲目，只读展示用；不写进本地库。 */
+  async function cloudPlaylistTracks(
+    cloudId: string,
+    providers: ReadonlyArray<{ pluginKey: string; providerId: string; qualities: readonly string[] }>
+  ): Promise<Track[]> {
+    if (!cloudId) throw new Error('歌单 ID 不能为空')
+    const detail = await cloudSongListApi.getSongListDetail(cloudId, 'asc')
+    return planCloudOverwrite(Array.isArray(detail?.list) ? detail.list : [], [], providers).tracks
+  }
+
+  /**
+   * 把一个只存在于云端的歌单拉成本地歌单，桌面版的「保存到本地」等价实现。
+   * 返回新建的本地歌单，之后即可正常编辑、同步与分享。
+   */
+  async function saveCloudPlaylistLocally(
+    cloudId: string,
+    view: { name: string; description?: string; cover?: string },
+    providers: ReadonlyArray<{ pluginKey: string; providerId: string; qualities: readonly string[] }>
+  ): Promise<Playlist> {
+    const tracks = await cloudPlaylistTracks(cloudId, providers)
+    if (!tracks.length) throw new Error('云端歌单里没有可导入的歌曲')
+    const playlist = await importSharedPlaylist(
+      view.name || '云端歌单',
+      view.description || '',
+      tracks
+    )
+    playlist.cloudId = cloudId
+    if (view.cover) playlist.cover = view.cover
+    playlist.updatedAt = Date.now()
+    const db = await getDb()
+    await db.put('playlists', toPlain(playlist))
+    return playlist
+  }
+
+  /**
    * 拉取云端副本并算出覆盖计划，**不改动任何本地数据**。
    *
    * 覆盖前要先把代价（会少几首本地文件、有几首播不了）如实告诉用户，
@@ -1327,6 +1384,9 @@ export const useLibraryStore = defineStore('library', () => {
     uploadPlaylistToCloud,
     syncPlaylistToCloud,
     previewCloudOverwrite,
-    applyCloudOverwrite
+    applyCloudOverwrite,
+    refreshCloudPlaylists,
+    cloudPlaylistTracks,
+    saveCloudPlaylistLocally
   }
 })

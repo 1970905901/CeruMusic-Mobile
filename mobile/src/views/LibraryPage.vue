@@ -138,7 +138,10 @@
       </div>
 
       <div v-else-if="activeSegment === 'playlists'" class="section">
-        <div v-if="library.playlists.length > 5" class="filter-wrap ceru-pad">
+        <div
+          v-if="library.playlists.length + cloudOnlyPlaylists.length > 5"
+          class="filter-wrap ceru-pad"
+        >
           <ion-searchbar
             v-model="playlistFilter"
             placeholder="搜索歌单名称或描述"
@@ -179,14 +182,59 @@
             <div class="playlist-name">新建歌单</div>
           </button>
         </div>
+        <!-- 只存在于云端的歌单：换设备登录后本机没有副本，但仍应看得见 -->
+        <template v-if="visibleCloudPlaylists.length || cloudListLoading || cloudListError">
+          <div class="cloud-head ceru-pad">
+            <span class="cloud-head-title">
+              <ion-icon :icon="cloudOutline" />
+              云端歌单
+            </span>
+            <span v-if="cloudListLoading" class="cloud-head-hint">读取中…</span>
+            <span v-else-if="cloudListError" class="cloud-head-hint error">
+              {{ cloudListError }}
+            </span>
+            <span v-else class="cloud-head-hint">尚未保存到本机</span>
+          </div>
+          <div v-if="visibleCloudPlaylists.length" class="playlist-grid ceru-pad">
+            <div
+              v-for="playlist in visibleCloudPlaylists"
+              :key="cloudPlaylistKey(playlist.id)"
+              class="playlist-card cloud-card ceru-press"
+              role="button"
+              tabindex="0"
+              @click="openCloudPlaylist(playlist)"
+              @keyup.enter="openCloudPlaylist(playlist)"
+            >
+              <div class="playlist-art">
+                <CoverImage
+                  :src="playlist.cover || undefined"
+                  :size="150"
+                  :radius="18"
+                  :alt="playlist.name"
+                />
+                <span class="track-count cloud-tag">云端</span>
+              </div>
+              <div class="playlist-name ceru-truncate">{{ playlist.name }}</div>
+              <button
+                class="playlist-more"
+                type="button"
+                aria-label="保存到本地"
+                @click.stop="saveCloudPlaylist(playlist)"
+              >
+                <ion-icon :icon="cloudDownloadOutline" />
+              </button>
+            </div>
+          </div>
+        </template>
+
         <p
-          v-if="playlistFilter && !visiblePlaylists.length"
+          v-if="playlistFilter && !visiblePlaylists.length && !visibleCloudPlaylists.length"
           class="empty-search-hint ceru-pad"
         >
           未找到名称或描述包含 “{{ playlistFilter }}” 的歌单
         </p>
         <EmptyState
-          v-else-if="!library.playlists.length"
+          v-else-if="!library.playlists.length && !visibleCloudPlaylists.length"
           title="还没有歌单"
           description="创建歌单，把不同来源的歌曲整理到一起。"
           :icon="albumsOutline"
@@ -362,6 +410,7 @@ import {
   checkmarkDoneOutline,
   clipboardOutline,
   cloudDownloadOutline,
+  cloudOutline,
   documentOutline,
   ellipsisHorizontal,
   folderOpenOutline,
@@ -387,6 +436,8 @@ import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
+import { useAuthStore } from '@/stores/auth'
+import type { CloudPlaylistView } from '@/services/cloudPlaylists'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { batchQualityChoices } from '@/services/batchDownloadQuality'
 import { getQualityDisplayName } from '@/services/qualityNames'
@@ -396,6 +447,7 @@ import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { clipboardPlaylistName, parsePlaylistClipboard } from '@/services/playlistClipboard'
+import { cloudPlaylistKey } from '@/services/cloudPlaylists'
 import { Clipboard } from '@capacitor/clipboard'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { useTrackBatchSelection } from '@/services/trackBatch'
@@ -411,7 +463,46 @@ const library = useLibraryStore()
 const player = usePlayerStore()
 const downloads = useDownloadStore()
 const pluginStore = usePluginStore()
+const authStore = useAuthStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
+
+/**
+ * 只存在于云端的歌单。
+ *
+ * 移动端此前只渲染 IndexedDB 里的本地歌单：换设备登录后，云端那些没落到本机的
+ * 歌单在手机上完全看不见（桌面版会把它们一起列出来）。这里单独存一份，与本地
+ * 歌单并列展示，并可「保存到本地」。
+ */
+const cloudOnlyPlaylists = ref<CloudPlaylistView[]>([])
+const cloudListLoading = ref(false)
+const cloudListError = ref('')
+
+async function loadCloudPlaylists(): Promise<void> {
+  if (!authStore.authenticated) {
+    cloudOnlyPlaylists.value = []
+    return
+  }
+  cloudListLoading.value = true
+  cloudListError.value = ''
+  try {
+    cloudOnlyPlaylists.value = await library.refreshCloudPlaylists()
+  } catch (cause) {
+    // 云端拉取失败不该让整个歌单页打不开：本地歌单照常显示，只提示云端部分不可用。
+    cloudOnlyPlaylists.value = []
+    cloudListError.value = cause instanceof Error ? cause.message : '无法读取云端歌单'
+  } finally {
+    cloudListLoading.value = false
+  }
+}
+
+watch(
+  () => authStore.authenticated,
+  (authenticated) => {
+    if (authenticated) void loadCloudPlaylists()
+    else cloudOnlyPlaylists.value = []
+  },
+  { immediate: true }
+)
 
 const trackFilter = ref('')
 /** 歌单列表的搜索词：歌单攒多了以后，网格与「新建歌单」混在一起很难找。 */
@@ -440,6 +531,53 @@ const visiblePlaylists = computed(() => {
       String(playlist.description || '').toLowerCase().includes(q)
   )
 })
+
+/** 云端歌单也按同一个搜索词过滤，否则搜索时它们会「凭空消失」。 */
+const visibleCloudPlaylists = computed(() => {
+  const q = playlistFilter.value.trim().toLowerCase()
+  if (!q) return cloudOnlyPlaylists.value
+  return cloudOnlyPlaylists.value.filter(
+    (playlist) =>
+      playlist.name.toLowerCase().includes(q) || playlist.description.toLowerCase().includes(q)
+  )
+})
+
+async function openCloudPlaylist(playlist: CloudPlaylistView): Promise<void> {
+  await router.push('/playlist/' + encodeURIComponent(cloudPlaylistKey(playlist.id)))
+}
+
+/**
+ * 把只读的云端歌单存成本地歌单。
+ *
+ * 存之前先确认：拉取曲目要等网络，且同名歌单不会自动合并——
+ * 用户可能只是想看看云端内容，不该在点开时默默建一份副本。
+ */
+async function saveCloudPlaylist(playlist: CloudPlaylistView): Promise<void> {
+  const alert = await alertController.create({
+    header: '保存到本地',
+    message:
+      `将把云端歌单「${playlist.name}」的歌曲保存为本机歌单，之后可以编辑、同步与分享。`,
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      { text: '保存', role: 'confirm' }
+    ]
+  })
+  await alert.present()
+  const { role } = await alert.onDidDismiss()
+  if (role !== 'confirm') return
+  try {
+    const created = await library.saveCloudPlaylistLocally(
+      playlist.id,
+      { name: playlist.name, description: playlist.description, cover: playlist.cover },
+      pluginStore.providers
+    )
+    await loadCloudPlaylists()
+    await showToast('已保存 ' + created.trackKeys.length + ' 首歌曲', 'success')
+    await router.push('/playlist/' + created.id)
+  } catch (cause) {
+    await showToast(cause instanceof Error ? cause.message : '保存失败', 'danger')
+  }
+}
 
 const filteredFavorites = computed(() => {
   const q = trackFilter.value.trim().toLowerCase()
@@ -1389,6 +1527,36 @@ async function openLocalActions(track: Track) {
   color: var(--ceru-text-secondary);
   font-size: 18px;
   padding: 8px;
+}
+/* 云端歌单与本地歌单在列表里必须是两组：前者只读，点开是网络请求 */
+.cloud-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 26px;
+  padding-bottom: 10px;
+}
+.cloud-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ceru-text);
+}
+.cloud-head-title ion-icon {
+  font-size: 15px;
+  color: var(--ceru-brand);
+}
+.cloud-head-hint {
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+}
+.cloud-head-hint.error {
+  color: var(--ceru-danger);
+}
+.cloud-tag {
+  background: rgba(var(--ion-color-primary-rgb), 0.82);
 }
 .create-card .create-art {
   position: relative;

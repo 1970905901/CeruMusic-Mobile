@@ -33,7 +33,16 @@
             <ion-button v-if="isLocal" fill="clear" @click="openPlaylistMenu">
               <ion-icon slot="icon-only" :icon="ellipsisHorizontal" />
             </ion-button>
-            <!-- 远程歌单（插件/排行榜）可以整单存成自己的歌单，桌面版同入口 -->
+            <!-- 远程歌单（插件/排行榜）与只读的云端歌单都能整单存成自己的歌单 -->
+            <ion-button
+              v-else-if="isCloud"
+              fill="clear"
+              :disabled="!tracks.length || savingToLocal"
+              title="保存到本地"
+              @click="saveCloudToLocal"
+            >
+              <ion-icon slot="icon-only" :icon="saveOutline" />
+            </ion-button>
             <ion-button
               v-else
               fill="clear"
@@ -303,6 +312,8 @@ import { describePlaylistStats, summarizePlaylist } from '@/services/playlistSta
 import { saveAndShareFile } from '@/services/fileExport'
 import { batchQualityChoices } from '@/services/batchDownloadQuality'
 import { describeCloudOverwrite } from '@/services/cloudPlaylistOverwrite'
+import { cloudPlaylistIdFromRoute } from '@/services/cloudPlaylists'
+import { cloudSongListApi } from '@/services/cloudSongList'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
@@ -320,7 +331,10 @@ const downloads = useDownloadStore()
 const auth = useAuthStore()
 
 const remoteId = String(route.params.id || '')
-const isLocal = !remoteId.startsWith('remote-')
+/** 只存在于云端的歌单：只读展示，可一键存成本地歌单。 */
+const cloudId = cloudPlaylistIdFromRoute(remoteId)
+const isCloud = !!cloudId
+const isLocal = !remoteId.startsWith('remote-') && !isCloud
 const source = String(route.query.source || '')
 const providerId = String(route.query.providerId || source)
 const remoteKind = String(route.query.kind || 'playlist')
@@ -495,17 +509,33 @@ const remoteRequests = createRequestGuard()
 const error = ref<string | null>(null)
 
 const localPlaylist = computed(() => library.playlists.find((item) => item.id === remoteId))
-const title = computed(() =>
-  isLocal ? localPlaylist.value?.name || '歌单' : String(route.query.title || '歌单')
-)
-const description = computed(() =>
-  isLocal ? localPlaylist.value?.description || '' : String(route.query.description || '')
-)
+/**
+ * 云端歌单的标题与封面。
+ *
+ * 云端歌单是只读的，本机也没有它的记录，所以这些信息只能从云端接口取。
+ * 用 `route.query` 兜底：从音乐库点进来时会带上查询参数，直接打开链接时没有。
+ */
+const cloudMeta = ref<{ name: string; description: string; cover: string } | null>(null)
+const title = computed(() => {
+  if (isLocal) return localPlaylist.value?.name || '歌单'
+  if (isCloud) return cloudMeta.value?.name || String(route.query.title || '云端歌单')
+  return String(route.query.title || '歌单')
+})
+const description = computed(() => {
+  if (isLocal) return localPlaylist.value?.description || ''
+  if (isCloud) return cloudMeta.value?.description || ''
+  return String(route.query.description || '')
+})
 const cover = computed(() => {
   if (isLocal) {
     return (
       localPlaylist.value?.cover ||
       library.playlistTracks(remoteId).find((item) => item.artworkUrl)?.artworkUrl
+    )
+  }
+  if (isCloud) {
+    return (
+      cloudMeta.value?.cover || tracks.value.find((item) => item.artworkUrl)?.artworkUrl || ''
     )
   }
   return String(route.query.cover || '')
@@ -551,6 +581,7 @@ function openPlaylistSection(section: { pluginKey: string; view: string }) {
 const headerTitle = computed(() => title.value)
 const sourceName = computed(() => {
   if (isLocal) return '本地歌单'
+  if (isCloud) return '云端歌单'
   const item = pluginStore.sources.find((entry) => entry.id === source)
   return item?.name || '插件歌单'
 })
@@ -565,6 +596,65 @@ function loadLocal() {
   tracks.value = library.playlistTracks(remoteId)
   nextCursor.value = undefined
   barrenPages = 0
+}
+
+/**
+ * 只读云端歌单：拉全量曲目展示，不写进本地库。
+ *
+ * 与远程歌单一样受请求守卫保护——用户可能在拉取途中返回，慢响应不能落到
+ * 已经离开的页面上。这里没有分页：云端接口一次返回整单，逐页翻只是徒增复杂度。
+ */
+async function loadCloud(): Promise<void> {
+  if (!cloudId) return
+  const identity = 'cloud:' + cloudId
+  const token = remoteRequests.beginLatest(identity)
+  loading.value = true
+  error.value = null
+  try {
+    const records = await cloudSongListApi.getUserSongLists()
+    const record = Array.isArray(records) ? records.find((item) => item.id === cloudId) : undefined
+    if (!remoteRequests.isCurrent(token, identity)) return
+    cloudMeta.value = record
+      ? { name: record.name, description: record.describe, cover: record.cover }
+      : null
+  } catch {
+    // 标题取不到不影响看歌单内容，静默回落到路由参数。
+    if (remoteRequests.isCurrent(token, identity)) cloudMeta.value = null
+  }
+  try {
+    const items = await library.cloudPlaylistTracks(cloudId, pluginStore.providers)
+    if (!remoteRequests.isCurrent(token, identity)) return
+    tracks.value = items
+  } catch (cause) {
+    if (!remoteRequests.isCurrent(token, identity)) return
+    error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    if (remoteRequests.isCurrent(token, identity)) loading.value = false
+  }
+}
+
+/**
+ * 把只读的云端歌单存成本机歌单。
+ *
+ * 存下来之后才能编辑、同步与分享；不提供「覆盖云端」——这里的语义是单向的
+ * 拉取，反向请走歌单菜单里的上传 / 同步。
+ */
+async function saveCloudToLocal(): Promise<void> {
+  if (!cloudId || savingToLocal.value) return
+  savingToLocal.value = true
+  try {
+    const created = await library.saveCloudPlaylistLocally(
+      cloudId,
+      { name: title.value, description: description.value, cover: cover.value },
+      pluginStore.providers
+    )
+    await toast('已保存 ' + created.trackKeys.length + ' 首歌曲', 'success')
+    await router.replace('/playlist/' + created.id)
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '保存失败', 'danger')
+  } finally {
+    savingToLocal.value = false
+  }
 }
 
 async function loadRemote(reset = false) {
@@ -1214,6 +1304,7 @@ watch(
 
 onMounted(() => {
   if (isLocal) loadLocal()
+  else if (isCloud) void loadCloud()
   else void loadRemote(true)
 })
 
