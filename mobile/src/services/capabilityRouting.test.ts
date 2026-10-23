@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MOBILE_ROUTABLE_CAPABILITIES,
   buildCapabilityGroups,
+  orderActionCandidates,
   resolveCapabilityOwner
 } from './capabilityRouting'
 
@@ -108,13 +109,66 @@ describe('resolveCapabilityOwner', () => {
 
 describe('mobile routable capability table', () => {
   it('only lists capabilities the mobile host actually consumes', () => {
-    // The mobile comments path reads settings.capabilityOwner for these actions.
+    // The mobile comments path and search suggestions read settings.capabilityOwner.
     expect(MOBILE_ROUTABLE_CAPABILITIES.map((item) => item.action)).toEqual([
       'comments.hot',
-      'comments.get'
+      'comments.get',
+      'search.tips'
     ])
     expect(MOBILE_ROUTABLE_CAPABILITIES.every((item) => item.capability.startsWith('action:'))).toBe(
       true
     )
+  })
+})
+
+describe('orderActionCandidates', () => {
+  const implementations = [
+    { pluginKey: 'p1', pluginName: '插件一' },
+    { pluginKey: 'p2', pluginName: '插件二' },
+    { pluginKey: 'p3', pluginName: '插件三' }
+  ]
+
+  it('puts the explicitly routed plugin first', () => {
+    // 设置页刚选的实现必须优先，否则「切换」看起来成功、实际还在用旧的。
+    expect(
+      orderActionCandidates(implementations, { ownerKey: 'p3' }).map((item) => item.pluginKey)
+    ).toEqual(['p3', 'p1', 'p2'])
+  })
+
+  it('falls back to the current provider implementation before the rest', () => {
+    expect(
+      orderActionCandidates(implementations, { selectedKey: 'p2' }).map((item) => item.pluginKey)
+    ).toEqual(['p2', 'p1', 'p3'])
+  })
+
+  it('prefers the explicit route over the provider selection when both are set', () => {
+    expect(
+      orderActionCandidates(implementations, { ownerKey: 'p3', selectedKey: 'p2' }).map(
+        (item) => item.pluginKey
+      )
+    ).toEqual(['p3', 'p2', 'p1'])
+  })
+
+  it('keeps declaration order when nothing is routed', () => {
+    expect(orderActionCandidates(implementations, {}).map((item) => item.pluginKey)).toEqual([
+      'p1',
+      'p2',
+      'p3'
+    ])
+  })
+
+  it('ignores a stale route pointing at an uninstalled plugin', () => {
+    expect(
+      orderActionCandidates(implementations, { ownerKey: 'gone' }).map((item) => item.pluginKey)
+    ).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('dedupes a plugin that declares the same provider twice', () => {
+    expect(
+      orderActionCandidates(
+        [...implementations, { pluginKey: 'p2', pluginName: '插件二' }],
+        { ownerKey: 'p2' }
+      ).map((item) => item.pluginKey)
+    ).toEqual(['p2', 'p1', 'p3'])
   })
 })

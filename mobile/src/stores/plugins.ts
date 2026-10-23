@@ -25,6 +25,7 @@ import {
 } from '@/services/comments'
 import { useSettingsStore } from '@/stores/settings'
 import { resolveHiresCover } from '@/services/smtcArtwork'
+import { orderActionCandidates } from '@/services/capabilityRouting'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
   return trackKeyFor(entity?.ref, pluginKey)
@@ -376,16 +377,11 @@ export const usePluginStore = defineStore('plugins', () => {
     const action = commentActionFor(kind)
     const safePage = Math.max(1, Math.trunc(Number(page) || 1))
     const safeLimit = Math.min(100, Math.max(1, Math.trunc(Number(limit) || COMMENT_PAGE_SIZE)))
-    const ownerKey = settings.capabilityOwner(source, `action:${action}`)
-    const selected = selectedProvider(source)
     const candidates = providerImplementations(source)
-    const ordered = [
-      ...(ownerKey ? candidates.filter((item) => item.pluginKey === ownerKey) : []),
-      ...(selected ? candidates.filter((item) => item.pluginKey === selected.pluginKey) : []),
-      ...candidates
-    ].filter(
-      (item, index, list) => list.findIndex((entry) => entry.pluginKey === item.pluginKey) === index
-    )
+    const ordered = orderActionCandidates(candidates, {
+      ownerKey: settings.capabilityOwner(source, `action:${action}`),
+      selectedKey: selectedProvider(source)?.pluginKey
+    })
     let activated = false
     let chosen: ProviderEntry | undefined
     for (const candidate of ordered) {
@@ -553,12 +549,29 @@ export const usePluginStore = defineStore('plugins', () => {
     return provider?.qualities ? [...provider.qualities] : []
   }
 
+  /**
+   * 搜索建议。
+   *
+   * 桌面端走的是可路由 action `search.tips`（`musicSdk/service.ts` 的 `tipSearch`），
+   * 插件里没有 `tracks.suggest` 这个 provider 方法。移动端此前按 provider 方法调用，
+   * 插件于是永远抛「未实现」，联想面板在真机上一直是空的——失败又被 `catch` 成
+   * 「没有建议」，看不出来是调用名错了。
+   * 现在与桌面同一条路径：按 `capabilityOwner` → 当前音源实现 → 其余实现的顺序，
+   * 找第一个声明了 `search.tips` 的插件调用；没有任何实现时返回 null。
+   */
   async function suggest(source: string, query: string): Promise<any> {
-    const provider = selectedProvider(source)
-    if (!provider) return null
-    const runtime = pluginRuntimeManager.get(provider.pluginKey)
-    if (!runtime) return null
-    return runtime.invokeProvider(provider.providerId, 'tracks.suggest', [query])
+    const ownerKey = settings.capabilityOwner(source, 'action:search.tips')
+    const candidates = orderActionCandidates(providerImplementations(source), {
+      ownerKey,
+      selectedKey: selectedProvider(source)?.pluginKey
+    })
+    for (const candidate of candidates) {
+      const runtime = pluginRuntimeManager.get(candidate.pluginKey)
+      if (!runtime) continue
+      if (!runtime.getInfo().actions.includes('search.tips')) continue
+      return runtime.invokeAction('search.tips', { source, query })
+    }
+    return null
   }
 
   /**

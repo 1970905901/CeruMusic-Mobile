@@ -29,6 +29,12 @@ export const MOBILE_ROUTABLE_CAPABILITIES: readonly CapabilityLabel[] = [
     label: '最新评论',
     description: '分页读取歌曲评论',
     action: 'comments.get'
+  },
+  {
+    capability: 'action:search.tips',
+    label: '搜索建议',
+    description: '输入关键词时提供搜索建议',
+    action: 'search.tips'
   }
 ]
 
@@ -115,4 +121,30 @@ export function resolveCapabilityOwner(
     if (found) return found
   }
   return implementations[0]
+}
+
+/**
+ * 调用某个 action 时的候选顺序，对齐桌面宿主 `getV2Action` 的回退链：
+ * 1. 能力路由里显式选中的插件；
+ * 2. 该音源当前生效的实现（`providerOwners`）；
+ * 3. 其余实现，保持原有顺序。
+ *
+ * 与直接取「第一个实现了这个 action 的插件」不同：显式选择必须优先，否则设置页刚
+ * 选的插件不生效。去重后返回，重复声明同一个 provider 的插件只保留一次。
+ */
+export function orderActionCandidates<T extends { pluginKey: string }>(
+  implementations: readonly T[],
+  options: { ownerKey?: string; selectedKey?: string }
+): T[] {
+  const owner = String(options.ownerKey ?? '').trim()
+  const selected = String(options.selectedKey ?? '').trim()
+  const rank = (item: T): number =>
+    owner && item.pluginKey === owner ? 0 : selected && item.pluginKey === selected ? 1 : 2
+  const ordered = [...implementations].sort((left, right) => rank(left) - rank(right))
+  const seen = new Set<string>()
+  return ordered.filter((item) => {
+    if (seen.has(item.pluginKey)) return false
+    seen.add(item.pluginKey)
+    return true
+  })
 }

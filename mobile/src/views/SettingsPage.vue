@@ -96,8 +96,8 @@
         <ion-item v-if="capabilityGroups.length" button detail @click="openCapabilityRouting">
           <ion-icon slot="start" :icon="chatbubblesOutline" color="primary" />
           <ion-label>
-            <h2>评论来源</h2>
-            <p>为相同音源选择由哪个插件提供热门/最新评论</p>
+            <h2>能力来源</h2>
+            <p>为相同音源选择由哪个插件提供评论与搜索建议</p>
           </ion-label>
         </ion-item>
         <ion-item v-if="pluginStore.sources.length" button detail @click="openSourceRouting">
@@ -1800,7 +1800,7 @@ async function checkPluginUpdates() {
   }
 }
 
-/* ---------------- 能力路由（评论来源） ---------------- */
+/* ---------------- 能力路由（评论与搜索建议） ---------------- */
 
 const capabilityGroups = computed(() =>
   buildCapabilityGroups({
@@ -1811,7 +1811,7 @@ const capabilityGroups = computed(() =>
 
 async function openCapabilityRouting() {
   const sheet = await actionSheetController.create({
-    header: '评论来源',
+    header: '能力来源',
     buttons: [
       ...capabilityGroups.value.map((group) => ({
         text: group.name,
