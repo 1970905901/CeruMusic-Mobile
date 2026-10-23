@@ -285,7 +285,7 @@
           </ion-label>
           <ion-toggle
             :checked="settings.settings.ltNotifyEnabled"
-            @ionChange="settings.settings.ltNotifyEnabled = $event.detail.checked"
+            @ionChange="toggleLtNotify($event.detail.checked)"
           />
         </ion-item>
         <ion-item>
@@ -1917,6 +1917,23 @@ async function showLegal() {
 
 void refreshCacheStats()
 void refreshOutputDevices()
+
+/**
+ * 开启一起听通知时顺手申请系统通知权限。
+ *
+ * 这些通知只在 App 后台发送，而后台**不会**弹出权限对话框：等到真的需要发
+ * 通知时再申请，系统直接忽略，用户什么也收不到，插件还以为已送达。
+ * 关掉或申请失败时如实说明，而不是留一个看不出效果的开关。
+ */
+async function toggleLtNotify(enabled: boolean): Promise<void> {
+  settings.settings.ltNotifyEnabled = enabled
+  if (!enabled) return
+  const { ensureNotificationPermission } = await import('@/services/notifications')
+  const granted = await ensureNotificationPermission()
+  if (!granted) {
+    await toast('系统通知权限未开启，后台提醒可能收不到；可在系统设置中允许通知', 'warning')
+  }
+}
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 1800, color })

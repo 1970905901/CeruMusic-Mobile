@@ -25,6 +25,28 @@ async function ensureChannel(): Promise<void> {
     // Older Android versions do not need an explicit channel.
   }
 }
+/**
+ * 提前申请通知权限。
+ *
+ * 插件的系统通知只在 App 处于后台时发送，而**后台无法弹出权限对话框**：
+ * 第一次真正需要发通知时申请权限，请求会被系统直接吞掉，用户什么也不会看到，
+ * 插件以为通知已送达。所以在用户启用「一起听通知」这类开关时（App 在前台）
+ * 就把权限要到手。
+ */
+export async function ensureNotificationPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false
+  try {
+    const permission = await LocalNotifications.checkPermissions()
+    if (permission.display === 'granted') return true
+    // `denied` 是用户已经拒绝过，再问也不会弹框，只会得到同样的结果。
+    if (permission.display === 'denied') return false
+    const requested = await LocalNotifications.requestPermissions()
+    return requested.display === 'granted'
+  } catch {
+    return false
+  }
+}
+
 /** Shows a system notification when the OS grants permission; callers may fall back to a toast. */
 export async function showSystemNotification(title: string, body: string): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false
