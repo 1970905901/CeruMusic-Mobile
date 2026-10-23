@@ -55,11 +55,30 @@ function resize(): void {
   }
 }
 
+/**
+ * 页面是否仍然可见。
+ *
+ * Ionic 把离开的页面留在 DOM 里（`.ion-page-hidden` 只设 `visibility: hidden`），
+ * 组件不会卸载，`requestAnimationFrame` 照样每帧回调。设置页压在栈里时
+ * 频谱仍在 30fps 地读频域数据、重绘 canvas，纯属白烧电。
+ */
+function pageVisible(canvas: HTMLCanvasElement): boolean {
+  if (typeof document !== 'undefined' && document.hidden) return false
+  const check = (canvas as HTMLCanvasElement & { checkVisibility?: () => boolean }).checkVisibility
+  if (typeof check === 'function') return check.call(canvas)
+  return canvas.offsetParent !== null
+}
+
 function draw(timestamp?: number): void {
   if (stopped) return
   const canvas = canvasRef.value
-  const context = canvas?.getContext('2d')
-  if (!canvas || !context) return
+  if (!canvas || !pageVisible(canvas)) {
+    // 不可见时不做任何采样或绘制，但仍保留循环：回到页面后立即恢复。
+    frameId = requestAnimationFrame(draw)
+    return
+  }
+  const context = canvas.getContext('2d')
+  if (!context) return
   const now = timestamp ?? performance.now()
   if (now - lastFrame < FRAME_MS) {
     frameId = requestAnimationFrame(draw)
