@@ -242,7 +242,12 @@ export const useLibraryStore = defineStore('library', () => {
       updatedAt: Date.now()
     }
     playlists.value = [playlist, ...playlists.value]
-    void getDb().then((db) => db.put('playlists', toPlain(playlist)))
+    // 立刻落库但不等：调用方（新建歌单的对话框）随后就会加歌并自己写盘。
+    // 写失败也不能变成未处理的 rejection——那会在控制台里冒一条没人管的错误，
+    // 用户却看不到任何提示；这里至少记下来。
+    void getDb()
+      .then((db) => db.put('playlists', toPlain(playlist)))
+      .catch((error) => console.warn('保存新建歌单失败', error))
     return playlist
   }
 
