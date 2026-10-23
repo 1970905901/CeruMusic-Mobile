@@ -32,6 +32,7 @@ import {
 } from '@/services/downloadValidation'
 import { createProgressThrottle } from '@/services/progressThrottle'
 import { downloadSpeedMeter } from '@/services/downloadSpeed'
+import { downloadEventTarget } from '@/services/downloadEventScope'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
@@ -128,14 +129,26 @@ export const useDownloadStore = defineStore('downloads', () => {
   async function persist(task: DownloadTask): Promise<void> {
     const db = await getDb()
     await db.put('downloads', toPlain(task))
-    pluginStore.publishDownloads({
-      id: task.id,
-      track: library.getTrack(task.trackKey)?.raw ?? { ref: { providerId: 'download', kind: 'track', id: task.id }, title: task.title, capabilities: [] },
-      status: task.status === 'cancelled' ? 'cancelled' : task.status,
-      receivedBytes: task.receivedBytes,
-      totalBytes: task.totalBytes,
-      error: task.error ? { code: 'INTERNAL', message: task.error } : undefined
-    })
+    // 只有插件发起的任务才对插件可见（桌面端同样在任务上带 `pluginId` 并只推给该插件）。
+    // 用户自己下载的歌广播给所有插件，等于把别人的任务交给插件——它看到后会
+    // 当成自己的任务去暂停、取消，甚至出现在插件的下载列表里。
+    const target = downloadEventTarget(task)
+    if (!target) return
+    pluginStore.publishDownloads(
+      {
+        id: task.id,
+        track: library.getTrack(task.trackKey)?.raw ?? {
+          ref: { providerId: 'download', kind: 'track', id: task.id },
+          title: task.title,
+          capabilities: []
+        },
+        status: task.status === 'cancelled' ? 'cancelled' : task.status,
+        receivedBytes: task.receivedBytes,
+        totalBytes: task.totalBytes,
+        error: task.error ? { code: 'INTERNAL', message: task.error } : undefined
+      },
+      target
+    )
   }
 
   /**
@@ -839,7 +852,7 @@ export const useDownloadStore = defineStore('downloads', () => {
    * 与桌面一致：任何一首找不到都要报错——静默跳过会让插件以为整批都进了队列，
    * 用户却发现少了几首，而且没有任何原因可查。
    */
-  async function createHostDownloads(request: any) {
+  async function createHostDownloads(request: any, pluginKey?: string) {
     const result: DownloadTask[] = []
     for (const reference of request?.tracks ?? []) {
       // 候选 key 由 `playlistKeyCandidates` 统一生成：公共资源 `providerId:id`，
@@ -851,7 +864,13 @@ export const useDownloadStore = defineStore('downloads', () => {
       if (!track) {
         throw new Error(`无法解析下载歌曲：${String(reference?.id ?? '')}`)
       }
-      result.push(await createDownload(track, request?.quality))
+      const task = await createDownload(track, request?.quality)
+      // 记下发起者：之后每次进度/状态变化只推给这个插件。
+      if (pluginKey) {
+        task.pluginKey = pluginKey
+        await persist(task)
+      }
+      result.push(task)
     }
     return result.map((task) => ({
       id: task.id,

@@ -613,8 +613,15 @@ export const usePluginStore = defineStore('plugins', () => {
     pluginRuntimeManager.publish('library.changed', { target, reason })
   }
 
-  function publishDownloads(value: any) {
-    pluginRuntimeManager.publish('downloads.changed', value)
+  /**
+   * 推送 `downloads.changed`。
+   *
+   * 传了 `pluginKey` 就只推给发起该任务的插件（桌面端 `publishHostEvent(..., pluginId)`
+   * 的做法）；不传表示宿主内部用途，目前没有这样的调用方。
+   */
+  function publishDownloads(value: any, pluginKey?: string) {
+    if (pluginKey) pluginRuntimeManager.publishTo(pluginKey, 'downloads.changed', value)
+    else pluginRuntimeManager.publish('downloads.changed', value)
   }
 
   function publishPermissions(keys: string[]) {

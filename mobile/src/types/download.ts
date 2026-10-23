@@ -15,6 +15,14 @@ export interface DownloadTask {
   mime?: string
   /** Storage root selected when the download was created. */
   directory?: 'data' | 'documents' | 'saf'
+  /**
+   * 发起这次下载的插件。用户自己在应用内发起的下载没有这个字段。
+   *
+   * 桌面端同样在任务上带 `pluginId`，并且只把 `downloads.changed` 推给该插件：
+   * 移动端此前不分来源地广播给所有插件，插件会看到不属于自己的任务，
+   * 甚至能据此去暂停/取消别人的下载。
+   */
+  pluginKey?: string
   /** Persisted SAF tree URI when the task was written to an authorized folder. */
   safUri?: string
   error?: string

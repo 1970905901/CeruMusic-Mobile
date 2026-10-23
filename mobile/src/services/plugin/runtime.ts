@@ -1186,7 +1186,8 @@ export class PluginRuntime {
         }
         assertOwnedRefs(tracks, 'track', this.ownershipContext())
         const { useDownloadStore } = await import('@/stores/downloads')
-        return useDownloadStore().createHostDownloads(request)
+        // 任务记下发起它的插件：`downloads.changed` 只推给它自己。
+        return useDownloadStore().createHostDownloads(request, this.record.key)
       }
       // 与桌面同口径：先确认每个 id 都真实存在，再执行操作。
       // 此前直接把插件给的 id 数组交给 store，不存在的 id 会被静默跳过，
@@ -1781,6 +1782,16 @@ export class PluginRuntimeManager {
 
   publish(event: string, value: any) {
     for (const runtime of this.runtimes.values()) runtime.publish(event, value)
+  }
+
+  /**
+   * 只推给某个插件（桌面端 `publishHostEvent(..., pluginId)` 的等价物）。
+   *
+   * 下载任务属于「发起它的插件」：把别人创建的任务也广播过去，插件就会看到
+   * 不属于自己的任务，甚至据此去暂停/取消别人的下载。找不到该插件时什么都不做。
+   */
+  publishTo(pluginKey: string, event: string, value: any) {
+    this.runtimes.get(pluginKey)?.publish(event, value)
   }
 
   /**
