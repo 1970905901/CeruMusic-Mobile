@@ -950,13 +950,23 @@ export class PluginRuntime {
       case 'library.playlists.removeTracks': {
         await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
-        await useLibraryStore().removeHostTracks(params?.reference, params?.tracks)
+        const library = useLibraryStore()
+        // 歌单不存在时 store 会静默返回 `{removed: 0}`，插件拿到「成功」却发现
+        // 列表毫无变化。与下载任务 id 的校验同一判据：不存在的目标要如实报错。
+        if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
+          throw new Error('歌单不存在')
+        }
+        await library.removeHostTracks(params?.reference, params?.tracks)
         return null
       }
       case 'library.playlists.clearPlaylist': {
         await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
-        await useLibraryStore().clearHostPlaylist(params?.reference)
+        const library = useLibraryStore()
+        if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
+          throw new Error('歌单不存在')
+        }
+        await library.clearHostPlaylist(params?.reference)
         return null
       }
       // 播放器与队列统一校验授权与资源归属（桌面 `PluginHost` 的同一条规则）：
