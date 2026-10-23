@@ -31,6 +31,7 @@ import {
   tasksNeedingValidation
 } from '@/services/downloadValidation'
 import { createProgressThrottle } from '@/services/progressThrottle'
+import { playlistKeyCandidates } from '@/services/playlistKeys'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -830,9 +831,12 @@ export const useDownloadStore = defineStore('downloads', () => {
   async function createHostDownloads(request: any) {
     const result: DownloadTask[] = []
     for (const reference of request?.tracks ?? []) {
-      const track =
-        library.getTrack(`${reference.providerId}:${reference.id}`) ??
-        library.getTrack(`${reference.pluginId}:${reference.providerId}:${reference.id}`)
+      // 候选 key 由 `playlistKeyCandidates` 统一生成：公共资源 `providerId:id`，
+      // 私有资源 `pluginId:providerId:id`。这里不再自己拼，否则资源形态一改
+      // 就又会出现「按引用找不到歌」。
+      const track = playlistKeyCandidates(reference)
+        .map((key) => library.getTrack(key))
+        .find((item) => !!item)
       if (!track) {
         throw new Error(`无法解析下载歌曲：${String(reference?.id ?? '')}`)
       }
