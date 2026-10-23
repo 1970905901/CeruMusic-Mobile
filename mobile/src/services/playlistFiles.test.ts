@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { gzipSync, strToU8 } from 'fflate'
 import type { ProviderEntry } from '@/types/plugin'
 import type { Track } from '@/types/music'
 import {
+  MAX_PLAYLIST_FILE_BYTES,
   decryptPlaylistText,
   encryptPlaylistTracks,
   exportableTracks,
@@ -142,5 +144,28 @@ describe('queue export filtering', () => {
 
   it('reports an empty export rather than writing a file with no songs', () => {
     expect(exportableTracks([local, downloaded])).toEqual([])
+  })
+})
+
+describe('playlist file limits', () => {
+  it('rejects a compressed file whose unpacked size blows past the cap', () => {
+    // 压缩比可以上千倍：几百 KB 的文件解出几个 GB，移动端 WebView 直接被杀。
+    const bomb = gzipSync(new Uint8Array(2 * 1024 * 1024))
+    expect(() => unpackPlaylistFile(bomb, 1024)).toThrow('解压后过大')
+  })
+
+  it('still unpacks a normal file under the cap', () => {
+    const payload = strToU8('hello playlist')
+    expect(unpackPlaylistFile(gzipSync(payload), 1024)).toBe('hello playlist')
+  })
+
+  it('rejects oversized input before touching the decompressor', () => {
+    expect(() =>
+      parsePlaylistFile('x.cmpl', new Uint8Array(MAX_PLAYLIST_FILE_BYTES + 1))
+    ).toThrow('MB')
+  })
+
+  it('rejects unknown extensions instead of guessing', () => {
+    expect(() => parsePlaylistFile('x.json', new Uint8Array([1]))).toThrow('请选择')
   })
 })

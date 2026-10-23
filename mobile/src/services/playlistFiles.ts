@@ -1,5 +1,5 @@
 import CryptoJS from 'crypto-js'
-import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate'
+import { Gunzip, gzipSync, strFromU8, strToU8 } from 'fflate'
 import type { ProviderEntry } from '@/types/plugin'
 import type { Track } from '@/types/music'
 import { isShareableTrack, trackToCloudSong } from '@/services/cloudSongList'
@@ -57,23 +57,68 @@ export function decryptPlaylistText(encrypted: string): PlaylistFileSong[] {
   return value as PlaylistFileSong[]
 }
 
+/** 歌单文件（压缩或明文）本身的体积上限。 */
+export const MAX_PLAYLIST_FILE_BYTES = 16 * 1024 * 1024
+/** `.cmpl` 解压后的上限：正常的歌单文件远小于这个数。 */
+export const MAX_PLAYLIST_UNPACKED_BYTES = 64 * 1024 * 1024
+
 export function packPlaylistFile(encrypted: string): Uint8Array {
   return gzipSync(strToU8(encrypted))
 }
 
-export function unpackPlaylistFile(bytes: Uint8Array): string {
+/**
+ * 解压 `.cmpl`，并对**解压后**的体积设上限。
+ *
+ * 歌单文件来自外部（聊天记录、网盘、插件目录），而 gzip 的压缩比可以高达
+ * 上千倍：一个几百 KB 的文件解出几个 GB，`gunzipSync` 会一次性申请这么多内存，
+ * 移动端 WebView 直接被杀掉，用户只看到应用闪退、不知道是哪个文件。
+ * 这里用流式解压边解边计数，超限立刻中止。
+ */
+export function unpackPlaylistFile(
+  bytes: Uint8Array,
+  limit: number = MAX_PLAYLIST_UNPACKED_BYTES
+): string {
+  const chunks: Uint8Array[] = []
+  let total = 0
+  let tooLarge = false
   try {
-    return strFromU8(gunzipSync(bytes))
+    const stream = new Gunzip((chunk) => {
+      if (tooLarge) return
+      total += chunk.length
+      if (total > limit) {
+        tooLarge = true
+        chunks.length = 0
+        return
+      }
+      chunks.push(chunk)
+    })
+    stream.push(bytes, true)
   } catch {
     throw new Error('歌单文件解压失败')
   }
+  if (tooLarge) {
+    throw new Error('歌单文件解压后过大，可能不是有效的歌单文件')
+  }
+  if (!chunks.length) return ''
+  const joined = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    joined.set(chunk, offset)
+    offset += chunk.length
+  }
+  return strFromU8(joined)
 }
 
 export function parsePlaylistFile(name: string, bytes: Uint8Array): PlaylistFileSong[] {
   const lower = String(name || '').toLowerCase()
-  if (lower.endsWith('.cmpl')) return decryptPlaylistText(unpackPlaylistFile(bytes))
-  if (lower.endsWith('.cpl')) return decryptPlaylistText(strFromU8(bytes))
-  throw new Error('请选择 .cpl 或 .cmpl 歌单文件')
+  const isCompressed = lower.endsWith('.cmpl')
+  if (!isCompressed && !lower.endsWith('.cpl')) throw new Error('请选择 .cpl 或 .cmpl 歌单文件')
+  if (bytes.byteLength > MAX_PLAYLIST_FILE_BYTES) {
+    throw new Error(
+      `歌单文件超过 ${Math.round(MAX_PLAYLIST_FILE_BYTES / 1024 / 1024)} MB，可能不是有效的歌单文件`
+    )
+  }
+  return decryptPlaylistText(isCompressed ? unpackPlaylistFile(bytes) : strFromU8(bytes))
 }
 
 export function playlistFileTracks(
