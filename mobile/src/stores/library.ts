@@ -149,6 +149,20 @@ export const useLibraryStore = defineStore('library', () => {
   const initialized = ref(false)
   const importingLocal = ref(false)
 
+  /**
+   * 歌单结构变化时通知插件（桌面端 PluginHostBridge 用 `libraryRevision`
+   * 统一广播 `library.changed`，payload 为 `{ target, reason }`，reason 取值
+   * `created | updated | deleted | synced`）。
+   *
+   * 此前只有「插件自己改歌单」这条路径会发事件；用户在界面上新建/删除歌单时
+   * 插件收不到，插件侧的歌单列表会一直停在旧数据上、点到已删除的条目才报错。
+   * 收藏变化不在广播范围内——桌面端同样不发（收藏不是 PlaylistReference），
+   * 这里照搬，不自己发明一个假 id 的事件。
+   */
+  function publishLibraryChange(target: { id: string; location: 'local' }, reason = 'updated'): void {
+    pluginStore.publishLibrary(target, reason)
+  }
+
   const favoriteKeys = computed(() => new Set(favorites.value.map((item) => item.key)))
   const recentTracks = computed(() => history.value.map((item) => item.track))
   const localTracks = computed(() => localRecords.value.map(localTrackToTrack))
@@ -251,6 +265,7 @@ export const useLibraryStore = defineStore('library', () => {
     void getDb()
       .then((db) => db.put('playlists', toPlain(playlist)))
       .catch((error) => console.warn('保存新建歌单失败', error))
+    publishLibraryChange({ id: playlist.id, location: 'local' }, 'created')
     return playlist
   }
 
@@ -348,6 +363,8 @@ export const useLibraryStore = defineStore('library', () => {
     const db = await getDb()
     await db.delete('playlists', id)
     playlists.value = playlists.value.filter((item) => item.id !== id)
+    // 删除同样是资料库变化：插件侧的「我的歌单」列表不刷新就会点到已删除的条目。
+    publishLibraryChange({ id, location: 'local' }, 'deleted')
     return warning
   }
 
