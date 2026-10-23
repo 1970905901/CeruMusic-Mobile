@@ -1,5 +1,5 @@
 import CryptoJS from 'crypto-js'
-import { gunzipSync } from 'fflate'
+import { gunzipWithLimit } from '@/services/gzipLimit'
 
 const SECRET_KEY = 'CeruMusic-PlaylistSecretKey'
 
@@ -59,18 +59,30 @@ export function encryptPlaylist(songs: ConvertedPlaylistSong[]): string {
   return CryptoJS.AES.encrypt(JSON.stringify(songs), SECRET_KEY).toString()
 }
 
+/** 转换器的输入上限：歌单 JSON 与解压后的 `.lxmc` 都按这个卡。 */
+export const MAX_CONVERTER_INPUT_BYTES = 32 * 1024 * 1024
+export const MAX_CONVERTER_UNPACKED_BYTES = 64 * 1024 * 1024
+
 export async function parsePlaylistFile(file: File): Promise<any> {
   const name = file.name.toLowerCase()
-  if (name.endsWith('.json')) return JSON.parse(await file.text())
-  if (name.endsWith('.lxmc')) {
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    let unpacked: Uint8Array
-    try {
-      unpacked = gunzipSync(bytes)
-    } catch {
-      unpacked = bytes
-    }
-    return JSON.parse(new TextDecoder().decode(unpacked))
+  if (!name.endsWith('.json') && !name.endsWith('.lxmc')) {
+    throw new Error('仅支持 .json 或 .lxmc 歌单文件')
   }
-  throw new Error('仅支持 .json 或 .lxmc 歌单文件')
+  if (file.size > MAX_CONVERTER_INPUT_BYTES) {
+    throw new Error(
+      `歌单文件超过 ${Math.round(MAX_CONVERTER_INPUT_BYTES / 1024 / 1024)} MB，请拆分后再转换`
+    )
+  }
+  if (name.endsWith('.json')) return JSON.parse(await file.text())
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let unpacked: Uint8Array
+  try {
+    // 与歌单文件导入同一口径：压缩比可上千倍，不能直接 `gunzipSync`。
+    unpacked = gunzipWithLimit(bytes, MAX_CONVERTER_UNPACKED_BYTES)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('解压后过大')) throw error
+    // 不是 gzip 就按明文 JSON 处理（LXMC 也有未压缩的变体）。
+    unpacked = bytes
+  }
+  return JSON.parse(new TextDecoder().decode(unpacked))
 }

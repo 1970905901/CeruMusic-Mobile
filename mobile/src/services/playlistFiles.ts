@@ -1,5 +1,6 @@
 import CryptoJS from 'crypto-js'
-import { Gunzip, gzipSync, strFromU8, strToU8 } from 'fflate'
+import { gzipSync, strFromU8, strToU8 } from 'fflate'
+import { gunzipWithLimit } from '@/services/gzipLimit'
 import type { ProviderEntry } from '@/types/plugin'
 import type { Track } from '@/types/music'
 import { isShareableTrack, trackToCloudSong } from '@/services/cloudSongList'
@@ -78,35 +79,14 @@ export function unpackPlaylistFile(
   bytes: Uint8Array,
   limit: number = MAX_PLAYLIST_UNPACKED_BYTES
 ): string {
-  const chunks: Uint8Array[] = []
-  let total = 0
-  let tooLarge = false
+  let unpacked: Uint8Array
   try {
-    const stream = new Gunzip((chunk) => {
-      if (tooLarge) return
-      total += chunk.length
-      if (total > limit) {
-        tooLarge = true
-        chunks.length = 0
-        return
-      }
-      chunks.push(chunk)
-    })
-    stream.push(bytes, true)
-  } catch {
+    unpacked = gunzipWithLimit(bytes, limit)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('解压后过大')) throw error
     throw new Error('歌单文件解压失败')
   }
-  if (tooLarge) {
-    throw new Error('歌单文件解压后过大，可能不是有效的歌单文件')
-  }
-  if (!chunks.length) return ''
-  const joined = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    joined.set(chunk, offset)
-    offset += chunk.length
-  }
-  return strFromU8(joined)
+  return unpacked.length ? strFromU8(unpacked) : ''
 }
 
 export function parsePlaylistFile(name: string, bytes: Uint8Array): PlaylistFileSong[] {
