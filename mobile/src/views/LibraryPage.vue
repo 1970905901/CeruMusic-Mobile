@@ -170,7 +170,19 @@
               />
               <span class="track-count">{{ playlist.trackKeys.length }} 首</span>
             </div>
-            <div class="playlist-name ceru-truncate">{{ playlist.name }}</div>
+            <div class="playlist-name-row">
+              <span class="playlist-name ceru-truncate">{{ playlist.name }}</span>
+              <!-- 已关联云端副本时给出徽标：同名歌单在列表里否则分不清哪张会同步 -->
+              <span v-if="playlistSyncState(playlist)" class="playlist-sync-tag">
+                {{ playlistSyncLabel(playlistSyncState(playlist)) }}
+              </span>
+            </div>
+            <div class="playlist-desc ceru-truncate">
+              {{ playlistDescriptionText(playlist.description) }}
+            </div>
+            <div v-if="playlistTimeLine(playlist)" class="playlist-time">
+              {{ playlistTimeLine(playlist) }}
+            </div>
             <button class="playlist-more" type="button" aria-label="歌单更多操作" @click.stop="openPlaylistActions(playlist)">
               <ion-icon :icon="ellipsisHorizontal" />
             </button>
@@ -448,6 +460,12 @@ import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { clipboardPlaylistName, parsePlaylistClipboard } from '@/services/playlistClipboard'
 import { cloudPlaylistKey } from '@/services/cloudPlaylists'
+import {
+  playlistDescriptionText,
+  playlistSyncLabel,
+  playlistSyncState,
+  playlistTimeLine
+} from '@/services/playlistCardMeta'
 import { Clipboard } from '@capacitor/clipboard'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { useTrackBatchSelection } from '@/services/trackBatch'
@@ -1512,11 +1530,44 @@ async function openLocalActions(track: Track) {
   font-size: 10px;
   backdrop-filter: blur(8px);
 }
-.playlist-name {
+.playlist-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 8px;
+  padding-right: 26px;
+  min-width: 0;
+}
+.playlist-name {
   font-size: 13px;
   font-weight: 650;
-  padding-right: 26px;
+  min-width: 0;
+}
+/* 「新建歌单」卡片没有说明行，名称仍需与封面隔开 */
+.create-card .playlist-name {
+  margin-top: 8px;
+}
+/* 云端徽标沿用桌面版的小号标签：说明「这张会同步」，不抢名称的位置 */
+.playlist-sync-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--ceru-border);
+  color: var(--ceru-brand);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.playlist-desc,
+.playlist-time {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
+}
+/* 「更多」按钮浮在卡片右下角，给说明行留出位置，避免文字压到图标下面 */
+.playlist-desc,
+.playlist-time {
+  padding-right: 28px;
 }
 .playlist-more {
   position: absolute;
