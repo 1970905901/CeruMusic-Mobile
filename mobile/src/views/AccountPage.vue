@@ -89,6 +89,29 @@
           </ion-item>
         </ion-list>
 
+        <div class="security-section ceru-pad">
+          <h2 class="section-title">账号安全</h2>
+          <p class="section-hint">
+            以下设置会在系统浏览器中跳转到澜音认证服务器（{{ authHost }}）完成，
+            密码与设备凭据不会经过本应用。
+          </p>
+        </div>
+        <ion-list v-for="group in SECURITY_GROUPS" :key="group.id" class="group">
+          <div class="group-title">{{ group.title }}</div>
+          <ion-item
+            v-for="item in group.items"
+            :key="item.id"
+            button
+            detail
+            @click="openAccountFlow(item)"
+          >
+            <ion-label>
+              <h2>{{ item.label }}</h2>
+              <p>{{ resolveSecuritySub(auth.user, item) }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
         <div class="logout-wrap">
           <ion-button expand="block" color="danger" fill="outline" :disabled="auth.loading" @click="logout">
             退出登录
@@ -158,7 +181,16 @@ import {
   peopleOutline,
   personCircleOutline
 } from 'ionicons/icons'
+import { Browser } from '@capacitor/browser'
 import CoverImage from '@/components/CoverImage.vue'
+import { LOGTO_ENDPOINT } from '@/services/authClient'
+import {
+  SECURITY_GROUPS,
+  buildAccountSecurityUrl,
+  logtoEndpointHost,
+  resolveSecuritySub,
+  type SecurityItem
+} from '@/services/accountSecurity'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { usePluginStore } from '@/stores/plugins'
@@ -174,6 +206,7 @@ const saving = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
 const form = reactive({ name: '', intro: '', gender: 'secret', birthday: '', region: '' })
 const intro = computed(() => String(auth.customData.intro || ''))
+const authHost = computed(() => logtoEndpointHost(LOGTO_ENDPOINT))
 const pluginAccounts = computed(() =>
   pluginStore.plugins
     .filter((plugin) => plugin.enabled)
@@ -273,6 +306,26 @@ async function logout(): Promise<void> {
     await toast('已退出登录')
   } catch (error) {
     await toast(error instanceof Error ? error.message : '退出失败', 'danger')
+  }
+}
+
+/**
+ * 账号安全入口在**系统浏览器**里打开，而不是 WebView 内跳转。
+ *
+ * 桌面版同样用 `window.open` 交给系统浏览器，理由一致：这些页面要求用户
+ * 输入密码或验证器码，不应该落在应用自己的 WebView 里；用 `@capacitor/browser`
+ * 打开还有独立 cookie 与地址栏，用户能确认自己填的是认证服务器。
+ */
+async function openAccountFlow(item: SecurityItem): Promise<void> {
+  const url = buildAccountSecurityUrl(LOGTO_ENDPOINT, item, auth.user)
+  if (!url) {
+    await toast('未配置认证服务器地址', 'danger')
+    return
+  }
+  try {
+    await Browser.open({ url })
+  } catch {
+    await toast('无法打开浏览器', 'danger')
   }
 }
 
@@ -420,6 +473,13 @@ async function toast(message: string, color = 'medium'): Promise<void> {
   border-top: 1px solid var(--ceru-border);
   border-bottom: 1px solid var(--ceru-border);
 }
+.group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ceru-text-secondary);
+  letter-spacing: 0.04em;
+  padding: 14px 18px 8px;
+}
 .group h2 {
   font-size: 15px;
   font-weight: 650;
@@ -428,6 +488,21 @@ async function toast(message: string, color = 'medium'): Promise<void> {
   margin-top: 3px;
   font-size: 12px;
   color: var(--ceru-text-secondary);
+}
+.security-section {
+  margin-top: 28px;
+}
+.section-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ceru-text);
+}
+.section-hint {
+  margin: 8px 0 0;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .logout-wrap {
   padding: 28px 16px 0;
