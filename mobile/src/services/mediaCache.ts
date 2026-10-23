@@ -98,11 +98,15 @@ export function shouldCacheQuality(
   qualities: readonly string[],
   maxQuality: string
 ): boolean {
-  const max = String(maxQuality || '').toLowerCase()
-  if (!max) return true
-  const requestedRank = qualityRank(requestedQuality, qualities)
+  const max = String(maxQuality || '').trim().toLowerCase()
+  if (!max || max === '不限制') return true
+  const req = String(requestedQuality || '').trim().toLowerCase()
+  if (!req) return true
+  const requestedRank = qualityRank(req, qualities)
   const maxRank = qualityRank(max, qualities)
-  if (requestedRank < 0 || maxRank < 0) return false
+  // 无法比较时允许缓存（对齐桌面端 MusicCache.shouldCacheQuality：宁可缓存，不要漏缓存）。
+  // 此前返回 false，导致未包含 flac 档位（如普通 mp3 曲目）的歌曲一律无法被缓存。
+  if (requestedRank < 0 || maxRank < 0) return true
   return requestedRank <= maxRank
 }
 
@@ -111,9 +115,13 @@ export function qualitySatisfiesRequest(
   requestedQuality: string,
   qualities: readonly string[]
 ): boolean {
-  const cachedRank = qualityRank(cachedQuality, qualities)
-  const requestedRank = qualityRank(requestedQuality, qualities)
-  if (cachedRank < 0 || requestedRank < 0) return cachedRank >= 0
+  const cached = String(cachedQuality || '').trim().toLowerCase()
+  const requested = String(requestedQuality || '').trim().toLowerCase()
+  if (!requested || cached === requested) return true
+  const cachedRank = qualityRank(cached, qualities)
+  const requestedRank = qualityRank(requested, qualities)
+  // 无法比较时只要有缓存即可（对齐桌面端：避免重复下载同一音质）
+  if (cachedRank < 0 || requestedRank < 0) return true
   return cachedRank >= requestedRank
 }
 
@@ -268,6 +276,7 @@ export async function cacheAudio(options: {
   headers?: Record<string, string>
   maxBytes?: number
   maxQuality?: string
+  qualityOrder?: readonly string[]
 }): Promise<CachedAudio | null> {
   const {
     track,
@@ -275,12 +284,14 @@ export async function cacheAudio(options: {
     url,
     headers,
     maxBytes = DEFAULT_MAX_BYTES,
-    maxQuality = 'flac'
+    maxQuality = 'flac',
+    qualityOrder = track.qualities
   } = options
+  const effectiveQualities = qualityOrder.length ? qualityOrder : track.qualities
   if (
     !isMediaCacheSupported() ||
     !isTrackCacheable(track) ||
-    !shouldCacheQuality(requestedQuality, track.qualities, maxQuality)
+    !shouldCacheQuality(requestedQuality, effectiveQualities, maxQuality)
   ) {
     return null
   }
@@ -290,7 +301,7 @@ export async function cacheAudio(options: {
   const existing = await db.get('entries', key)
   if (
     existing &&
-    qualitySatisfiesRequest(existing.quality, requestedQuality, track.qualities)
+    qualitySatisfiesRequest(existing.quality, requestedQuality, effectiveQualities)
   ) {
     return null
   }

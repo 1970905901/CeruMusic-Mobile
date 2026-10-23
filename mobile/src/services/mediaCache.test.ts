@@ -47,6 +47,19 @@ describe('mobile media cache policy', () => {
     expect(shouldCacheQuality('128k', track.qualities, '320k')).toBe(true)
     expect(shouldCacheQuality('flac', track.qualities, '320k')).toBe(false)
     expect(shouldCacheQuality('flac', track.qualities, '')).toBe(true)
+    expect(shouldCacheQuality('flac', track.qualities, '不限制')).toBe(true)
+    // 曲目未包含 flac 时（如仅有 128k/320k），不能因上限为 flac 而判定不可缓存
+    expect(shouldCacheQuality('320k', ['128k', '320k'], 'flac')).toBe(true)
+    expect(shouldCacheQuality('128k', ['128k', '320k'], 'flac')).toBe(true)
+  })
+
+  it('evaluates whether cached quality satisfies requested quality', () => {
+    expect(qualitySatisfiesRequest('320k', '320k', track.qualities)).toBe(true)
+    expect(qualitySatisfiesRequest('flac', '320k', track.qualities)).toBe(true)
+    expect(qualitySatisfiesRequest('128k', '320k', track.qualities)).toBe(false)
+    expect(qualitySatisfiesRequest('320k', '', track.qualities)).toBe(true)
+    // 无法比较时允许命中缓存，避免重复拉取
+    expect(qualitySatisfiesRequest('320k', 'flac', ['128k', '320k'])).toBe(true)
   })
 
   it('scores cache entries by frequency and recency for eviction', () => {

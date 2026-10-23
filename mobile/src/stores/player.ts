@@ -438,13 +438,15 @@ export const usePlayerStore = defineStore('player', () => {
     if (resolvedUrl && resolvedExpiresAt > now && queue.value[currentIndex.value]?.key === track.key) {
       return resolvedUrl
     }
+    const order = track.ref?.providerId ? pluginStore.qualityOrderFor(track.ref.providerId) : []
+    const qualityOrder = order.length ? order : track.qualities
     const cacheQuality =
       settings.settings.preferredQuality ||
       track.qualities[track.qualities.length - 1] ||
       ''
     if (settings.settings.audioCacheEnabled && isTrackCacheable(track)) {
       try {
-        const cached = await getCachedAudio(track, cacheQuality, track.qualities)
+        const cached = await getCachedAudio(track, cacheQuality, qualityOrder)
         if (cached) {
           cleanupObjectUrl()
           objectUrl = cached.url
@@ -465,7 +467,8 @@ export const usePlayerStore = defineStore('player', () => {
           url: resolved.url,
           headers: resolved.requestHeaders,
           maxBytes: settings.settings.audioCacheMaxBytes,
-          maxQuality: settings.settings.audioCacheMaxQuality
+          maxQuality: settings.settings.audioCacheMaxQuality,
+          qualityOrder
         })
         if (cached) {
           cleanupObjectUrl()
