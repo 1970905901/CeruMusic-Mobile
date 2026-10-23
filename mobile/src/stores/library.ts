@@ -860,22 +860,11 @@ export const useLibraryStore = defineStore('library', () => {
     let added = 0
     for (const entity of request?.items ?? []) {
       try {
-        const track = entity.ref?.kind === 'track'
-          ? {
-              key: `${entity.ref.scope === 'provider' ? entity.ref.providerId : 'import'}:${entity.ref.id}`,
-              ref: entity.ref,
-              title: entity.title,
-              subtitle: entity.subtitle,
-              artists: entity.metadata?.artists ?? [],
-              album: entity.metadata?.album?.title,
-              durationMs: entity.durationMs ?? entity.metadata?.durationMs,
-              artworkUrl: entity.metadata?.artworkUrl,
-              qualities: entity.metadata?.qualities ?? [],
-              playable: entity.playable !== false,
-              raw: entity,
-              source: 'plugin' as const
-            }
-          : null
+        // 走和收藏同一条转换：key 必须与 `stores/plugins.ts` 的 `makeTrackKey`
+        // 同形。这里原来把私有资源拼成 `import:provider:id`，全应用其它地方用的
+        // 却是 `pluginId:provider:id`——导入的歌既删不掉（按引用匹配不上）、
+        // 收藏判定也认不出来，还会在库里多出一份重复条目。
+        const track = hostEntityToTrack(entity)
         if (!track) continue
         upsertTrack(track)
         if (!playlist.trackKeys.includes(track.key)) {
