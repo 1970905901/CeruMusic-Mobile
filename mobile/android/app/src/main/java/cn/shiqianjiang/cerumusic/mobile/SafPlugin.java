@@ -221,7 +221,15 @@ public class SafPlugin extends Plugin {
                 parent = ensureDirectory(resolver, treeUri, parent, segments[index]);
             }
             String fileName = segments[segments.length - 1];
-            deleteExistingChild(resolver, treeUri, parent, fileName, false);
+            if (call.getBoolean("replace", false)) {
+                // 明确要求覆盖时才删旧文件（重新下载走这条）。
+                deleteExistingChild(resolver, treeUri, parent, fileName, false);
+            } else {
+                // 默认不覆盖：同名文件可能属于另一首歌，也可能是用户自己放的。
+                // 此前无条件删除再新建，两首同名歌（不同音源）会互相覆盖，
+                // 而应用内两条下载记录还都显示「已完成」，其中一条指向别人的音频。
+                fileName = uniqueChildName(resolver, treeUri, parent, fileName);
+            }
             Uri document = DocumentsContract.createDocument(resolver, parent, mime, fileName);
             if (document == null) {
                 call.reject("系统没有创建下载文件");
@@ -254,7 +262,13 @@ public class SafPlugin extends Plugin {
             JSObject ret = new JSObject();
             ret.put("uri", document.toString());
             ret.put("name", fileName);
-            ret.put("relativePath", relativePath);
+            // 去重后文件名可能变了，返回**实际**路径：调用方要把它存进任务记录，
+            // 写回原路径会让「已完成」的任务指向一个并不存在的文件。
+            StringBuilder actual = new StringBuilder();
+            for (int index = 0; index < segments.length - 1; index++) {
+                actual.append(segments[index]).append('/');
+            }
+            ret.put("relativePath", actual.append(fileName).toString());
             ret.put("size", total);
             call.resolve(ret);
         } catch (Exception error) {
@@ -320,6 +334,23 @@ public class SafPlugin extends Plugin {
     private void deleteExistingChild(ContentResolver resolver, Uri treeUri, Uri parent, String name, boolean directory) throws Exception {
         Uri existing = findChild(resolver, treeUri, parent, name, directory);
         if (existing != null) DocumentsContract.deleteDocument(resolver, existing);
+    }
+
+    /**
+     * 找一个不冲突的文件名：`歌名.mp3` → `歌名 (2).mp3`。
+     * 与文档目录写入路径（downloads.ts 的 resolveDownloadPath）同一套后缀规则，
+     * 用户在「应用私有目录」和「授权文件夹」两种下载位置看到的命名一致。
+     */
+    private String uniqueChildName(ContentResolver resolver, Uri treeUri, Uri parent, String name) throws Exception {
+        if (findChild(resolver, treeUri, parent, name, false) == null) return name;
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String extension = dot > 0 ? name.substring(dot) : "";
+        for (int index = 2; index < 1000; index++) {
+            String candidate = stem + " (" + index + ")" + extension;
+            if (findChild(resolver, treeUri, parent, candidate, false) == null) return candidate;
+        }
+        return stem + " (" + System.currentTimeMillis() + ")" + extension;
     }
 
     private String documentName(Uri uri) {

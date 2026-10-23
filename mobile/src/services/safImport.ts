@@ -27,6 +27,8 @@ interface SafPlugin {
     treeUri: string
     relativePath: string
     mime: string
+    /** 明确覆盖同名文件；默认不覆盖，会生成「歌名 (2).mp3」这类新名字。 */
+    replace?: boolean
   }): Promise<{ uri: string; name: string; relativePath: string; size: number }>
   deleteDocument(options: { uri: string }): Promise<{ deleted: boolean }>
 }
@@ -204,11 +206,22 @@ export async function pickSafDirectory(): Promise<{ uri: string; name: string }>
   return Saf.pickDirectory()
 }
 
+/**
+ * 写入授权文件夹。
+ *
+ * 默认**不覆盖**同名文件（原生端会挑一个 `歌名 (2).mp3` 这样的新名字）：
+ * 同名文件可能属于另一首歌，也可能是用户自己放的。返回值里的 `relativePath`
+ * 是实际落盘路径，与入参不同时调用方必须用它——否则记录会指向不存在的文件。
+ *
+ * 只有「与本次写入天然一一对应」的文件（例如跟随音频的 .lrc）才传 `replace: true`，
+ * 否则歌词会被写成 `歌名 (2).lrc`、与音频配不上对。
+ */
 export async function writeSafFromApp(options: {
   sourcePath: string
   treeUri: string
   relativePath: string
   mime: string
+  replace?: boolean
 }): Promise<{ uri: string; name: string; relativePath: string; size: number }> {
   if (!safImportSupported()) throw new Error('当前平台不支持 Android SAF 下载')
   return Saf.writeFromApp(options)

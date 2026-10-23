@@ -314,7 +314,10 @@ export const useDownloadStore = defineStore('downloads', () => {
             sourcePath: stagingPath,
             treeUri: task.safUri,
             relativePath: path,
-            mime: 'text/plain'
+            mime: 'text/plain',
+            // 歌词文件名由音频路径推导而来，必须与音频同名；同名歌词属于上一次
+            // 下载的同一首歌，直接覆盖。
+            replace: true
           })
         } finally {
           await Filesystem.deleteFile({ path: stagingPath, directory: Directory.Data }).catch(
