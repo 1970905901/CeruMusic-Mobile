@@ -70,6 +70,10 @@
             <ion-icon :icon="documentOutline" />
             <span>导入歌单文件</span>
           </button>
+          <button class="quick-card ceru-card ceru-press" type="button" @click="importPlaylistFromClipboard">
+            <ion-icon :icon="clipboardOutline" />
+            <span>从剪贴板导入</span>
+          </button>
           <button class="quick-card ceru-card ceru-press" type="button" @click="$router.push('/downloads')">
             <ion-icon :icon="cloudDownloadOutline" />
             <span>下载管理</span>
@@ -356,6 +360,7 @@ import {
   addOutline,
   albumsOutline,
   checkmarkDoneOutline,
+  clipboardOutline,
   cloudDownloadOutline,
   documentOutline,
   ellipsisHorizontal,
@@ -390,6 +395,8 @@ import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vu
 import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
+import { clipboardPlaylistName, parsePlaylistClipboard } from '@/services/playlistClipboard'
+import { Clipboard } from '@capacitor/clipboard'
 import { openTrackActions, addTracksToPlaylistDialog } from '@/services/trackActions'
 import { useTrackBatchSelection } from '@/services/trackBatch'
 import {
@@ -864,6 +871,30 @@ async function onPlaylistFile(event: Event) {
     await showToast('已导入 ' + playlist.trackKeys.length + ' 首歌曲', 'success')
   } catch (error) {
     await showToast(error instanceof Error ? error.message : '导入失败', 'danger')
+  }
+}
+
+/**
+ * 从剪贴板导入歌单（桌面版 `importPlaylistFromClipboard`）。
+ *
+ * 歌单页的「复制歌单到剪贴板」把加密歌单写进剪贴板后，手机上原本没有任何
+ * 地方能读回来。这里读剪贴板、解出曲目、建成新歌单；失败原因逐条说明——
+ * 用户常常是复制了别的东西，只报「导入失败」没法自查。
+ */
+async function importPlaylistFromClipboard() {
+  try {
+    const { value } = await Clipboard.read()
+    if (!value) throw new Error('剪贴板是空的')
+    const { tracks } = parsePlaylistClipboard(value, pluginStore.providers)
+    const playlist = await library.importSharedPlaylist(
+      clipboardPlaylistName(),
+      '从剪贴板导入',
+      tracks
+    )
+    activeSegment.value = 'playlists'
+    await showToast('已导入 ' + playlist.trackKeys.length + ' 首歌曲', 'success')
+  } catch (cause) {
+    await showToast(cause instanceof Error ? cause.message : '导入失败', 'danger')
   }
 }
 
