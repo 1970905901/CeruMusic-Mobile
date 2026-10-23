@@ -33,7 +33,7 @@
             <CoverImage :src="ossAvatar(post.userAvatar)" :size="44" :radius="22" :alt="post.username" />
             <div class="author-copy">
               <div class="author-name">{{ post.username || '音乐同好' }}</div>
-              <div class="post-time">{{ formatTime(post.createdAt) }}<span v-if="post.ipLocation"> · {{ post.ipLocation }}</span></div>
+              <div class="post-time">{{ communityMetaLine(formatTime(post.createdAt), post.ipLocation) }}</div>
             </div>
             <button v-if="isOwnPost" type="button" class="mini-action" @click="startEdit">编辑</button>
           </header>
@@ -95,7 +95,7 @@
               </div>
               <p class="comment-text">{{ comment.content }}</p>
               <div class="comment-meta">
-                <span>{{ formatTime(comment.createdAt) }}</span>
+                <span>{{ communityMetaLine(formatTime(comment.createdAt), comment.ipLocation) }}</span>
                 <button type="button" class="meta-btn" :class="{ active: comment.liked }" @click="toggleCommentLike(comment)">
                   <ion-icon :icon="comment.liked ? heart : heartOutline" />
                   <span v-if="comment.likeCount">{{ comment.likeCount }}</span>
@@ -122,7 +122,7 @@
                     </div>
                     <p class="comment-text">{{ reply.content }}</p>
                     <div class="comment-meta">
-                      <span>{{ formatTime(reply.createdAt) }}</span>
+                      <span>{{ communityMetaLine(formatTime(reply.createdAt), reply.ipLocation) }}</span>
                       <button type="button" class="meta-btn" :class="{ active: reply.liked }" @click="toggleCommentLike(reply)">
                         <ion-icon :icon="reply.liked ? heart : heartOutline" />
                         <span v-if="reply.likeCount">{{ reply.likeCount }}</span>
@@ -283,6 +283,7 @@ import {
 } from '@/services/postAttachment'
 import { COMMENT_HIGHLIGHT_MS, locateComment } from '@/services/commentLocate'
 import { showSupportNotice } from '@/services/communitySupport'
+import { communityMetaLine } from '@/services/communityLocation'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { usePluginStore } from '@/stores/plugins'

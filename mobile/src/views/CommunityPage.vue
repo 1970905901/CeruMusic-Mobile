@@ -45,7 +45,7 @@
               />
               <div class="author-copy">
                 <div class="author-name ceru-truncate">{{ post.username || '音乐同好' }}</div>
-                <div class="post-time">{{ formatTime(post.createdAt) }}<span v-if="post.ipLocation"> · {{ post.ipLocation }}</span></div>
+                <div class="post-time">{{ communityMetaLine(formatTime(post.createdAt), post.ipLocation) }}</div>
               </div>
             </header>
 
@@ -265,6 +265,7 @@ import type { Track } from '@/types/music'
 import { createRequestGuard } from '@/services/requestGuard'
 import { ossAvatar, ossCard } from '@/services/ossImage'
 import { showSupportNotice } from '@/services/communitySupport'
+import { communityMetaLine } from '@/services/communityLocation'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 
