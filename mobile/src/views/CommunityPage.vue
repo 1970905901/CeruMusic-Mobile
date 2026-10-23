@@ -114,12 +114,21 @@
           <ion-button @click="openCreate">发一条</ion-button>
         </div>
 
+        <!--
+          分页失败必须单独提示：错误块只在「一条都没有」时显示，
+          已有内容时翻页失败此前完全无声——点「加载更多」什么也不会发生，
+          按钮又变回可点状态，用户只会反复点。
+        -->
+        <div v-if="posts.length && error && !loading" class="load-more-error" role="status">
+          <p>{{ error }}</p>
+          <ion-button size="small" fill="outline" @click="load(false)">重试</ion-button>
+        </div>
         <div v-if="posts.length && hasMore" class="load-more">
           <ion-button fill="clear" :disabled="loading" @click="load(false)">
             {{ loading ? '加载中…' : '加载更多' }}
           </ion-button>
         </div>
-        <div v-else-if="posts.length" class="feed-end">已经到底了</div>
+        <div v-else-if="posts.length && !error" class="feed-end">已经到底了</div>
       </template>
       <div class="bottom-space" />
     </ion-content>
@@ -404,8 +413,10 @@ async function load(reset = false) {
   if (reset) {
     page.value = 1
     posts.value = []
-    error.value = ''
   }
+  // 每次请求都清掉上一次的错误：只在 reset 时清会让「重试成功」之后
+  // 旧的错误提示还在，看起来像又失败了一次。
+  error.value = ''
   // 分类切换属于"只认最后一次"，同一分类内的分页用 capture 并存。
   const identity = feedIdentity()
   const token = reset ? feedRequests.beginLatest(identity) : feedRequests.capture(identity)
@@ -767,6 +778,21 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--ceru-text-secondary);
   font-size: 11px;
+}
+.load-more-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  color: var(--ceru-danger);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.load-more-error p {
+  margin: 0;
 }
 .bottom-space {
   height: 120px;
