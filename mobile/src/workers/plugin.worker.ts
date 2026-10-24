@@ -1,5 +1,6 @@
 import { installLegacyPolyfills } from '@/utils/polyfills'
 import { socketEventName } from '@/services/pluginSockets'
+import { createPermissionApi } from '@/services/plugin/permissionApi'
 
 installLegacyPolyfills()
 
@@ -235,32 +236,14 @@ const context: any = {
       }
     }
   },
-  permissions: {
-    getGranted: async () => [
-      ...grantedPermissions
-    ].map((key) => ({ key, status: 'granted' as const, grantedAt: Date.now() })),
-    query: async (request: { key: string }) => {
-      if (grantedPermissions.has(request.key)) return { status: 'granted' as const, key: request.key }
-      if (deniedPermissions.has(request.key)) return { status: 'denied' as const, key: request.key }
-      return { status: 'prompt' as const, key: request.key }
-    },
-    request: async (request: { key: string; intent?: any }) => {
-      const status = await requestPermission(request.key, request.intent)
-      return { status, key: request.key }
-    },
-    requestGroup: async (request: { group: string; keys: string[] }) => {
-      const grants = []
-      for (const key of request.keys) {
-        grants.push({ key, status: await requestPermission(key) })
-      }
-      const status = grants.every((item) => item.status === 'granted')
-        ? 'granted'
-        : grants.some((item) => item.status === 'denied')
-          ? 'denied'
-          : 'prompt'
-      return { status, grants }
-    }
-  },
+  // 契约实现在 `services/plugin/permissionApi.ts`（可单测）；这里只接上本进程的授权缓存。
+  // `manifest` 在激活前是 undefined，而权限 API 只会在激活后才会被插件调用。
+  permissions: createPermissionApi({
+    declarations: () => manifest?.permissions,
+    isGranted: (key) => grantedPermissions.has(key),
+    isDenied: (key) => deniedPermissions.has(key),
+    request: (key, intent) => requestPermission(key, intent)
+  }),
   playback: {
     failure: (error: any) => ({ ok: false, error })
   },
