@@ -330,7 +330,7 @@
               <div class="member-role">{{ roleLabel(lt.memberRole(member)) }}</div>
             </div>
             <button
-              v-if="lt.isOwner && member.userId !== lt.userId"
+              v-if="memberActionsFor(member).length"
               type="button"
               class="tiny-action"
               @click="openMemberActions(member)"
@@ -410,6 +410,7 @@ import {
   splitMentions,
   type ChatSegment
 } from '@/services/listenTogetherChat'
+import { planMemberActions } from '@/services/listenTogetherMembers'
 
 const auth = useAuthStore()
 const player = usePlayerStore()
@@ -785,17 +786,32 @@ function sendChat() {
   }
 }
 
+/**
+ * 成员行可执行的动作，规则与桌面端 `MemberStrip.actionsFor` 一致：
+ * 房主对管理员「撤销 + 移出」、对普通成员「提升 + 移出」；
+ * 管理员只能移出普通成员；自己那一行没有操作。
+ */
+function memberActionsFor(member: RoomMember) {
+  return planMemberActions({
+    myUserId: lt.userId,
+    myRole: lt.myRole,
+    member: { userId: member.userId, role: lt.memberRole(member) }
+  })
+}
+
 async function openMemberActions(member: RoomMember) {
-  const role = lt.memberRole(member)
+  const actions = memberActionsFor(member)
+  if (!actions.length) return
   const buttons: any[] = []
-  if (role === 'member') {
+  if (actions.includes('promote')) {
     buttons.push({
       text: '设为管理员',
       handler: () => {
         lt.promote(member.userId)
       }
     })
-  } else if (role === 'admin') {
+  }
+  if (actions.includes('demote')) {
     buttons.push({
       text: '撤销管理员',
       handler: () => {
@@ -803,13 +819,15 @@ async function openMemberActions(member: RoomMember) {
       }
     })
   }
-  buttons.push({
-    text: '移出房间',
-    role: 'destructive',
-    handler: () => {
-      void confirmKick(member)
-    }
-  })
+  if (actions.includes('kick')) {
+    buttons.push({
+      text: '移出房间',
+      role: 'destructive',
+      handler: () => {
+        void confirmKick(member)
+      }
+    })
+  }
   buttons.push({ text: '取消', role: 'cancel' })
   const sheet = await actionSheetController.create({
     header: member.nickname || '成员管理',

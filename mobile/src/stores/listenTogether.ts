@@ -670,7 +670,9 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
   }
 
   function kick(userIdValue: string) {
-    if (!isOwner.value) return
+    // 与桌面 `kick` 同口径：admin+ 可踢（房主不能踢同级、也不能踢自己由服务端拒绝）。
+    // 此前这里要求 `isOwner`，管理员即便拿到了入口也只会静默失效。
+    if (!canControl.value) return
     socket?.emit(CLIENT.MEMBER_KICK, { userId: userIdValue })
   }
 
