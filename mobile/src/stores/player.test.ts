@@ -37,6 +37,37 @@ function makeLocalTrack(key: string): Track {
   }
 }
 
+describe('player queue append', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+  })
+
+  it('appends to the end instead of jumping the queue', () => {
+    // 桌面 `addToPlaylistEnd` 加在队尾；移动端此前只有「下一首播放」。
+    const player = usePlayerStore()
+    player.insertNext(makeLocalTrack('first'))
+    expect(player.appendToQueue(makeLocalTrack('second'))).toBe(true)
+    expect(player.queue.map((track) => track.key)).toEqual(['first', 'second'])
+  })
+
+  it('refuses a duplicate instead of queueing it twice', () => {
+    const player = usePlayerStore()
+    player.insertNext(makeLocalTrack('first'))
+    expect(player.appendToQueue(makeLocalTrack('first'))).toBe(false)
+    expect(player.queue.filter((track) => track.key === 'first')).toHaveLength(1)
+  })
+
+  it('points at the only track when the queue was empty', () => {
+    // 空队列时下标必须落到 0，否则「播放」按钮点了没有当前曲。
+    const player = usePlayerStore()
+    expect(player.queue).toHaveLength(0)
+    expect(player.appendToQueue(makeLocalTrack('only'))).toBe(true)
+    expect(player.currentIndex).toBe(0)
+    expect(player.currentTrack?.key).toBe('only')
+  })
+})
+
 describe('player quality reload', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

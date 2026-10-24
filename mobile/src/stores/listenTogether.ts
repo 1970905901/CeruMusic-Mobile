@@ -640,6 +640,11 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     socket.emit(CLIENT.QUEUE_REQUEST, { song: trackToSongRef(track) })
   }
 
+  function addTrackToQueue(track: Track) {
+    if (!track) return false
+    return emitControl(CLIENT.QUEUE_ADD, { song: trackToSongRef(track) })
+  }
+
   function addCurrentToQueue() {
     const track = player.currentTrack
     if (!track) return
@@ -797,6 +802,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     changeToCurrentTrack,
     requestTrack,
     requestCurrentTrack,
+    addTrackToQueue,
     addCurrentToQueue,
     removeQueueItem,
     approveRequest,

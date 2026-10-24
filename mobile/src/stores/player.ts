@@ -1047,6 +1047,24 @@ export const usePlayerStore = defineStore('player', () => {
     publishQueue()
   }
 
+  /**
+   * 把歌曲追加到播放队列末尾（桌面端 `addToPlaylistEnd` 的本地语义）。
+   *
+   * 返回 false 表示这首歌已在队列里——桌面版此时提示「歌曲已在播放列表中」，
+   * 而不是默默塞进第二条。队列原本为空时沿用 `insertTracksNext` 的处理：
+   * 把下标落在 0 上，但不主动起播。
+   */
+  function appendToQueue(track: Track): boolean {
+    if (queue.value.some((item) => item.key === track.key)) return false
+    library.upsertTrack(track)
+    const empty = queue.value.length === 0
+    queue.value = [...queue.value, track]
+    if (empty) currentIndex.value = 0
+    ensureShuffleOrder()
+    publishQueue()
+    return true
+  }
+
   function insertTracksNext(tracks: Track[]): void {
     if (!tracks.length) return
     tracks.forEach((track) => library.upsertTrack(track))
@@ -1293,6 +1311,7 @@ export const usePlayerStore = defineStore('player', () => {
     setSleepTimer,
     insertNext,
     insertTracksNext,
+    appendToQueue,
     loadPersisted,
     persistState,
     restoreIfAvailable,

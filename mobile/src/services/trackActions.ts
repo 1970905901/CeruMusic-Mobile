@@ -7,6 +7,7 @@ import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
 import { useAuthStore } from '@/stores/auth'
 import { useShareStore } from '@/stores/share'
+import { useListenTogetherStore } from '@/stores/listenTogether'
 import { resolveTrackQuality, trackQualityChoices } from '@/services/batchDownloadQuality'
 import { getQualityDisplayName } from '@/services/qualityNames'
 
@@ -42,6 +43,10 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
           player.insertNext(track)
           void toast('已加入下一首')
         }
+      },
+      {
+        text: '加入播放列表',
+        handler: () => appendTrackToPlaylist(track)
       },
       {
         text: '添加到歌单',
@@ -109,6 +114,34 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
     ]
   })
   await sheet.present()
+}
+
+/**
+ * 「加入播放列表」——桌面 `playlistManager.addToPlaylistEnd` 的移动端等价。
+ *
+ * 桌面版按房间身份分流：普通成员走点歌审核（不改共享列表），房主/管理员
+ * 走 `ctl:queue-add` 增量入队，房间外才追加到本地队列末尾并做去重。
+ * 移动端此前只有「下一首播放」，没有「加到队尾」这个动作——队列里排到
+ * 中段想往后加一首，只能先清空再重排。
+ */
+async function appendTrackToPlaylist(track: Track): Promise<void> {
+  const player = usePlayerStore()
+  const lt = useListenTogetherStore()
+  if (lt.inRoom) {
+    if (lt.canControl) {
+      lt.addTrackToQueue(track)
+      await toast('已加入房间播放列表')
+      return
+    }
+    const requested = lt.requestTrack(track)
+    await toast(
+      requested ? '已提交点歌，等待管理员审核' : '房间尚未连接，无法点歌',
+      requested ? 'medium' : 'warning'
+    )
+    return
+  }
+  const added = player.appendToQueue(track)
+  await toast(added ? '已加入播放列表' : '歌曲已在播放列表中', added ? 'medium' : 'warning')
 }
 
 /**

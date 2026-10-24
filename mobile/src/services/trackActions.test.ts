@@ -53,6 +53,15 @@ vi.mock('@/stores/share', () => ({
   useShareStore: () => ({ show: vi.fn() })
 }))
 
+vi.mock('@/stores/listenTogether', () => ({
+  useListenTogetherStore: () => ({
+    inRoom: false,
+    canControl: false,
+    addTrackToQueue: vi.fn(),
+    requestTrack: vi.fn(() => true)
+  })
+}))
+
 const sampleTrack: Track = {
   key: 'plugin-test:track:1',
   ref: { providerId: 'test', kind: 'track', id: '1', scope: 'provider' },
@@ -78,6 +87,7 @@ describe('trackActions', () => {
     expect(createdSheetOptions.header).toBe('Test Song')
     const buttonTexts = createdSheetOptions.buttons.map((b: any) => b.text)
     expect(buttonTexts).toContain('下一首播放')
+    expect(buttonTexts).toContain('加入播放列表')
     expect(buttonTexts).toContain('添加到歌单')
     expect(buttonTexts).toContain('收藏')
     expect(buttonTexts).toContain('下载')
