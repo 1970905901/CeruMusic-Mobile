@@ -28,6 +28,7 @@ describe('plugin host capability table', () => {
       'settings',
       'guests',
       'window',
+      'hotkeys',
       'tasks',
       'ai',
       'sharing',
@@ -95,6 +96,16 @@ describe('plugin host capability table', () => {
     const window = byService().get('window')!
     expect(window.available).toBe(false)
     expect(window.reason).toBe('unsupported')
+  })
+
+  it('marks hotkeys unsupported so plugins do not plan around a missing host RPC', () => {
+    // worker 里的 `hotkeys.register` 直接抛「移动端不支持桌面快捷键」，
+    // 宿主也没有对应 RPC；标成可用只会在真调用时失败。
+    const hotkeys = byService().get('hotkeys')!
+    expect(hotkeys.available).toBe(false)
+    expect(hotkeys.reason).toBe('unsupported')
+    expect(hotkeys.methods).toEqual(['register'])
+    expect(hotkeys.permissionGroups).toEqual(['hotkeys'])
   })
 
   it('only advertises directory picking where a directory handle can survive', () => {

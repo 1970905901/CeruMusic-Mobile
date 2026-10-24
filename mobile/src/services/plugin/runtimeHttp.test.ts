@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_FILE_PAYLOAD_BYTES,
   MAX_QUEUE_MUTATION_ITEMS,
   MAX_SOCKET_PAYLOAD_BYTES,
   assertDownloadIds,
+  assertFilePayloadBytes,
   assertQueueSize,
   assertSocketPayload,
   buildUrl,
   jsonHeaders,
-  safeExportName
+  safeExportName,
+  utf8ByteLength
 } from './runtime'
 
 describe('plugin http url building', () => {
@@ -131,6 +134,42 @@ describe('queue mutation size', () => {
 
   it('rejects a non-array argument', () => {
     expect(() => assertQueueSize('not-a-list')).toThrow('队列操作参数无效')
+  })
+})
+
+describe('plugin file payload limits', () => {
+  it('uses the same 16 MiB cap as the desktop file service', () => {
+    expect(MAX_FILE_PAYLOAD_BYTES).toBe(16 * 1024 * 1024)
+  })
+
+  it('accepts files at or below the cap', () => {
+    expect(() => assertFilePayloadBytes(0)).not.toThrow()
+    expect(() => assertFilePayloadBytes(MAX_FILE_PAYLOAD_BYTES)).not.toThrow()
+  })
+
+  it('rejects oversized files before they are read into memory', () => {
+    // 读取会把整份内容读进 data URL / 字符串，峰值约为文件的三倍；
+    // 桌面 `handleFileService` 同样在读取前挡住超过 16 MiB 的文件。
+    expect(() => assertFilePayloadBytes(MAX_FILE_PAYLOAD_BYTES + 1)).toThrow('文件超过 16 MiB 限制')
+  })
+
+  it('labels write payloads so the error says what was too large', () => {
+    expect(() =>
+      assertFilePayloadBytes(MAX_FILE_PAYLOAD_BYTES + 1, '写入内容')
+    ).toThrow('写入内容超过 16 MiB 限制')
+  })
+
+  it('refuses to guess when the size is unusable', () => {
+    expect(() => assertFilePayloadBytes(Number.NaN)).toThrow('大小无法确定')
+    expect(() => assertFilePayloadBytes(-1)).toThrow('大小无法确定')
+    expect(() => assertFilePayloadBytes(Number.POSITIVE_INFINITY)).toThrow('大小无法确定')
+  })
+
+  it('measures text by UTF-8 bytes rather than character count', () => {
+    // 中文一个字符占 3 字节，按字符数算会严重低估上限。
+    expect(utf8ByteLength('abc')).toBe(3)
+    expect(utf8ByteLength('中文')).toBe(6)
+    expect(utf8ByteLength(undefined)).toBe(0)
   })
 })
 

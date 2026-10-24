@@ -105,6 +105,34 @@ export function assertSocketPayload(data: unknown): void {
 }
 
 /**
+ * 插件文件读写的单次上限，与桌面 `handleFileService` 同口径（16 MiB）。
+ *
+ * 移动端此前完全不限：`files.readBase64` 先把整个文件读进 data URL、再切出
+ * base64 部分，峰值约为文件大小的三倍；`files.saveText` / `writeText` 也是
+ * 整段写盘。插件选一个几百 MB 的文件就能让 WebView 内存不足、被系统直接杀掉，
+ * 而用户只会看到应用闪退，看不出是哪一个插件做的。
+ */
+export const MAX_FILE_PAYLOAD_BYTES = 16 * 1024 * 1024
+
+/** 文本的 UTF-8 字节数；与桌面 `Buffer.byteLength` 同口径。 */
+export function utf8ByteLength(value: unknown): number {
+  return new TextEncoder().encode(String(value ?? '')).length
+}
+
+/**
+ * 单次文件读写的体积校验。
+ *
+ * `subject` 用来区分「读到的文件」与「要写入的内容」，错误文案与桌面
+ * `handleFileService` 的两条提示逐字一致，插件作者能据此对照文档排查。
+ */
+export function assertFilePayloadBytes(bytes: number, subject = '文件'): void {
+  if (!Number.isFinite(bytes) || bytes < 0) throw new Error(`${subject}大小无法确定`)
+  if (bytes > MAX_FILE_PAYLOAD_BYTES) {
+    throw new Error(`${subject}超过 ${MAX_FILE_PAYLOAD_BYTES / 1024 / 1024} MiB 限制`)
+  }
+}
+
+/**
  * 队列操作的数量上限。
  *
  * 插件可以一次推上万个引用：`queue.replace` 会整队重建、`queue.reorder`
@@ -374,6 +402,9 @@ export function buildCapabilityList(directoryPicking: boolean): HostCapability[]
     call('guests', ['list', 'import', 'select', 'remove', 'invoke'], ['guestPlugins']),
     // 桌面窗口动作（最小化/最大化/迷你播放器）在手机上不存在：如实标记不可用。
     call('window', ['control'], ['window'], false, 'unsupported'),
+    // 全局快捷键同理：worker 里的 `hotkeys.register` 直接报「移动端不支持桌面快捷键」，
+    // 宿主也没有对应 RPC。标成可用只会让插件在真调用时才撞上错误。
+    call('hotkeys', ['register'], ['hotkeys'], false, 'unsupported'),
     call('tasks', ['schedule', 'cancel'], ['background']),
     call('ai', ['generate'], ['ai']),
     call('sharing', ['create', 'revoke', 'resolve'], ['sharing']),
@@ -1242,12 +1273,14 @@ export class PluginRuntime {
         await this.requirePermission(params?.call?.permissionKey, 'files.read')
         const file = this.pickedFiles.get(params?.file?.id)
         if (!file) throw new Error('文件句柄已过期')
+        assertFilePayloadBytes(file.size)
         return file.text()
       }
       case 'files.readBase64': {
         await this.requirePermission(params?.call?.permissionKey, 'files.read')
         const file = this.pickedFiles.get(params?.file?.id)
         if (!file) throw new Error('文件句柄已过期')
+        assertFilePayloadBytes(file.size)
         return this.blobToBase64(file)
       }
       case 'files.saveText': {
@@ -1256,9 +1289,11 @@ export class PluginRuntime {
         const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
         const name = safeExportName(params?.request?.suggestedName)
         const relativePath = `exports/${name}`
+        const text = String(params?.request?.text ?? '')
+        assertFilePayloadBytes(utf8ByteLength(text), '写入内容')
         await Filesystem.writeFile({
           path: relativePath,
-          data: String(params?.request?.text ?? ''),
+          data: text,
           directory: Directory.Documents,
           encoding: Encoding.UTF8,
           recursive: true
@@ -1272,9 +1307,11 @@ export class PluginRuntime {
         // 只能写回 `saveText` 给出的导出路径；否则插件可以借句柄覆盖
         // Documents 下的任意文件（包括用户自己的音频与歌词）。
         if (!path.startsWith('exports/')) throw new Error('只能写入导出的文件')
+        const text = String(params?.text ?? '')
+        assertFilePayloadBytes(utf8ByteLength(text), '写入内容')
         await Filesystem.writeFile({
           path,
-          data: String(params?.text ?? ''),
+          data: text,
           directory: Directory.Documents,
           encoding: Encoding.UTF8,
           recursive: true
