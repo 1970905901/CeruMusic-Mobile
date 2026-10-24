@@ -276,6 +276,7 @@ import { ossAvatar, ossCard } from '@/services/ossImage'
 import { showSupportNotice } from '@/services/communitySupport'
 import { communityMetaLine } from '@/services/communityLocation'
 import { formatCommunityCount, formatRelativeTime } from '@/services/communityFormat'
+import { onCommunityPostRemoved } from '@/services/communityPostEvents'
 
 type FeedMode = 'recommend' | 'latest' | 'mine'
 
@@ -297,6 +298,23 @@ const liking = new Set<string>()
  * 否则旧分类的响应会追加到新分类的列表里。
  */
 const feedRequests = createRequestGuard()
+
+/**
+ * 帖子被下线或删除后从信息流移除。
+ *
+ * 桌面版详情是弹层，`emit('removed')` 后信息流当场过滤即可；移动端详情是
+ * 独立页面，Ionic 把列表页留在 DOM 里不重新挂载，`onMounted` 不会再跑，
+ * 不过滤的话返回后卡片还在，点进去只会报「帖子不存在」。
+ * `total` 同步减一：`hasMore` 是按「已加载数 < total」判定的，
+ * 只删列表不减总数会让「还有更多」一直成立，用户下拉却拿不到新内容。
+ */
+function removeFromFeed(postId: string) {
+  const before = posts.value.length
+  posts.value = posts.value.filter((post) => post.id !== postId)
+  if (posts.value.length !== before) {
+    total.value = Math.max(0, total.value - 1)
+  }
+}
 
 /** 列表归属：分类 + 作者；任一变化都说明响应已过期。 */
 function feedIdentity(): string {
@@ -615,11 +633,16 @@ async function toast(message: string, color = 'medium') {
   await element.present()
 }
 
+let offPostRemoved: (() => void) | null = null
+
 onMounted(() => {
+  offPostRemoved = onCommunityPostRemoved(removeFromFeed)
   void load(true)
 })
 
 onBeforeUnmount(() => {
+  offPostRemoved?.()
+  offPostRemoved = null
   feedRequests.dispose()
 })
 </script>

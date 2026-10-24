@@ -294,6 +294,7 @@ import {
   attachmentTitle as attachmentTitleOf
 } from '@/services/postAttachment'
 import { COMMENT_HIGHLIGHT_MS, locateComment } from '@/services/commentLocate'
+import { publishCommunityPostRemoved } from '@/services/communityPostEvents'
 import { showSupportNotice } from '@/services/communitySupport'
 import { communityMetaLine } from '@/services/communityLocation'
 import { formatCommunityCount, formatRelativeTime } from '@/services/communityFormat'
@@ -739,9 +740,27 @@ async function reportPost() {
     await toast('请填写举报理由', 'warning')
     return
   }
+  // 与桌面 `PostDetailModal.submitReport` 同口径：理由最长 255 字。
+  if (reason.length > 255) {
+    await toast('理由不超过 255 字', 'warning')
+    return
+  }
   try {
     const result = await communityApi.report({ postId: post.value.id, reason })
-    await toast(result.already ? '你已经举报过这篇帖子' : '举报已提交，管理员会复核')
+    if (result.already) {
+      await toast('你已经举报过这篇帖子')
+      return
+    }
+    // 桌面版会区分「自动下线」：帖子已经不在了，留在详情页只会让人反复点。
+    // 移动端此前把两种情况都报成「已提交，管理员会复核」，用户返回列表
+    // 还能看到这张卡片，点进来却打不开。
+    if (result.autoOffline) {
+      publishCommunityPostRemoved(post.value.id)
+      await toast('举报成功，该帖已被自动下线')
+      router.push('/community')
+      return
+    }
+    await toast('举报已提交，管理员会复核')
   } catch (cause) {
     await toast(cause instanceof Error ? cause.message : '举报失败', 'danger')
   }
@@ -762,6 +781,9 @@ async function deletePost() {
   if (role !== 'destructive') return
   try {
     await communityApi.deletePost(post.value.id)
+    // 桌面版删除后同样 `emit('removed', postId)`；移动端列表是常驻页面，
+    // 不广播的话返回后这张卡片还在，点进去只会报「帖子不存在」。
+    publishCommunityPostRemoved(post.value.id)
     await toast('已删除')
     router.push('/community')
   } catch (cause) {
