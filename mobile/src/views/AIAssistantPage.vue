@@ -77,7 +77,7 @@
           </div>
         </article>
 
-        <div v-if="sending" class="message assistant">
+        <div v-if="sending && !messages[messages.length - 1]?.content" class="message assistant">
           <div class="message-avatar"><ion-icon :icon="sparklesOutline" /></div>
           <div class="message-body">
             <div class="typing"><span /><span /><span /></div>
@@ -190,7 +190,7 @@ import { usePlayerStore } from '@/stores/player'
 import {
   AI_PROVIDERS,
   AI_SYSTEM_PROMPT,
-  askAI,
+  askAIStream,
   type AIProvider,
   type AIChatMessage
 } from '@/services/aiService'
@@ -331,12 +331,16 @@ async function sendText(text: string) {
   if (!value) return
   error.value = ''
   messages.value.push({ id: uid(), role: 'user', content: value, at: Date.now() })
+  // 流式（对齐桌面版浮球的逐字渲染）：先建一条空的 AI 消息，增量到达即更新，
+  // 没有任何输出的失败再把这条占位移除。一次性回落的路径同样写进这条消息。
+  const reply: ChatMessage = { id: uid(), role: 'assistant', content: '', at: Date.now() }
+  messages.value.push(reply)
   persist()
   await scrollToBottom()
   sending.value = true
   abortController = new AbortController()
   try {
-    const answer = await askAI(
+    const answer = await askAIStream(
       buildContext(),
       {
         provider: settings.settings.aiProvider,
@@ -344,15 +348,26 @@ async function sendText(text: string) {
         baseURL: settings.settings.aiBaseURL,
         model: settings.settings.aiModel
       },
-      abortController.signal
+      {
+        signal: abortController.signal,
+        onChunk: (delta) => {
+          reply.content += delta
+          void scrollToBottom()
+        }
+      }
     )
-    messages.value.push({ id: uid(), role: 'assistant', content: answer, at: Date.now() })
+    reply.content = answer
     persist()
     await scrollToBottom()
   } catch (cause) {
+    // 占位没有任何内容说明一个字都没到：移除后显示错误，不留一条空气消息。
+    if (!reply.content) {
+      messages.value = messages.value.filter((message) => message.id !== reply.id)
+    }
     if ((cause as any)?.name !== 'AbortError') {
       error.value = cause instanceof Error ? cause.message : 'AI 请求失败'
     }
+    persist()
   } finally {
     sending.value = false
     abortController = undefined
