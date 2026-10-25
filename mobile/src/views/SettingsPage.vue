@@ -979,6 +979,18 @@
 
       <ion-list id="group-appearance" class="group">
         <div class="group-title">外观</div>
+        <ion-item v-if="festivalWindowActive">
+          <ion-icon slot="start" :icon="giftOutline" color="primary" />
+          <ion-label>
+            <h2>春节主题（限时体验）</h2>
+            <p>春节期间播放页展示烟花特效</p>
+          </ion-label>
+          <ion-toggle
+            :checked="!settings.settings.festivalThemeDisabled"
+            aria-label="春节主题"
+            @ionChange="settings.settings.festivalThemeDisabled = !$event.detail.checked"
+          />
+        </ion-item>
         <ion-item>
           <ion-icon slot="start" :icon="colorPaletteOutline" color="primary" />
           <ion-label>
@@ -1116,6 +1128,7 @@ import {
   createOutline,
   cloudDownloadOutline,
   documentTextOutline,
+  giftOutline,
   folderOpenOutline,
   colorPaletteOutline,
   globeOutline,
@@ -1182,6 +1195,7 @@ import {
   type TagWriteOptions
 } from '@/services/tagWriteOptions'
 import { displayMinutes } from '@/services/sleepTimer'
+import { isSpringFestivalWindow } from '@/services/festivalTheme'
 import { describeQualityCoverage, intersectQualities } from '@/services/qualityIntersection'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
 import type { SettingsSearchItem } from '@/services/settingsSearch'
@@ -1247,6 +1261,8 @@ const choosingSafDownload = ref(false)
 watch(() => auth.authenticated, (value) => { if (value) void notifications.refreshCounts() }, { immediate: true })
 const version = __APP_VERSION__
 const accents = ['#00b39b', '#00dac0', '#4f7cff', '#a259ff', '#ff7a45', '#ff5470']
+/** 春节主题开关只在节日期间出现（桌面版 AppearanceSection 同款条件渲染）。 */
+const festivalWindowActive = isSpringFestivalWindow()
 
 /**
  * 没有启用插件（或插件未声明音质）时的兜底音质。

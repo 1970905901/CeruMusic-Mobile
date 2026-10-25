@@ -9,6 +9,8 @@
         <div v-if="track && gradientBackground" class="bg-gradient" :style="{ backgroundImage: gradientBackground }" />
       </div>
       <div class="bg-shade" />
+      <!-- 春节限时烟花层（桌面版 FullPlay 的 festival-overlay） -->
+      <div v-show="festivalActive" ref="festivalHost" class="festival-overlay" aria-hidden="true" />
       <LtDanmakuLayer v-if="track" />
       <div class="player-shell ceru-safe-top">
         <header class="top-bar">
@@ -440,6 +442,7 @@ import { fourColorGradientBackground } from '@/services/backgroundGradient'
 import { extractDominantColors, extractLightMainColor, type RgbColor } from '@/services/coverColor'
 import { startLowFreqSampler } from '@/services/audioVisualizer'
 import { useAppBackground } from '@/services/appVisibility'
+import { shouldUseFestivalTheme, startFireworks } from '@/services/festivalTheme'
 import { crossfadeState } from '@/services/crossfade'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import { lyricFontStack } from '@/services/lyricFonts'
@@ -482,6 +485,32 @@ const backgroundRenderer = computed(() => settings.settings.playerBackgroundRend
  * 音频继续播放（后台播放依赖系统媒体服务），这里只暂停视觉层。
  */
 const { isAppBackground } = useAppBackground()
+
+/**
+ * 春节限时主题（桌面版 FullPlay 的 showFestivalEffects 同款判定）：
+ * 窗口内且未被用户关闭时，在播放页挂一层 14s 的烟花；切后台按后台降载
+ * 规则一并停掉（烟花是 requestAnimationFrame 驱动的，后台本来也会被节流）。
+ */
+const festivalActive = computed(
+  () =>
+    shouldUseFestivalTheme({ disabled: settings.settings.festivalThemeDisabled }) &&
+    !isAppBackground.value
+)
+const festivalHost = ref<HTMLElement | null>(null)
+let stopFireworks: (() => void) | null = null
+watch(festivalActive, (active) => {
+  if (active && festivalHost.value && !stopFireworks) {
+    stopFireworks = startFireworks(festivalHost.value)
+  } else if (!active && stopFireworks) {
+    stopFireworks()
+    stopFireworks = null
+  }
+})
+onBeforeUnmount(() => {
+  stopFireworks?.()
+  stopFireworks = null
+})
+
 /** Desktop parity: only 网格渐变 consumes the low-frequency beat. */
 const beatEnabled = computed(
   () => settings.settings.playerBackgroundBeat && backgroundSupportsBeat(backgroundRenderer.value)
@@ -1259,6 +1288,14 @@ onBeforeUnmount(() => {
   background:
     radial-gradient(circle at 20% 0%, rgba(0, 218, 192, 0.2), transparent 42%),
     linear-gradient(180deg, rgba(8, 11, 15, 0.18), rgba(8, 11, 15, 0.9) 68%, #080b0f 100%);
+  pointer-events: none;
+}
+/* 春节烟花层：铺在内容之下、背景之上（桌面版 festival-overlay 同款叠层） */
+.festival-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 .player-shell {

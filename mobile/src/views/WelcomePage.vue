@@ -3,7 +3,7 @@
     <ion-content :fullscreen="true" class="welcome-content">
       <div class="ambient ambient-a" />
       <div class="ambient ambient-b" />
-      <div class="welcome ceru-safe-top">
+      <div class="welcome ceru-safe-top" :class="{ 'is-festival': festivalActive }">
         <div class="brand">
           <div class="logo-shell">
             <img src="/logo.png" alt="澜音 Ceru Music" class="logo" />
@@ -15,7 +15,8 @@
         </div>
 
         <div class="hero">
-          <h2>把音乐留在<br /><span>自己的设备里</span></h2>
+          <h2 v-if="festivalActive">岁岁长安 · 马越新程</h2>
+          <h2 v-else>把音乐留在<br /><span>自己的设备里</span></h2>
           <p>
             安装你信任的 Ceru v2 音源插件，搜索、播放、下载与管理音乐。移动端不内置任何音乐源。
           </p>
@@ -69,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { IonButton, IonContent, IonIcon, IonPage, alertController } from '@ionic/vue'
 import {
   addCircleOutline,
@@ -81,11 +82,16 @@ import {
 import { useRouter } from 'vue-router'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
+import { shouldUseFestivalTheme } from '@/services/festivalTheme'
 
 const router = useRouter()
 const pluginStore = usePluginStore()
 const settings = useSettingsStore()
 const error = ref<string | null>(null)
+/** 春节限时样式（桌面版 welcome 的 is-newyear 同款判定，含「用户已关闭」短路）。 */
+const festivalActive = computed(() =>
+  shouldUseFestivalTheme({ disabled: settings.settings.festivalThemeDisabled })
+)
 
 function pickPlugin() {
   error.value = null
@@ -173,6 +179,16 @@ async function skipToLocal() {
   right: -160px;
   top: 180px;
   background: radial-gradient(circle, rgba(86, 120, 255, 0.38), transparent 68%);
+}
+/* 春节限时配色（桌面版 is-newyear 圆圈换红金暖色的移动端等价） */
+.welcome.is-festival .ambient-a {
+  background: radial-gradient(circle, rgba(250, 56, 62, 0.5), transparent 68%);
+}
+.welcome.is-festival .ambient-b {
+  background: radial-gradient(circle, rgba(255, 214, 90, 0.42), transparent 68%);
+}
+.welcome.is-festival .hero h2 {
+  color: #ffd65a;
 }
 .welcome {
   position: relative;

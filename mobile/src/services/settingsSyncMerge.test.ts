@@ -65,6 +65,7 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     lyricFontScale: 1,
     lyricFontFamily: 'system',
     audioOutputDeviceId: 'default',
+    festivalThemeDisabled: false,
     ...overrides
   }
 }

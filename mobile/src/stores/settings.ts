@@ -95,6 +95,8 @@ export interface AppSettings {
   lyricFontFamily: string
   /** 音频输出设备 id；空或 default 表示跟随系统 */
   audioOutputDeviceId: string
+  /** 春节限时主题：用户在设置页关闭后窗口期内也不再启用（桌面版 springFestivalDisabled） */
+  festivalThemeDisabled: boolean
 }
 
 const STORAGE_KEY = 'ceru-mobile-settings-v1'
@@ -160,7 +162,8 @@ const defaults: AppSettings = {
   lyricFontWeight: 400,
   lyricFontScale: 1,
   lyricFontFamily: 'system',
-  audioOutputDeviceId: 'default'
+  audioOutputDeviceId: 'default',
+  festivalThemeDisabled: false
 }
 
 /**
