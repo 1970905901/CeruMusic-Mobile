@@ -41,6 +41,7 @@ import { installLegacyPolyfills } from '@/utils/polyfills'
 import { pluginRuntimeManager } from '@/services/plugin/runtime'
 import { settingsChangedKeys } from '@/services/pluginEvents'
 import { initAppVisibility, setNativeActive } from '@/services/appVisibility'
+import { showListenTogetherInvite } from '@/services/listenTogetherInvite'
 
 installLegacyPolyfills()
 
@@ -209,7 +210,11 @@ async function handleDeepLink(url: string): Promise<void> {
     if (parsed.protocol !== 'cerumusic:') return
     if (parsed.hostname === 'lt' || parsed.hostname === 'listen-together') {
       const code = parsed.pathname.replace(/^\/+/, '').split('/')[0]
-      if (code) await router.push({ path: '/listen-together', query: { code } })
+      if (code) {
+        // 深链邀请先走预览确认框（对齐桌面版 deeplink 路径）；已在房间里或
+        // 口令无效时由邀请服务自行回落到房间页并带上口令。
+        await showListenTogetherInvite('deeplink', code)
+      }
       return
     }
     if (parsed.hostname === 'playlist') {
