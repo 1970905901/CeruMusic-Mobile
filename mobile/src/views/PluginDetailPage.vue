@@ -204,6 +204,7 @@
           <ion-item lines="none">
             <div class="log-actions">
               <ion-button size="small" fill="clear" @click="copyLogs">复制全部</ion-button>
+              <ion-button size="small" fill="clear" :disabled="!logs.length" @click="exportLogs">导出</ion-button>
               <ion-button size="small" fill="clear" color="danger" @click="clearLogs">清空</ion-button>
             </div>
           </ion-item>
@@ -271,6 +272,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
 import { guestStoreFor } from '@/services/plugin/guests'
+import { saveAndShareFile } from '@/services/fileExport'
 import { groupPermissionDeclarations } from '@/services/plugin/permissions'
 import { PERMISSION_GROUPS, permissionGroup } from '@shiqianjiang/ceru-plugin-sdk/permissions'
 import type { GuestAdapterView, GuestRecord } from '@/types/plugin'
@@ -337,12 +339,42 @@ async function refreshGuests() {
 
 async function importGuest(adapterId: string) {
   if (!plugin.value || guestsLoading.value) return
+  // 与桌面版同一组选择：本地文件 / 在线 URL（此前移动端只有文件一条路）。
+  const alert = await alertController.create({
+    header: '导入子插件',
+    inputs: [
+      {
+        name: 'url',
+        type: 'url',
+        placeholder: 'https://example.com/guest.js（留空则选择本地文件）'
+      }
+    ],
+    buttons: [
+      { text: '取消', role: 'cancel' },
+      {
+        text: '导入',
+        handler: (values) => {
+          void doImportGuest(adapterId, String(values?.url || '').trim())
+        }
+      }
+    ]
+  })
+  await alert.present()
+}
+
+async function doImportGuest(adapterId: string, url: string) {
+  if (!plugin.value || guestsLoading.value) return
   const store = guestStoreFor(plugin.value)
-  const file = await store.pickFile(adapterId)
-  if (!file) return
   guestsLoading.value = true
   try {
-    const record = await store.importFile(adapterId, file)
+    let record: Awaited<ReturnType<typeof store.importText>> = null
+    if (url) {
+      record = await store.importFromUrl(adapterId, url)
+    } else {
+      const file = await store.pickFile(adapterId)
+      if (!file) return
+      record = await store.importFile(adapterId, file)
+    }
     if (record) await toast('子插件已安装')
     await refreshGuests()
   } catch (error) {
@@ -577,6 +609,37 @@ async function copyLogs(): Promise<void> {
     await toast(`已复制 ${logs.value.length} 条日志`, 'success')
   } catch {
     await toast('复制失败', 'danger')
+  }
+}
+
+/**
+ * 导出日志为 .log 文件（对齐桌面版 exportLogs 的可读格式）：
+ * 头部带插件名与导出时间，经系统分享面板落盘或转发。
+ */
+async function exportLogs(): Promise<void> {
+  if (!logs.value.length) {
+    await toast('没有可导出的日志')
+    return
+  }
+  const lines = logs.value.map(
+    (log) => `[${new Date(log.at).toLocaleString()}] [${log.level}] ${log.message}`
+  )
+  const name = plugin.value?.manifest.name || plugin.value?.key || 'plugin'
+  const header =
+    `# Ceru Music Plugin Log\n` +
+    `# Plugin: ${name}\n` +
+    `# Exported: ${new Date().toISOString()}\n` +
+    `# Entries: ${logs.value.length}\n` +
+    `# ----------------------------------------\n`
+  try {
+    await saveAndShareFile({
+      name: `${name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)}.log`,
+      data: header + lines.join('\n') + '\n',
+      mime: 'text/plain',
+      title: name
+    })
+  } catch (error) {
+    await toast(error instanceof Error ? error.message : '导出失败', 'danger')
   }
 }
 

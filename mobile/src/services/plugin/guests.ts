@@ -559,6 +559,21 @@ export class PluginGuestStore {
     return this.adapters().find((item) => item.id === adapterId)
   }
 
+  /**
+   * 从 URL 导入子插件（对齐桌面版 guestImport 的 online 路径）。
+   * 与主插件 install 同一条纪律：只认不含凭据的 HTTPS 地址。
+   */
+  async importFromUrl(adapterId: string, url: string): Promise<GuestRecord | null> {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new Error('子插件只能从不含账号信息的 HTTPS 地址安装')
+    }
+    const response = await fetch(parsed.href)
+    if (!response.ok) throw new Error(`下载子插件失败：HTTP ${response.status}`)
+    const text = await response.text()
+    return this.importText(adapterId, text, parsed.pathname.split('/').pop() || 'guest.js')
+  }
+
   async pickFile(adapterId: string): Promise<File | null> {
     const adapter = this.adapter(adapterId)
     if (!adapter) throw new Error('插件未声明此兼容环境')
