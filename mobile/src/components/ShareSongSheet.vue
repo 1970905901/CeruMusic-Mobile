@@ -104,6 +104,37 @@
             <h3>分享链接已生成</h3>
             <p>链接包含歌曲信息、可选歌词与热门评论，服务器会在到期后停止解析。</p>
             <div class="link-box">{{ shareUrl }}</div>
+
+            <!-- 分享海报（桌面版 ShareSongDialog 的 poster-templates + 预览） -->
+            <div class="poster-section" role="group" aria-label="海报模板">
+              <button
+                v-for="tpl in availableTemplates"
+                :key="tpl.id"
+                type="button"
+                class="tpl-tab"
+                :class="{ active: posterTemplate === tpl.id }"
+                :disabled="tpl.id === 'lyric' && !hasLyric"
+                @click="pickTemplate(tpl.id)"
+              >
+                {{ tpl.label }}
+              </button>
+            </div>
+            <div class="poster-preview" :class="{ loading: posterLoading }">
+              <img
+                v-if="posterDataUrl"
+                :src="posterDataUrl"
+                alt="分享海报"
+                @click="posterPreviewOpen = true"
+              />
+              <div v-else-if="posterLoading" class="poster-placeholder">
+                <ion-spinner name="crescent" />
+                <span>正在生成海报…</span>
+              </div>
+              <div v-else-if="posterError" class="poster-placeholder error">
+                <span>{{ posterError }}</span>
+              </div>
+            </div>
+
             <div class="success-actions">
               <ion-button expand="block" @click="copyLink">
                 <ion-icon slot="start" :icon="copyOutline" />
@@ -112,6 +143,10 @@
               <ion-button expand="block" fill="outline" @click="systemShare">
                 <ion-icon slot="start" :icon="shareOutline" />
                 系统分享
+              </ion-button>
+              <ion-button expand="block" fill="outline" :disabled="!posterDataUrl" @click="savePoster">
+                <ion-icon slot="start" :icon="imageOutline" />
+                分享海报
               </ion-button>
             </div>
             <div v-if="warnings.length" class="warnings">
@@ -124,6 +159,17 @@
         <div class="bottom-safe" />
       </div>
     </ion-content>
+
+    <!-- 海报放大预览（桌面版 poster-preview 全屏层） -->
+    <ion-modal
+      class="poster-zoom-modal"
+      :is-open="posterPreviewOpen"
+      @didDismiss="posterPreviewOpen = false"
+    >
+      <div class="poster-zoom-backdrop" @click="posterPreviewOpen = false">
+        <img v-if="posterDataUrl" :src="posterDataUrl" alt="分享海报预览" @click.stop />
+      </div>
+    </ion-modal>
   </ion-modal>
 </template>
 
@@ -146,6 +192,7 @@ import {
   closeOutline,
   cloudUploadOutline,
   copyOutline,
+  imageOutline,
   linkOutline,
   shareOutline
 } from 'ionicons/icons'
@@ -153,6 +200,14 @@ import { Clipboard } from '@capacitor/clipboard'
 import { Share } from '@capacitor/share'
 import CoverImage from '@/components/CoverImage.vue'
 import ShareConsent from '@/components/ShareConsent.vue'
+import {
+  getAvailableTemplates,
+  parseLrcToLines,
+  posterFileName,
+  renderSharePoster,
+  sharePosterImage,
+  type SongPosterTemplate
+} from '@/services/posterRenderer'
 import { useShareStore } from '@/stores/share'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
@@ -176,6 +231,13 @@ const statusText = ref('')
 const error = ref('')
 const warnings = ref<string[]>([])
 const shareUrl = ref('')
+// 分享海报状态（对齐桌面版 ShareSongDialog）
+const posterDataUrl = ref('')
+const posterLoading = ref(false)
+const posterError = ref('')
+const posterTemplate = ref<SongPosterTemplate>('classic')
+const posterPreviewOpen = ref(false)
+const posterLrc = ref('')
 const track = computed(() => share.track)
 
 const expiryText = computed(() => {
@@ -195,6 +257,12 @@ watch(
     error.value = ''
     warnings.value = []
     shareUrl.value = ''
+    posterDataUrl.value = ''
+    posterLoading.value = false
+    posterError.value = ''
+    posterTemplate.value = 'classic'
+    posterPreviewOpen.value = false
+    posterLrc.value = ''
   }
 )
 
@@ -258,6 +326,8 @@ async function exportGuest(record: PluginRecord): Promise<ShareResolverGuest | u
 async function loadLyric(item: Track): Promise<ShareLyric | undefined> {
   try {
     const lrc = lyricValueToLrc(await pluginStore.lyrics(item))
+    // 歌词模板的海报复用这份文本，不再为同一首歌发第二次请求。
+    if (lrc.trim()) posterLrc.value = lrc
     if (!lrc.trim()) {
       warnings.value.push('这首歌没有可用歌词，分享仍会继续。')
       return undefined
@@ -373,10 +443,68 @@ async function createShare() {
     shareUrl.value = result.url
     phase.value = 'success'
     statusText.value = ''
+    void buildPoster(result.url)
   } catch (cause) {
     phase.value = 'error'
     statusText.value = ''
     error.value = cause instanceof Error ? cause.message : String(cause)
+  }
+}
+
+const hasLyric = computed(() => parseLrcToLines(posterLrc.value).length > 0)
+const availableTemplates = computed(() => getAvailableTemplates('song', hasLyric.value))
+
+function pickTemplate(id: SongPosterTemplate) {
+  if (id === 'lyric' && !hasLyric.value) return
+  posterTemplate.value = id
+}
+
+watch(posterTemplate, () => {
+  if (phase.value === 'success' && shareUrl.value) void buildPoster(shareUrl.value)
+})
+
+async function buildPoster(url: string) {
+  const item = track.value
+  if (!item) return
+  posterLoading.value = true
+  posterError.value = ''
+  posterDataUrl.value = ''
+  try {
+    // 歌词模板需要歌词文本；loadLyric 只在创建分享时顺带取过一次，这里独立
+    // 再取一次（与桌面版从播放器缓存读不同，移动端分享面板不依赖播放状态）。
+    if (!posterLrc.value) {
+      try {
+        posterLrc.value = lyricValueToLrc(await pluginStore.lyrics(item))
+      } catch {
+        posterLrc.value = ''
+      }
+    }
+    posterDataUrl.value = await renderSharePoster({
+      type: 'song',
+      template: posterTemplate.value,
+      title: item.title,
+      subtitle: item.artists.join(' / ') || '未知艺术家',
+      album: item.album,
+      cover: item.artworkUrl || '',
+      shareUrl: url,
+      expiryText: expiryText.value,
+      lyricText: posterLrc.value
+    })
+  } catch (cause) {
+    console.warn('生成分享海报失败', cause)
+    posterError.value = '海报生成失败，可继续使用文字链接分享'
+  } finally {
+    posterLoading.value = false
+  }
+}
+
+async function savePoster() {
+  const item = track.value
+  if (!posterDataUrl.value || !item) return
+  try {
+    await sharePosterImage(posterDataUrl.value, item.title)
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '海报保存失败', 'danger')
   }
 }
 
@@ -655,6 +783,74 @@ ion-range {
 }
 .warnings p {
   margin: 5px 0 0;
+}
+/* 海报模板分段与预览（对齐桌面版 poster-templates / poster-preview） */
+.poster-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.tpl-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+}
+.tpl-tab.active {
+  border-color: var(--ceru-brand);
+  color: var(--ceru-brand);
+}
+.tpl-tab:disabled {
+  opacity: 0.45;
+}
+.poster-preview {
+  margin-top: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.poster-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+.poster-preview.loading {
+  min-height: 0;
+}
+.poster-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 26px 12px;
+  border: 1px dashed var(--ceru-border);
+  border-radius: 12px;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+}
+.poster-placeholder.error {
+  color: var(--ion-color-danger, #d54941);
+}
+/* 海报放大层：整屏黑底，点任意处关闭 */
+.poster-zoom-modal {
+  --border-radius: 0;
+}
+.poster-zoom-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.88);
+}
+.poster-zoom-backdrop img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
 }
 .bottom-safe {
   height: calc(30px + env(safe-area-inset-bottom));

@@ -95,6 +95,36 @@
             <h3>分享链接已生成</h3>
             <p>接收方在 Ceru Music App 中打开链接即可导入这份歌单。</p>
             <div class="link-box">{{ shareUrl }}</div>
+
+            <!-- 分享海报（桌面版 SharePlaylistDialog 的 poster-templates + 预览） -->
+            <div class="poster-section" role="group" aria-label="海报模板">
+              <button
+                v-for="tpl in availableTemplates"
+                :key="tpl.id"
+                type="button"
+                class="tpl-tab"
+                :class="{ active: posterTemplate === tpl.id }"
+                @click="pickTemplate(tpl.id)"
+              >
+                {{ tpl.label }}
+              </button>
+            </div>
+            <div class="poster-preview" :class="{ loading: posterLoading }">
+              <img
+                v-if="posterDataUrl"
+                :src="posterDataUrl"
+                alt="分享海报"
+                @click="posterPreviewOpen = true"
+              />
+              <div v-else-if="posterLoading" class="poster-placeholder">
+                <ion-spinner name="crescent" />
+                <span>正在生成海报…</span>
+              </div>
+              <div v-else-if="posterError" class="poster-placeholder error">
+                <span>{{ posterError }}</span>
+              </div>
+            </div>
+
             <div class="success-actions">
               <ion-button expand="block" @click="copyLink">
                 <ion-icon slot="start" :icon="copyOutline" />
@@ -104,6 +134,10 @@
                 <ion-icon slot="start" :icon="shareOutline" />
                 系统分享
               </ion-button>
+              <ion-button expand="block" fill="outline" :disabled="!posterDataUrl" @click="savePoster">
+                <ion-icon slot="start" :icon="imageOutline" />
+                分享海报
+              </ion-button>
             </div>
           </div>
         </template>
@@ -111,6 +145,17 @@
         <div class="bottom-safe" />
       </div>
     </ion-content>
+
+    <!-- 海报放大预览（与歌曲分享面板同一交互） -->
+    <ion-modal
+      class="poster-zoom-modal"
+      :is-open="posterPreviewOpen"
+      @didDismiss="posterPreviewOpen = false"
+    >
+      <div class="poster-zoom-backdrop" @click="posterPreviewOpen = false">
+        <img v-if="posterDataUrl" :src="posterDataUrl" alt="分享海报预览" @click.stop />
+      </div>
+    </ion-modal>
   </ion-modal>
 </template>
 
@@ -131,6 +176,7 @@ import {
   closeOutline,
   cloudUploadOutline,
   copyOutline,
+  imageOutline,
   linkOutline,
   shareOutline
 } from 'ionicons/icons'
@@ -142,6 +188,13 @@ import { useLibraryStore } from '@/stores/library'
 import { useAuthStore } from '@/stores/auth'
 import { playlistTracksToCloud } from '@/services/cloudSongList'
 import shareApi from '@/services/shareApi'
+import {
+  getAvailableTemplates,
+  renderSharePoster,
+  sharePosterImage,
+  type PlaylistPosterTemplate,
+  type PosterTemplate
+} from '@/services/posterRenderer'
 
 const props = defineProps<{
   open?: boolean
@@ -154,6 +207,12 @@ const emit = defineEmits<{
 
 const library = useLibraryStore()
 const auth = useAuthStore()
+// 分享海报状态（对齐桌面版 SharePlaylistDialog；歌单没有歌词模板）
+const posterDataUrl = ref('')
+const posterLoading = ref(false)
+const posterError = ref('')
+const posterTemplate = ref<PlaylistPosterTemplate>('classic')
+const posterPreviewOpen = ref(false)
 
 const phase = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 /** ShareConsent 在挂载时回填已完成承诺，未完成时为 false 并禁用生成按钮。 */
@@ -181,6 +240,11 @@ watch(
     statusText.value = ''
     error.value = ''
     shareUrl.value = ''
+    posterDataUrl.value = ''
+    posterLoading.value = false
+    posterError.value = ''
+    posterTemplate.value = 'classic'
+    posterPreviewOpen.value = false
   }
 )
 
@@ -219,10 +283,57 @@ async function createShare() {
     shareUrl.value = result.url
     phase.value = 'success'
     statusText.value = ''
+    void buildPoster(result.url)
   } catch (cause) {
     phase.value = 'error'
     statusText.value = ''
     error.value = cause instanceof Error ? cause.message : String(cause)
+  }
+}
+
+const availableTemplates = computed(() => getAvailableTemplates('playlist', false))
+
+function pickTemplate(id: PosterTemplate) {
+  // 模板列表按 'playlist' 构造，'lyric' 不会出现；这里的收窄只是让模板字符串保持诚实。
+  if (id === 'lyric') return
+  posterTemplate.value = id
+}
+
+watch(posterTemplate, () => {
+  if (phase.value === 'success' && shareUrl.value) void buildPoster(shareUrl.value)
+})
+
+async function buildPoster(url: string) {
+  const item = playlist.value
+  if (!item) return
+  posterLoading.value = true
+  posterError.value = ''
+  posterDataUrl.value = ''
+  try {
+    posterDataUrl.value = await renderSharePoster({
+      type: 'playlist',
+      template: posterTemplate.value,
+      title: item.name || '未命名歌单',
+      subtitle: item.description || '已同步到云端的本地歌单',
+      cover: cover.value || '',
+      shareUrl: url,
+      songCount: shareableCount.value
+    })
+  } catch (cause) {
+    console.warn('生成分享海报失败', cause)
+    posterError.value = '海报生成失败，可继续使用文字链接分享'
+  } finally {
+    posterLoading.value = false
+  }
+}
+
+async function savePoster() {
+  const item = playlist.value
+  if (!posterDataUrl.value || !item) return
+  try {
+    await sharePosterImage(posterDataUrl.value, item.name || '歌单')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '海报保存失败', 'danger')
   }
 }
 
@@ -465,6 +576,70 @@ h2 {
 }
 .success-actions ion-button {
   margin: 0;
+}
+/* 海报模板分段与预览（与歌曲分享面板共用同一套样式规则） */
+.poster-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.tpl-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+}
+.tpl-tab.active {
+  border-color: var(--ceru-brand);
+  color: var(--ceru-brand);
+}
+.poster-preview {
+  margin-top: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.poster-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+.poster-preview.loading {
+  min-height: 0;
+}
+.poster-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 26px 12px;
+  border: 1px dashed var(--ceru-border);
+  border-radius: 12px;
+  color: var(--ceru-text-secondary);
+  font-size: 12px;
+}
+.poster-placeholder.error {
+  color: var(--ion-color-danger, #d54941);
+}
+.poster-zoom-modal {
+  --border-radius: 0;
+}
+.poster-zoom-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.88);
+}
+.poster-zoom-backdrop img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
 }
 .bottom-safe {
   height: calc(30px + env(safe-area-inset-bottom));
