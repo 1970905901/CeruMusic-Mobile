@@ -192,6 +192,7 @@ import {
   type SecurityItem
 } from '@/services/accountSecurity'
 import { useAuthStore } from '@/stores/auth'
+import { checkUploadImageSafe } from '@/services/nsfwCheck'
 import { useNotificationsStore } from '@/stores/notifications'
 import { usePluginStore } from '@/stores/plugins'
 import type { AccountSummary } from '@shiqianjiang/ceru-plugin-sdk'
@@ -363,9 +364,15 @@ async function onAvatarPicked(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  // 鉴黄拦截（对齐桌面版 Profile 的上传前检测）；检测跑不起来时放行但不静默。
+  const check = await checkUploadImageSafe(file)
+  if (!check.safe) {
+    await toast('图片包含违规内容，请更换其他图片', 'danger')
+    return
+  }
   try {
     await auth.uploadAvatar(file)
-    await toast('头像已更新')
+    await toast(check.skipped ? '头像已更新（本次未完成安全检测）' : '头像已更新')
   } catch (error) {
     await toast(error instanceof Error ? error.message : '头像上传失败', 'danger')
   }

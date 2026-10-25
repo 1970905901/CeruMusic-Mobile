@@ -1,5 +1,6 @@
 import type { Track } from '@/types/music'
 import { ceruApi } from '@/services/ceruApi'
+import { checkUploadImageSafe } from '@/services/nsfwCheck'
 
 export interface CloudSongList {
   id: string
@@ -191,6 +192,17 @@ function appendCover(form: FormData, cover: Blob | string | undefined): void {
   else form.append('cover', cover)
 }
 
+/**
+ * 上传封面前的鉴黄拦截（对齐桌面版 `cloudSongList.ts` 两处 `checkImageIsSafe`）。
+ * 桌面版检测失败（模型加载不了等）时放行并只记警告，这里沿用同一口径。
+ */
+async function assertCoverSafe(cover: Blob | string | undefined): Promise<void> {
+  if (!cover) return
+  const result = await checkUploadImageSafe(cover)
+  if (!result.safe) throw new Error('歌单封面包含违规内容，请更换图片')
+  if (result.skipped) console.warn('封面安全检测未执行（放行）:', result.reason)
+}
+
 export const cloudSongListApi = {
   getUserSongLists() {
     return ceruApi<CloudSongList[]>(BASE)
@@ -210,7 +222,9 @@ export const cloudSongListApi = {
     form.append('localId', data.localId)
     form.append('name', data.name)
     form.append('describe', data.describe || '')
-    appendCover(form, await coverField(data.cover))
+    const cover = await coverField(data.cover)
+    await assertCoverSafe(cover)
+    appendCover(form, cover)
     form.append('songlist', JSON.stringify(songlist))
     return ceruApi<CloudSongList>(BASE, { method: 'POST', body: form })
   },
@@ -236,7 +250,9 @@ export const cloudSongListApi = {
     if (data.localId) form.append('localId', data.localId)
     if (data.name) form.append('name', data.name)
     if (data.describe) form.append('describe', data.describe)
-    appendCover(form, await coverField(data.cover))
+    const cover = await coverField(data.cover)
+    await assertCoverSafe(cover)
+    appendCover(form, cover)
     if (songlist) form.append('songlist', JSON.stringify(songlist))
     return ceruApi<{ id: string; updatedAt: string }>(BASE, { method: 'PATCH', body: form })
   }
