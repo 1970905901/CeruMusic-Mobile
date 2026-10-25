@@ -66,6 +66,8 @@
         </p>
       </div>
     </ion-content>
+    <!-- 首启防诈骗与免责声明（桌面版 FirstRunDialog 同款，先于引导内容展示） -->
+    <FirstRunNotice :open="firstRunOpen" @acknowledged="firstRunOpen = false" />
   </ion-page>
 </template>
 
@@ -83,6 +85,7 @@ import { useRouter } from 'vue-router'
 import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
 import { shouldUseFestivalTheme } from '@/services/festivalTheme'
+import FirstRunNotice from '@/components/FirstRunNotice.vue'
 
 const router = useRouter()
 const pluginStore = usePluginStore()
@@ -91,6 +94,11 @@ const error = ref<string | null>(null)
 /** 春节限时样式（桌面版 welcome 的 is-newyear 同款判定，含「用户已关闭」短路）。 */
 const festivalActive = computed(() =>
   shouldUseFestivalTheme({ disabled: settings.settings.festivalThemeDisabled })
+)
+/** 首启声明只在没看过时弹出（与桌面版同一个 localStorage 键）。 */
+const firstRunOpen = ref(
+  typeof localStorage !== 'undefined' &&
+    !localStorage.getItem('ceru_music_has_seen_first_run_notice_tips')
 )
 
 function pickPlugin() {
