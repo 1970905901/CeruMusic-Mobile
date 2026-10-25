@@ -345,6 +345,7 @@
       :track="track"
       @close="lyricOffsetOpen = false"
     />
+    <PlayerSettingsSheet :open="playerSettingsOpen" @close="playerSettingsOpen = false" />
   </ion-page>
 </template>
 
@@ -400,6 +401,7 @@ import LtDanmakuLayer from '@/components/LtDanmakuLayer.vue'
 import AudioVisualizer from '@/components/AudioVisualizer.vue'
 import TrackCommentsSheet from '@/components/TrackCommentsSheet.vue'
 import LyricConverterSheet from '@/components/LyricConverterSheet.vue'
+import PlayerSettingsSheet from '@/components/PlayerSettingsSheet.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
@@ -518,6 +520,7 @@ const lyricsContainer = ref<HTMLElement | null>(null)
 const lyricConverterOpen = ref(false)
 const lyricShareOpen = ref(false)
 const lyricOffsetOpen = ref(false)
+const playerSettingsOpen = ref(false)
 const currentTrackOffset = computed(() => lyricExtras.getOffset(track.value?.key))
 const lyricConverters = computed(() =>
   collectLyricConverters(pluginStore.enabledPlugins, {
@@ -676,7 +679,7 @@ const chromeHidden = ref(false)
 const lyricSeekStaggering = ref(false)
 let lyricSeekStaggerTimer: ReturnType<typeof setTimeout> | null = null
 
-const chromeSuspended = computed(() => queueOpen.value || commentsOpen.value || lyricOffsetOpen.value || lyricShareOpen.value || lyricConverterOpen.value || !player.isPlaying)
+const chromeSuspended = computed(() => queueOpen.value || commentsOpen.value || lyricOffsetOpen.value || lyricShareOpen.value || lyricConverterOpen.value || playerSettingsOpen.value || !player.isPlaying)
 const controlsIdle = createIdleControls({
   get enabled() {
     return settings.settings.autoHideControls
@@ -1071,6 +1074,13 @@ async function openMore() {
               )
           }
         })),
+      {
+        // 桌面版播放页画笔面板（PlaySettings）的等价入口：样式与常用开关不必绕去设置页。
+        text: '播放页设置…',
+        handler: () => {
+          playerSettingsOpen.value = true
+        }
+      },
       {
         text: '分享链接',
         handler: () => {
