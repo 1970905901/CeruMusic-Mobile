@@ -163,7 +163,7 @@
           未找到包含 “{{ searchQuery }}” 的歌曲
         </p>
         <div
-          v-for="track in displayTracks"
+          v-for="track in visibleTracks"
           :id="'track-item-' + track.key"
           :key="track.key"
           class="track-list-item"
@@ -223,6 +223,18 @@
 
       <ion-infinite-scroll :disabled="!nextCursor || loading" @ionInfinite="loadMore">
         <ion-infinite-scroll-content loading-spinner="crescent" loading-text="加载更多…" />
+      </ion-infinite-scroll>
+      <!--
+        本地歌单整单已加载，没有 cursor 可翻；上千首时一次性挂载全部
+        TrackRow 会明显卡顿。滚动到已渲染区间的末尾就再放一批
+        （桌面版用 SongVirtualList 的窗口化解决同一问题，这里是等价的
+        渐进渲染方案）。
+      -->
+      <ion-infinite-scroll
+        v-if="!nextCursor && displayTracks.length > renderedCount"
+        @ionInfinite="renderMore"
+      >
+        <ion-infinite-scroll-content loading-spinner="crescent" loading-text="继续展开…" />
       </ion-infinite-scroll>
       <div class="bottom-space" />
     </ion-content>
@@ -382,6 +394,22 @@ const displayTracks = computed(() => {
     })
   }
   return sortTracks(list, sortType.value)
+})
+
+/**
+ * 渐进渲染窗口：本地歌单整单在内存里，但一次只挂载前 renderedCount 行，
+ * 滚动到底部经 ion-infinite-scroll 再放一批。队列上下文（play/shuffleAll
+ * 传给播放器的列表）始终用完整的 displayTracks——渲染裁剪不等于曲目裁剪。
+ */
+const RENDER_BATCH = 150
+const renderedCount = ref(RENDER_BATCH)
+const visibleTracks = computed(() => displayTracks.value.slice(0, renderedCount.value))
+function renderMore(): void {
+  renderedCount.value += RENDER_BATCH
+}
+watch([displayTracks, sortType, searchQuery], () => {
+  // 排序 / 搜索 / 列表本身变化后从头展示，避免停留在超出新列表长度的窗口。
+  renderedCount.value = RENDER_BATCH
 })
 
 const selection = useTrackBatchSelection({
@@ -782,12 +810,20 @@ const hasCurrentPlayingTrack = computed(() => {
 
 function locateCurrentSong(): void {
   if (!player.currentTrack) return
-  const el = document.getElementById('track-item-' + player.currentTrack.key)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  } else {
-    void toast('当前播放歌曲未在当前显示列表中')
+  // 渐进渲染下目标行可能还没挂载：先把窗口扩到覆盖它的下标，等一帧再滚动。
+  const index = displayTracks.value.findIndex((track) => track.key === player.currentTrack?.key)
+  if (index >= renderedCount.value) {
+    renderedCount.value = index + RENDER_BATCH
   }
+  const scroll = () => {
+    const el = document.getElementById('track-item-' + player.currentTrack?.key)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    } else {
+      void toast('当前播放歌曲未在当前显示列表中')
+    }
+  }
+  requestAnimationFrame(() => requestAnimationFrame(scroll))
 }
 
 function openMore(track: Track) {
