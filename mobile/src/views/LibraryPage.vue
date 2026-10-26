@@ -114,7 +114,7 @@
         </div>
         <div v-if="library.favorites.length" class="list-block">
           <TrackRow
-            v-for="entry in filteredFavorites"
+            v-for="entry in favoriteWindow.visible.value"
             :key="entry.key"
             :track="entry.track"
             favorite
@@ -297,7 +297,7 @@
         </div>
         <div v-if="library.localRecords.length" class="list-block">
           <TrackRow
-            v-for="track in filteredLocalTracks"
+            v-for="track in localWindow.visible.value"
             :key="track.key"
             :track="track"
             :selectable="batchMode"
@@ -362,6 +362,23 @@
           :icon="timeOutline"
         />
       </div>
+
+      <!--
+        长列表的「继续展开」哨兵：按当前分段判断是否还有未渲染的批次。
+        与歌单页同一套渐进渲染，避免上千条时一次性挂载全部 TrackRow。
+      -->
+      <ion-infinite-scroll
+        v-if="activeSegment === 'favorites' && favoriteWindow.hasMore.value"
+        @ionInfinite="favoriteWindow.more"
+      >
+        <ion-infinite-scroll-content loading-spinner="crescent" loading-text="继续展开…" />
+      </ion-infinite-scroll>
+      <ion-infinite-scroll
+        v-else-if="activeSegment === 'local' && localWindow.hasMore.value"
+        @ionInfinite="localWindow.more"
+      >
+        <ion-infinite-scroll-content loading-spinner="crescent" loading-text="继续展开…" />
+      </ion-infinite-scroll>
 
       <div class="bottom-space" />
     </ion-content>
@@ -443,6 +460,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import LocalTagEditorSheet from '@/components/LocalTagEditorSheet.vue'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
+import { useRenderWindow } from '@/composables/useRenderWindow'
 import type { Playlist } from '@/types/music'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -637,6 +655,13 @@ const filteredLocalTracks = computed(() => {
   }
   return sortTracks(list, localSortType.value)
 })
+
+/**
+ * 收藏与本地音乐同样可能是上千条的长列表：只渲染当前批次，滚到底再放一批。
+ * 「全选 / 播放全部 / 队列上下文」仍走完整的 filtered 列表，渲染裁剪不影响操作范围。
+ */
+const favoriteWindow = useRenderWindow(() => filteredFavorites.value)
+const localWindow = useRenderWindow(() => filteredLocalTracks.value)
 
 /** Tracks visible in the current library segment, used for select-all and context. */
 const activeTracks = computed<Track[]>(() => {

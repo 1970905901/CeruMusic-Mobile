@@ -231,7 +231,7 @@
         渐进渲染方案）。
       -->
       <ion-infinite-scroll
-        v-if="!nextCursor && displayTracks.length > renderedCount"
+        v-if="!nextCursor && trackWindow.hasMore.value"
         @ionInfinite="renderMore"
       >
         <ion-infinite-scroll-content loading-spinner="crescent" loading-text="继续展开…" />
@@ -337,6 +337,7 @@ import { getQualityDisplayName } from '@/services/qualityNames'
 import type { Track } from '@/types/music'
 import { TRACK_SORT_OPTIONS, sortTracks, type TrackSortType } from '@/services/trackSorter'
 import { useTrackBatchSelection } from '@/services/trackBatch'
+import { useRenderWindow } from '@/composables/useRenderWindow'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
@@ -397,20 +398,13 @@ const displayTracks = computed(() => {
 })
 
 /**
- * 渐进渲染窗口：本地歌单整单在内存里，但一次只挂载前 renderedCount 行，
- * 滚动到底部经 ion-infinite-scroll 再放一批。队列上下文（play/shuffleAll
- * 传给播放器的列表）始终用完整的 displayTracks——渲染裁剪不等于曲目裁剪。
+ * 渐进渲染窗口：本地歌单整单在内存里，但一次只挂载一批行，滚动到底部经
+ * ion-infinite-scroll 再放一批。队列上下文（play/shuffleAll 传给播放器的
+ * 列表）始终用完整的 displayTracks——渲染裁剪不等于曲目裁剪。
  */
-const RENDER_BATCH = 150
-const renderedCount = ref(RENDER_BATCH)
-const visibleTracks = computed(() => displayTracks.value.slice(0, renderedCount.value))
-function renderMore(): void {
-  renderedCount.value += RENDER_BATCH
-}
-watch([displayTracks, sortType, searchQuery], () => {
-  // 排序 / 搜索 / 列表本身变化后从头展示，避免停留在超出新列表长度的窗口。
-  renderedCount.value = RENDER_BATCH
-})
+const trackWindow = useRenderWindow(() => displayTracks.value)
+const visibleTracks = trackWindow.visible
+const renderMore = trackWindow.more
 
 const selection = useTrackBatchSelection({
   source: () => displayTracks.value,
@@ -812,9 +806,7 @@ function locateCurrentSong(): void {
   if (!player.currentTrack) return
   // 渐进渲染下目标行可能还没挂载：先把窗口扩到覆盖它的下标，等一帧再滚动。
   const index = displayTracks.value.findIndex((track) => track.key === player.currentTrack?.key)
-  if (index >= renderedCount.value) {
-    renderedCount.value = index + RENDER_BATCH
-  }
+  trackWindow.revealAt(index)
   const scroll = () => {
     const el = document.getElementById('track-item-' + player.currentTrack?.key)
     if (el) {
