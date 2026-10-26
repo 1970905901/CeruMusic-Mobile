@@ -17,6 +17,13 @@ import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKe
 import { trackKeyFor } from '@/services/trackKey'
 import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
+import {
+  decodeLyricText,
+  pickSidecarLyric,
+  preferLyrics,
+  sidecarLyricExtension,
+  SIDECAR_LYRIC_MAX_BYTES
+} from '@/services/localLyricSidecar'
 
 /** 播放历史上限，与桌面版 GlobalPlayStatus 保持一致。 */
 export const HISTORY_LIMIT = 200
@@ -101,6 +108,8 @@ export interface ImportLocalOptions {
   sourcePath?: string
   minSizeKb?: number
   minDurationSec?: number
+  /** 同目录歌词文件的内容（扫描时读取）；内嵌歌词优先。 */
+  sidecarLyrics?: string
   preParsed?: {
     title?: string
     artist?: string
@@ -109,6 +118,7 @@ export interface ImportLocalOptions {
     genre?: string
     durationMs?: number
     cover?: string
+    lyrics?: string
   }
 }
 
@@ -605,6 +615,8 @@ export const useLibraryStore = defineStore('library', () => {
       sourcePath: options.sourcePath,
       mime: file.type || mimeForAudio(file.name),
       cover,
+      // 内嵌标签里的歌词优先，没有才用同目录的 .lrc / .ttml。
+      lyrics: preferLyrics(options.preParsed?.lyrics, options.sidecarLyrics),
       size: file.size,
       createdAt: Date.now()
     }
@@ -671,6 +683,8 @@ export const useLibraryStore = defineStore('library', () => {
     name: string
     size: number
     directory: Directory
+    /** 同目录下与音频同名的歌词文件名（`pickSidecarLyric` 选出）。 */
+    lyricFile?: string
   }
 
   async function collectAudioFiles(
@@ -689,6 +703,10 @@ export const useLibraryStore = defineStore('library', () => {
     } catch {
       return
     }
+    // 同目录里的歌词文件名，按「同名」配给本目录下的音频（桌面版 sidecar 兜底）。
+    const sidecars = entries
+      .filter((entry: any) => entry.type !== 'directory' && sidecarLyricExtension(String(entry.name)))
+      .map((entry: any) => String(entry.name))
     for (const entry of entries) {
       if (output.length >= 2000) return
       if (!path && ['local', 'downloads', 'exports'].includes(String(entry.name))) continue
@@ -705,9 +723,39 @@ export const useLibraryStore = defineStore('library', () => {
           path: childPath,
           name: entry.name,
           size,
-          directory
+          directory,
+          lyricFile: pickSidecarLyric(String(entry.name), sidecars) ?? undefined
         })
       }
+    }
+  }
+
+  /**
+   * 读同目录歌词文件。超过上限或读取失败都当作没有歌词——侧车只是兜底，
+   * 不能让一首歌的歌词问题中断整次扫描。
+   */
+  async function readSidecarLyric(
+    directory: Directory,
+    audioPath: string,
+    lyricName: string | undefined
+  ): Promise<string | undefined> {
+    if (!lyricName) return undefined
+    const slash = audioPath.lastIndexOf('/')
+    const lyricPath = slash >= 0 ? `${audioPath.slice(0, slash)}/${lyricName}` : lyricName
+    try {
+      const stat = await Filesystem.stat({ path: lyricPath, directory })
+      if (Number(stat.size) > SIDECAR_LYRIC_MAX_BYTES) return undefined
+    } catch {
+      // 拿不到大小（部分 SAF 实现）时照常尝试读取。
+    }
+    try {
+      const data = await Filesystem.readFile({ path: lyricPath, directory })
+      if (typeof data.data !== 'string') return undefined
+      // 原生端 readFile 默认给 base64，Web 端给原文——两种都要认。
+      const text = decodeLyricText(data.data)
+      return text.trim() || undefined
+    } catch {
+      return undefined
     }
   }
 
@@ -793,6 +841,9 @@ export const useLibraryStore = defineStore('library', () => {
 
           const record = await importLocalFile(fileObj, {
             sourcePath,
+            // 同目录的 .lrc / .ttml（桌面版 sidecar 兜底）：本地音乐最常见的
+            // 组织方式是「音频 + 同名歌词文件」，不再只认内嵌标签。
+            sidecarLyrics: await readSidecarLyric(file.directory, file.path, file.lyricFile),
             preParsed: {
               title,
               artist,
