@@ -74,6 +74,16 @@
             <ion-icon :icon="clipboardOutline" />
             <span>从剪贴板导入</span>
           </button>
+          <!-- 桌面版「选择导入方式」里的「从播放列表」：把当前队列原样存成一张歌单 -->
+          <button
+            v-if="player.queue.length"
+            class="quick-card ceru-card ceru-press"
+            type="button"
+            @click="saveQueueAsPlaylist"
+          >
+            <ion-icon :icon="listOutline" />
+            <span>从播放列表</span>
+          </button>
           <button class="quick-card ceru-card ceru-press" type="button" @click="$router.push('/downloads')">
             <ion-icon :icon="cloudDownloadOutline" />
             <span>下载管理</span>
@@ -446,6 +456,7 @@ import {
   heartDislikeOutline,
   heartOutline,
   linkOutline,
+  listOutline,
   play as playIcon,
   sparklesOutline,
   trashOutline,
@@ -477,6 +488,7 @@ import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { clipboardPlaylistName, parsePlaylistClipboard } from '@/services/playlistClipboard'
+import { buildQueuePlaylistDraft } from '@/services/queuePlaylistDraft'
 import { cloudPlaylistKey } from '@/services/cloudPlaylists'
 import {
   playlistDescriptionText,
@@ -1076,6 +1088,29 @@ async function importPlaylistFromClipboard() {
     await showToast('已导入 ' + playlist.trackKeys.length + ' 首歌曲', 'success')
   } catch (cause) {
     await showToast(cause instanceof Error ? cause.message : '导入失败', 'danger')
+  }
+}
+
+/**
+ * 把当前播放队列保存成一张新歌单（桌面版「选择导入方式 → 从播放列表」）。
+ *
+ * 队列可以导出成 `.cmpl` 文件，但文件只是备份——想在手机的音乐库里留住
+ * 这次播放顺序，此前只能逐首点「加入歌单」。命名、描述与桌面版同一份口径，
+ * 队列里重复的歌只存一份并如实提示跳过数量。
+ */
+async function saveQueueAsPlaylist() {
+  try {
+    const draft = buildQueuePlaylistDraft(player.queue)
+    const playlist = await library.importSharedPlaylist(draft.name, draft.description, draft.tracks)
+    activeSegment.value = 'playlists'
+    await showToast(
+      draft.skipped > 0
+        ? `已保存 ${playlist.trackKeys.length} 首到歌单「${draft.name}」，跳过 ${draft.skipped} 首重复`
+        : `已保存 ${playlist.trackKeys.length} 首到歌单「${draft.name}」`,
+      'success'
+    )
+  } catch (cause) {
+    await showToast(cause instanceof Error ? cause.message : '保存失败', 'danger')
   }
 }
 
