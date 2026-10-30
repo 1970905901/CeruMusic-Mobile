@@ -195,43 +195,48 @@
             @scroll="onChatScroll"
           >
             <div v-if="!lt.chat.length" class="panel-empty">还没有聊天，打个招呼吧</div>
-            <div
-              v-for="message in lt.chat"
-              :key="message.id"
-              :data-msg-id="message.id"
+            <!-- 时间分割条与消息打平成同一类行（桌面版 ChatPanel 的 visibleRows）：
+                 首条之前必有一条，与上一条相差超过 3 分钟再插一条。 -->
+            <template v-for="row in chatRows" :key="row.id">
+              <div v-if="row.kind === 'time'" class="chat-time-divider">
+                <span>{{ formatChatDividerTime(row.ts) }}</span>
+              </div>
+              <div
+                v-else
+              :data-msg-id="row.message.id"
               class="chat-message"
               :class="{
-                mine: message.from?.userId === lt.userId,
-                system: message.type === 'system',
-                highlighted: message.id === highlightedMessageId
+                mine: row.message.from?.userId === lt.userId,
+                system: row.message.type === 'system',
+                highlighted: row.message.id === highlightedMessageId
               }"
-              @contextmenu.prevent="openMessageActions(message)"
-              @touchstart.passive="startPress(message)"
+              @contextmenu.prevent="openMessageActions(row.message)"
+              @touchstart.passive="startPress(row.message)"
               @touchend="endPress"
               @touchcancel="endPress"
               @touchmove="endPress"
             >
-              <template v-if="message.type === 'system'">
-                <span>{{ systemText(message) }}</span>
+              <template v-if="row.message.type === 'system'">
+                <span>{{ systemText(row.message) }}</span>
               </template>
               <template v-else>
-                <CoverImage :src="message.from?.avatar || ''" :size="30" :radius="15" :alt="message.from?.nickname || ''" />
+                <CoverImage :src="row.message.from?.avatar || ''" :size="30" :radius="15" :alt="row.message.from?.nickname || ''" />
                 <div class="chat-bubble">
-                  <div class="chat-name">{{ message.from?.nickname || '音乐同好' }}</div>
+                  <div class="chat-name">{{ row.message.from?.nickname || '音乐同好' }}</div>
                   <button
-                    v-if="message.meta?.replyToId"
+                    v-if="row.message.meta?.replyToId"
                     type="button"
                     class="chat-quote"
-                    @click="jumpToQuoted(message)"
+                    @click="jumpToQuoted(row.message)"
                   >
-                    <span class="quote-from">{{ message.meta.replyToFrom || '回复' }}</span>
-                    <span class="quote-text">{{ message.meta.replyToPreview || '' }}</span>
+                    <span class="quote-from">{{ row.message.meta.replyToFrom || '回复' }}</span>
+                    <span class="quote-text">{{ row.message.meta.replyToPreview || '' }}</span>
                   </button>
                   <div class="chat-text">
-                    <template v-if="message.type === 'sticker'">[贴纸] {{ describeChatSticker(message.content) }}</template>
+                    <template v-if="row.message.type === 'sticker'">[贴纸] {{ describeChatSticker(row.message.content) }}</template>
                     <template v-else>
                       <span
-                        v-for="(segment, index) in segmentsOf(message)"
+                        v-for="(segment, index) in segmentsOf(row.message)"
                         :key="index"
                         :class="segment.type === 'mention' ? ['chat-mention', { self: segment.isSelf }] : ''"
                         >{{ segment.text }}</span
@@ -239,14 +244,15 @@
                     </template>
                   </div>
                   <ChatShareCard
-                    v-if="shareLinkOf(message)"
-                    :card-type="shareLinkOf(message)!.cardType"
-                    :card-id="shareLinkOf(message)!.cardId"
-                    @open="openShareLink(message)"
+                    v-if="shareLinkOf(row.message)"
+                    :card-type="shareLinkOf(row.message)!.cardType"
+                    :card-id="shareLinkOf(row.message)!.cardId"
+                    @open="openShareLink(row.message)"
                   />
                 </div>
               </template>
-            </div>
+              </div>
+            </template>
           </div>
           <div class="chat-composer">
             <div class="composer-stack">
@@ -482,6 +488,7 @@ import {
   type ChatSegment
 } from '@/services/listenTogetherChat'
 import { planMemberActions } from '@/services/listenTogetherMembers'
+import { buildChatRows, formatChatDividerTime } from '@/services/chatTimeDivider'
 import {
   formatQueueAddedAt,
   queueMoveTarget,
@@ -515,6 +522,13 @@ const selectedMentions = ref<Array<{ userId: string; nickname: string }>>([])
 const mentionQuery = ref<string | null>(null)
 const replyTo = ref<{ id: string; from: string; preview: string } | null>(null)
 const highlightedMessageId = ref('')
+
+/**
+ * 聊天行序列（时间分割条 + 消息）。判定在 `services/chatTimeDivider` 里，
+ * 与桌面版 ChatPanel 的 `visibleRows` 同一口径：首条前必有一条时间条，
+ * 与上一条相差超过 3 分钟再插一条。
+ */
+const chatRows = computed(() => buildChatRows(lt.chat))
 const createForm = reactive({
   mode: 'group' as 'intimate' | 'group',
   name: '',
@@ -1343,6 +1357,27 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--ceru-text-secondary);
   font-size: 12px;
+}
+/* 时间分割条：居中的一条细线 + 时间，与消息列表同宽（桌面版 time-divider） */
+.chat-time-divider {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+  color: var(--ceru-text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.chat-time-divider::before,
+.chat-time-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ceru-border);
+  opacity: 0.6;
 }
 .chat-message {
   display: flex;
