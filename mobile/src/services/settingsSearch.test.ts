@@ -61,6 +61,45 @@ describe('settings search index', () => {
   })
 })
 
+describe('settings search index coverage', () => {
+  /**
+   * 模块注释写明「新增设置项时同步补一条，避免搜索漏项」，但没有任何东西
+   * 强制这条约定：路由预加载、下载占用、春节主题三项此前就漏在索引外，
+   * 只能在设置页手动翻。
+   *
+   * 这里直接读设置页源码做对账——不是复述索引，而是拿页面上真实存在的
+   * `<h2>` 标题逐条比对。新增设置项忘了补索引时，这条测试会直接指出漏了哪个。
+   */
+  // happy-dom 会把 import.meta.url 改写成 http 地址，读源码要用工作目录拼绝对路径
+  // （vitest 以 mobile 为根目录）。
+  const SOURCES = ['src/views/SettingsPage.vue', 'src/components/GlobalBackgroundSettings.vue']
+
+  function indexedTitles(groupId: string): string[] {
+    return settingsSearchItems.filter((item) => item.id === groupId).map((item) => item.title)
+  }
+
+  it('indexes every settings label that lives under a group', async () => {
+    const { readFileSync } = await import('node:fs')
+    const missing: string[] = []
+    for (const file of SOURCES) {
+      const text = readFileSync(file, 'utf8')
+      // 按分组切块：`<ion-list id="group-x">` 到下一个分组之前。
+      const chunks = text.split(/<ion-list id="(group-[a-z]+)"/)
+      for (let index = 1; index < chunks.length; index += 2) {
+        const groupId = chunks[index]
+        const body = chunks[index + 1]
+        for (const raw of body.match(/<h2>(.*?)<\/h2>/gs) ?? []) {
+          const label = raw.replace(/<h2>|<\/h2>/g, '').trim()
+          // 动态标题（插件页面等）没有固定文案，不参与对账。
+          if (label.includes('{{')) continue
+          if (!indexedTitles(groupId).includes(label)) missing.push(`${groupId}: ${label}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
+
 describe('settings search', () => {
   it('matches a Chinese title', () => {
     const results = searchSettings('歌词偏移')

@@ -189,6 +189,13 @@ const playerToggles = computed<
     update: (value: boolean) => (settings.settings.autoHideControls = value)
   },
   {
+    key: 'pauseTransition',
+    label: '暂停播放过渡',
+    hint: '播放与暂停时音量渐入渐出；一起听房间内自动关闭',
+    value: settings.settings.pauseTransition,
+    update: (value: boolean) => (settings.settings.pauseTransition = value)
+  },
+  {
     key: 'seamless',
     label: '无感过渡（智能交叉淡化）',
     hint: '安静处提前交接到下一首',
