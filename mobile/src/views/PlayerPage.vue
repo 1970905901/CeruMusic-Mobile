@@ -268,11 +268,30 @@
             <button
               class="queue-action"
               type="button"
+              :disabled="queueFileBusy || !player.queue.length"
+              @click="copyQueueToClipboard"
+            >
+              <ion-icon :icon="copyOutline" />
+              复制
+            </button>
+            <button
+              class="queue-action"
+              type="button"
               :disabled="queueFileBusy"
               @click="pickQueueFile"
             >
               <ion-icon :icon="folderOpenOutline" />
               导入
+            </button>
+            <!-- 桌面版导入弹窗的第二种入口：直接读剪贴板里的加密歌单串 -->
+            <button
+              class="queue-action"
+              type="button"
+              :disabled="queueFileBusy"
+              @click="importQueueFromClipboard"
+            >
+              <ion-icon :icon="clipboardOutline" />
+              粘贴
             </button>
             <!-- 桌面版队列底部有「定位当前播放」；长队列里靠手滑找正在播的那行很难 -->
             <button
@@ -370,6 +389,7 @@ import {
 } from '@ionic/vue'
 import {
   chatbubbleEllipsesOutline,
+  clipboardOutline,
   copyOutline,
   timeOutline,
   chevronDown,
@@ -425,6 +445,12 @@ import {
   playlistFileTracks
 } from '@/services/playlistFiles'
 import { saveAndShareFile } from '@/services/fileExport'
+import {
+  assertQueueClipboardFits,
+  describeQueueExport,
+  describeQueueImport
+} from '@/services/queueClipboard'
+import { parsePlaylistClipboard } from '@/services/playlistClipboard'
 import { filterLyricDocument } from '@/services/lyricInfoFilter'
 import { publishCurrentLyrics } from '@/services/lyricsBridge'
 import { createIdleControls } from '@/services/idleControls'
@@ -962,6 +988,62 @@ async function exportQueueFile() {
 
 function pickQueueFile() {
   queueFileInput.value?.click()
+}
+
+/**
+ * 队列复制到剪贴板（桌面版 `PlaylistActions` 的「复制到剪贴板」）。
+ *
+ * 手机上传文件的路径很别扭，而「复制一串加密文本发到另一台设备」是手机上
+ * 最顺手的搬运方式。加密格式与歌单文件、音乐库剪贴板导入完全一致。
+ */
+async function copyQueueToClipboard() {
+  if (queueFileBusy.value) return
+  queueFileBusy.value = true
+  try {
+    const queue = player.queue
+    if (!queue.length) throw new Error('播放队列为空')
+    const exportable = exportableTracks(queue)
+    const encrypted = encryptPlaylistTracks(queue)
+    assertQueueClipboardFits(encrypted)
+    await Clipboard.write({ string: encrypted })
+    await toast(describeQueueExport(exportable.length, queue.length - exportable.length))
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '复制失败', 'danger')
+  } finally {
+    queueFileBusy.value = false
+  }
+}
+
+/** 从剪贴板导入到当前队列（追加，不替换正在播放的歌）。 */
+async function importQueueFromClipboard() {
+  if (queueFileBusy.value) return
+  queueFileBusy.value = true
+  try {
+    const { value } = await Clipboard.read()
+    if (!value) throw new Error('剪贴板是空的')
+    const { tracks } = parsePlaylistClipboard(value, pluginStore.providers)
+    const before = player.queue.length
+    // 与文件导入同一份重建路径：元数据走 entity.metadata，不能平铺传字段。
+    await player.appendHostTracks(
+      tracks.map((item) => ({
+        ref: item.ref,
+        title: item.title,
+        subtitle: item.artists.join(' / '),
+        durationMs: item.durationMs,
+        metadata: {
+          artists: item.artists,
+          album: item.album ? { title: item.album } : undefined,
+          artworkUrl: item.artworkUrl,
+          qualities: item.qualities
+        }
+      }))
+    )
+    await toast(describeQueueImport(player.queue.length - before))
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '导入失败', 'danger')
+  } finally {
+    queueFileBusy.value = false
+  }
 }
 
 /** 导入歌单文件到**当前队列**（追加，不替换正在播放的歌）。 */
