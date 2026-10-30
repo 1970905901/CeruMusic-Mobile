@@ -50,6 +50,7 @@ const CLIENT = {
   QUEUE_APPROVE: 'queue:approve',
   QUEUE_REJECT: 'queue:reject',
   QUEUE_REMOVE: 'queue:remove',
+  QUEUE_MOVE: 'queue:move',
   ROLE_PROMOTE: 'role:promote',
   ROLE_DEMOTE: 'role:demote',
   MEMBER_KICK: 'member:kick',
@@ -656,6 +657,21 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     if (id && socket?.connected) socket.emit(CLIENT.QUEUE_REMOVE, { itemId: id })
   }
 
+  /**
+   * 上移/下移一格（桌面版 `moveQueueItem`）。
+   *
+   * 发的是 patch 而不是整单重排：`{ itemId, toIndex }` 只有几十字节，
+   * 而全量数组在大队列上能到几百 KB。不做本地乐观更新——以服务端广播的
+   * `queue:update` 为准，避免客户端与房间状态短暂不一致。
+   */
+  function moveQueueItem(item: QueueItem, toIndex: number) {
+    if (!canControl.value) return
+    const id = item.itemId || item.id
+    if (typeof id !== 'string' || !Number.isInteger(toIndex)) return
+    if (!socket?.connected) return
+    socket.emit(CLIENT.QUEUE_MOVE, { itemId: id, toIndex })
+  }
+
   function approveRequest(item: PendingItem) {
     emitControl(CLIENT.QUEUE_APPROVE, { reqId: item.reqId })
   }
@@ -805,6 +821,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
     addTrackToQueue,
     addCurrentToQueue,
     removeQueueItem,
+    moveQueueItem,
     approveRequest,
     rejectRequest,
     promote,

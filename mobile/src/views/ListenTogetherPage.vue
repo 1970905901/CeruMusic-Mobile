@@ -344,9 +344,47 @@
               <CoverImage :src="item.song.cover || ''" :size="42" :radius="9" :alt="item.song.name || ''" />
               <div class="queue-copy">
                 <div class="queue-title ceru-truncate">{{ item.song.name || '未知歌曲' }}</div>
-                <div class="queue-sub ceru-truncate">{{ item.song.singer || '未知歌手' }}</div>
+                <!-- 桌面版 QueuePanel：歌手 · 由谁添加 · 添加时间 -->
+                <div class="queue-sub queue-meta">
+                  <span class="ceru-truncate">{{ item.song.singer || '未知歌手' }}</span>
+                  <span class="queue-dot">·</span>
+                  <span class="queue-requester ceru-truncate">{{ queueRequesterLabel(item) }}</span>
+                  <template v-if="formatQueueAddedAt(item.addedAt)">
+                    <span class="queue-dot">·</span>
+                    <span>{{ formatQueueAddedAt(item.addedAt) }}</span>
+                  </template>
+                </div>
               </div>
-              <button v-if="lt.canRemoveQueueItem(item)" type="button" class="tiny-action danger" @click="lt.removeQueueItem(item)">移除</button>
+              <!-- 房主/管理员上移、下移一格：走 queue:move patch，不整单重排 -->
+              <template v-if="lt.canControl">
+                <button
+                  type="button"
+                  class="tiny-action queue-move"
+                  :aria-label="`上移 ${item.song.name || ''}`"
+                  :disabled="queueMoveTarget(index, -1, lt.queue.length) === null"
+                  @click="moveQueue(item, index, -1)"
+                >
+                  <ion-icon :icon="chevronUpOutline" />
+                </button>
+                <button
+                  type="button"
+                  class="tiny-action queue-move"
+                  :aria-label="`下移 ${item.song.name || ''}`"
+                  :disabled="queueMoveTarget(index, 1, lt.queue.length) === null"
+                  @click="moveQueue(item, index, 1)"
+                >
+                  <ion-icon :icon="chevronDownOutline" />
+                </button>
+              </template>
+              <button
+                v-if="lt.canRemoveQueueItem(item)"
+                type="button"
+                class="tiny-action danger"
+                :title="queueRemoveHint(lt.canControl)"
+                @click="lt.removeQueueItem(item)"
+              >
+                移除
+              </button>
             </div>
           </div>
 
@@ -409,6 +447,8 @@ import {
   exitOutline,
   headsetOutline,
   musicalNotesOutline,
+  chevronDownOutline,
+  chevronUpOutline,
   pauseOutline,
   playCircleOutline,
   playOutline,
@@ -442,6 +482,12 @@ import {
   type ChatSegment
 } from '@/services/listenTogetherChat'
 import { planMemberActions } from '@/services/listenTogetherMembers'
+import {
+  formatQueueAddedAt,
+  queueMoveTarget,
+  queueRemoveHint,
+  queueRequesterLabel
+} from '@/services/listenTogetherQueue'
 import {
   MAX_PENDING_AVATARS,
   formatPendingTime,
@@ -836,6 +882,16 @@ function memberActionsFor(member: RoomMember) {
     myRole: lt.myRole,
     member: { userId: member.userId, role: lt.memberRole(member) }
   })
+}
+
+/**
+ * 共享队列上移/下移一格（桌面版 `QueuePanel.moveItem`）。
+ * 边界由 `queueMoveTarget` 判定，按钮在越界时已经禁用，这里只兜底。
+ */
+function moveQueue(item: { itemId?: string; id?: string }, index: number, delta: -1 | 1): void {
+  const target = queueMoveTarget(index, delta, lt.queue.length)
+  if (target === null) return
+  lt.moveQueueItem(item as any, target)
 }
 
 async function openMemberActions(member: RoomMember) {
@@ -1514,6 +1570,29 @@ onBeforeUnmount(() => {
 }
 .pending-item {
   opacity: 0.92;
+}
+/* 队列行：歌手 · 由谁添加 · 添加时间；空间不够时让歌手先截断 */
+.queue-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.queue-dot {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+.queue-requester {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.queue-move {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+}
+.queue-move:disabled {
+  opacity: 0.32;
 }
 /* 申请人一行：歌手 · 头像堆叠 / 人数 · 申请时间 */
 .pending-meta {
