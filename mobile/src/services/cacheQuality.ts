@@ -1,4 +1,5 @@
 import { getQualityDisplayName } from '@/services/qualityNames'
+import { formatBytes } from '@/services/byteSize'
 
 /**
  * 缓存音质占比（桌面端 `Settings/MusicCache.vue` 环形图的移动端等价实现）。
@@ -35,12 +36,9 @@ export const CACHE_QUALITY_COLORS = ['#93b8f5', '#0052d9', '#366ef4', '#2447a8',
 /** 未知音质用中性灰，避免与已知音质抢视觉焦点 */
 export const CACHE_UNKNOWN_COLOR = '#b8bcc4'
 
+/** 缓存占用展示沿用全局的字节格式化（见 `services/byteSize`），避免各页各写一份。 */
 export function formatCacheBytes(bytes: number): string {
-  const value = Math.max(0, Number(bytes) || 0)
-  if (value < 1024) return `${Math.round(value)} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`
-  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`
+  return formatBytes(bytes)
 }
 
 /**

@@ -145,6 +145,7 @@ import {
   type DownloadTab
 } from '@/services/downloadGroups'
 import { downloadSpeedMeter, formatDownloadSpeed } from '@/services/downloadSpeed'
+import { formatBytes } from '@/services/byteSize'
 
 const downloads = useDownloadStore()
 const player = usePlayerStore()
@@ -222,12 +223,9 @@ const speeds = computed(() => {
   return map
 })
 
+/** 体积展示统一走 `services/byteSize`，与缓存页、设置页同一份实现。 */
 function formatSize(bytes?: number): string {
-  if (!bytes) return '0 B'
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+  return formatBytes(bytes)
 }
 
 async function playTask(task: DownloadTask) {

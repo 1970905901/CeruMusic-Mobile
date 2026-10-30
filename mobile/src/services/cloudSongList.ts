@@ -1,6 +1,7 @@
 import type { Track } from '@/types/music'
 import { ceruApi } from '@/services/ceruApi'
 import { checkUploadImageSafe } from '@/services/nsfwCheck'
+import { formatBytes } from '@/services/byteSize'
 
 export interface CloudSongList {
   id: string
@@ -67,11 +68,7 @@ function formatInterval(durationMs?: number): string {
   return pad(Math.floor(totalSeconds / 60)) + ':' + pad(totalSeconds % 60)
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
+
 
 /** Local files and downloads have no provider identity the cloud can resolve. */
 export function isShareableTrack(track: Track): boolean {
@@ -98,7 +95,7 @@ export function trackToCloudSong(track: Track): CloudSongDto {
     const originalSize = isObject(original._types?.[type]) ? original._types[type].size : undefined
     const size =
       Number.isSafeInteger(sizeBytes) && sizeBytes && sizeBytes > 0
-        ? formatSize(sizeBytes)
+        ? formatBytes(sizeBytes)
         : typeof originalSize === 'string' && originalSize.trim()
           ? originalSize
           : '未知'

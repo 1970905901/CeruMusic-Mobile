@@ -1196,6 +1196,7 @@ import {
 } from '@/services/tagWriteOptions'
 import { displayMinutes } from '@/services/sleepTimer'
 import { formatDateTime } from '@/services/dateTimeFormat'
+import { formatBytes } from '@/services/byteSize'
 import { isSpringFestivalWindow } from '@/services/festivalTheme'
 import { describeQualityCoverage, intersectQualities } from '@/services/qualityIntersection'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
@@ -1693,12 +1694,9 @@ async function scanLocal() {
   }
 }
 
+/** 体积展示统一走 `services/byteSize`，与缓存页、下载页同一份实现。 */
 function formatCacheSize(value: number): string {
-  const bytes = Math.max(0, Number(value) || 0)
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+  return formatBytes(value)
 }
 
 async function refreshCacheStats() {
