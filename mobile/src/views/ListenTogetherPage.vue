@@ -295,7 +295,38 @@
               <CoverImage :src="item.song.cover || ''" :size="42" :radius="9" :alt="item.song.name || ''" />
               <div class="queue-copy">
                 <div class="queue-title ceru-truncate">{{ item.song.name || '未知歌曲' }}</div>
-                <div class="queue-sub ceru-truncate">{{ item.song.singer || '未知歌手' }} · {{ item.requesterName }} 点歌</div>
+                <!-- 桌面版 PendingPanel：同曲多人申请合并成一条，这里显示头像堆叠与「N 人申请」 -->
+                <div class="queue-sub pending-meta">
+                  <span class="ceru-truncate">{{ item.song.singer || '未知歌手' }}</span>
+                  <span class="pending-dot">·</span>
+                  <div class="pending-requesters" :title="pendingRequesterTitle(item)">
+                    <span
+                      v-for="(requester, index) in visiblePendingAvatars(item)"
+                      :key="requester.userId"
+                      class="pending-avatar"
+                      :style="{ zIndex: MAX_PENDING_AVATARS - index }"
+                    >
+                      <CoverImage
+                        v-if="requester.avatar"
+                        :src="requester.avatar"
+                        :size="18"
+                        round
+                        :alt="requester.nickname"
+                      />
+                      <span v-else class="pending-avatar-fallback">
+                        {{ (requester.nickname || '?').slice(0, 1).toUpperCase() }}
+                      </span>
+                    </span>
+                    <span v-if="pendingAvatarOverflow(item)" class="pending-avatar pending-avatar-more">
+                      +{{ pendingAvatarOverflow(item) }}
+                    </span>
+                    <span class="pending-requester-label">{{ pendingRequesterLabel(item) }}</span>
+                  </div>
+                  <template v-if="formatPendingTime(item.requestedAt)">
+                    <span class="pending-dot">·</span>
+                    <span>{{ formatPendingTime(item.requestedAt) }}</span>
+                  </template>
+                </div>
               </div>
               <template v-if="lt.canControl">
                 <button type="button" class="tiny-action ok" @click="lt.approveRequest(item)">通过</button>
@@ -411,6 +442,14 @@ import {
   type ChatSegment
 } from '@/services/listenTogetherChat'
 import { planMemberActions } from '@/services/listenTogetherMembers'
+import {
+  MAX_PENDING_AVATARS,
+  formatPendingTime,
+  pendingAvatarOverflow,
+  pendingRequesterLabel,
+  pendingRequesterTitle,
+  visiblePendingAvatars
+} from '@/services/listenTogetherPending'
 
 const auth = useAuthStore()
 const player = usePlayerStore()
@@ -1475,6 +1514,51 @@ onBeforeUnmount(() => {
 }
 .pending-item {
   opacity: 0.92;
+}
+/* 申请人一行：歌手 · 头像堆叠 / 人数 · 申请时间 */
+.pending-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.pending-dot {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+.pending-requesters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.pending-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ceru-bg-soft);
+  margin-left: -4px;
+  flex: 0 0 auto;
+}
+.pending-avatar:first-child {
+  margin-left: 0;
+}
+.pending-avatar-fallback {
+  font-size: 9px;
+  color: var(--ceru-text-secondary);
+}
+.pending-avatar-more {
+  font-size: 9px;
+  color: var(--ceru-text-secondary);
+}
+.pending-requester-label {
+  margin-left: 2px;
+  white-space: nowrap;
 }
 .members-panel {
   padding-top: 14px;
