@@ -29,6 +29,7 @@ import {
   previousShuffleKey
 } from '@/services/shuffleOrder'
 import { displayMinutes, planSleepTimer, resumeSleepTimer } from '@/services/sleepTimer'
+import { planBulkAppend } from '@/services/bulkQueueAppend'
 import {
   type CrossfadeElement,
   cancelCrossfade,
@@ -1065,6 +1066,27 @@ export const usePlayerStore = defineStore('player', () => {
     return true
   }
 
+  /**
+   * 批量追加到队列末尾（桌面版本地音乐页「添加全部到播放列表」）。
+   *
+   * 去重口径与单曲 `appendToQueue` 相同：已在队列里的、以及本批里重复的
+   * 都会被跳过，跳过数量随结果返回，调用方据此如实提示。
+   */
+  function appendTracksToQueue(tracks: Track[]): { added: number; skipped: number } {
+    const plan = planBulkAppend(
+      queue.value.map((item) => item.key),
+      tracks
+    )
+    if (!plan.toAdd.length) return { added: 0, skipped: plan.skipped }
+    plan.toAdd.forEach((track) => library.upsertTrack(track))
+    const empty = queue.value.length === 0
+    queue.value = [...queue.value, ...plan.toAdd]
+    if (empty) currentIndex.value = 0
+    ensureShuffleOrder()
+    publishQueue()
+    return { added: plan.toAdd.length, skipped: plan.skipped }
+  }
+
   function insertTracksNext(tracks: Track[]): void {
     if (!tracks.length) return
     tracks.forEach((track) => library.upsertTrack(track))
@@ -1312,6 +1334,7 @@ export const usePlayerStore = defineStore('player', () => {
     insertNext,
     insertTracksNext,
     appendToQueue,
+    appendTracksToQueue,
     loadPersisted,
     persistState,
     restoreIfAvailable,

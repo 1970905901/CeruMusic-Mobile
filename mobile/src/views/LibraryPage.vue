@@ -400,6 +400,7 @@
       :destructive-icon="batchDestructiveIcon"
       @play="playSelected"
       @play-next="playNextSelected"
+      @append-to-queue="appendSelectedToQueue"
       @add-to-playlist="addToPlaylistSelected"
       @download="downloadSelected"
       @destructive="removeSelected"
@@ -478,6 +479,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useDownloadStore } from '@/stores/downloads'
 import { usePluginStore } from '@/stores/plugins'
 import { useAuthStore } from '@/stores/auth'
+import { useListenTogetherStore } from '@/stores/listenTogether'
 import type { CloudPlaylistView } from '@/services/cloudPlaylists'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { batchQualityChoices } from '@/services/batchDownloadQuality'
@@ -512,6 +514,7 @@ const player = usePlayerStore()
 const downloads = useDownloadStore()
 const pluginStore = usePluginStore()
 const authStore = useAuthStore()
+const listenTogether = useListenTogetherStore()
 const activeSegment = ref<'favorites' | 'playlists' | 'local' | 'recent'>('favorites')
 
 /**
@@ -730,6 +733,40 @@ function playNextSelected(): void {
   if (!tracks.length) return
   player.insertTracksNext(tracks)
   void showToast(`已将 ${tracks.length} 首歌曲加入下一首播放`)
+  exitBatchMode()
+}
+
+/**
+ * 批量排到队列末尾（桌面版本地音乐页「添加全部到播放列表」）。
+ *
+ * 房间内由房主/管理员逐首增量入队，普通成员走点歌审核——与单曲
+ * 「加入播放列表」同一套分流；队列去重口径也一致，跳过数量如实提示。
+ */
+function appendSelectedToQueue(): void {
+  const tracks = selection.selectedTracks.value
+  if (!tracks.length) return
+  if (listenTogether.inRoom) {
+    if (listenTogether.canControl) {
+      for (const track of tracks) listenTogether.addTrackToQueue(track)
+      void showToast(`已提交 ${tracks.length} 首到房间播放列表`)
+    } else {
+      let requested = 0
+      for (const track of tracks) if (listenTogether.requestTrack(track)) requested += 1
+      void showToast(
+        requested ? `已提交 ${requested} 首点歌，等待管理员审核` : '房间尚未连接，无法点歌',
+        requested ? 'medium' : 'warning'
+      )
+    }
+    exitBatchMode()
+    return
+  }
+  const { added, skipped } = player.appendTracksToQueue(tracks)
+  void showToast(
+    added > 0
+      ? `已加入 ${added} 首到播放队列` + (skipped > 0 ? `，跳过 ${skipped} 首重复` : '')
+      : '这些歌曲已经在播放队列中',
+    added > 0 ? 'medium' : 'warning'
+  )
   exitBatchMode()
 }
 

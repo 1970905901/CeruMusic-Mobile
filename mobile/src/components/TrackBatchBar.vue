@@ -19,6 +19,16 @@
         <ion-icon :icon="playSkipForwardOutline" />
         <span>下一首</span>
       </button>
+      <!-- 桌面版本地音乐页「添加全部到播放列表」：批量排到队尾，而不是只加下一首 -->
+      <button
+        type="button"
+        class="batch-action-btn ceru-press"
+        :disabled="selectedCount === 0"
+        @click="$emit('appendToQueue')"
+      >
+        <ion-icon :icon="listOutline" />
+        <span>加入队列</span>
+      </button>
       <button
         type="button"
         class="batch-action-btn ceru-press"
@@ -56,6 +66,7 @@ import { IonIcon } from '@ionic/vue'
 import {
   addCircleOutline,
   cloudDownloadOutline,
+  listOutline,
   play as playIcon,
   playSkipForwardOutline,
   trashOutline
@@ -71,6 +82,7 @@ defineProps<{
 defineEmits<{
   play: []
   playNext: []
+  appendToQueue: []
   addToPlaylist: []
   download: []
   destructive: []
