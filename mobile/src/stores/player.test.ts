@@ -58,6 +58,40 @@ describe('player queue append', () => {
     expect(player.queue.filter((track) => track.key === 'first')).toHaveLength(1)
   })
 
+  it('removes queued songs by reference, the shape the SDK sends', () => {
+    // SDK 的 `queue.remove` 收 `ResourceRef[]`。此前实现读的是 key 列表，
+    // 插件按契约传引用时一个都匹配不上——歌没删掉，却返回成功。
+    const player = usePlayerStore()
+    player.appendToQueue(makeLocalTrack('a'))
+    player.appendToQueue(makeLocalTrack('b'))
+    player.removeHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'a' }])
+    expect(player.queue.map((track) => track.key)).toEqual(['b'])
+  })
+
+  it('refuses to remove an unknown reference instead of silently skipping it', () => {
+    const player = usePlayerStore()
+    player.appendToQueue(makeLocalTrack('a'))
+    expect(() =>
+      player.removeHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'missing' }])
+    ).toThrow('歌曲不在播放队列中')
+    expect(player.queue.map((track) => track.key)).toEqual(['a'])
+  })
+
+  it('reorders by reference order and rejects an incomplete list', () => {
+    const player = usePlayerStore()
+    player.appendToQueue(makeLocalTrack('a'))
+    player.appendToQueue(makeLocalTrack('b'))
+    player.reorderHostTracksRefs([
+      { providerId: 'local', kind: 'track', id: 'b' },
+      { providerId: 'local', kind: 'track', id: 'a' }
+    ])
+    expect(player.queue.map((track) => track.key)).toEqual(['b', 'a'])
+    // 少给一条时必须报错：静默「保持原样」会让插件以为排序生效了。
+    expect(() =>
+      player.reorderHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'b' }])
+    ).toThrow('排序必须包含当前队列的全部歌曲')
+  })
+
   it('points at the only track when the queue was empty', () => {
     // 空队列时下标必须落到 0，否则「播放」按钮点了没有当前曲。
     const player = usePlayerStore()

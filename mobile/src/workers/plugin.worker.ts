@@ -47,6 +47,15 @@ let resources: Record<string, any> = {}
 let grantedPermissions = new Set<string>()
 let deniedPermissions = new Set<string>()
 
+/**
+ * 收藏类调用同时接受单个引用与引用数组（SDK 发布的是数组）。
+ * 数组原样返回，单个对象包成一项；空值给空数组。
+ */
+function asRefArray(value: any): any {
+  if (Array.isArray(value)) return value
+  return value == null ? [] : [value]
+}
+
 function rpc<T = any>(method: string, params: any = null): Promise<T> {
   if (disposed) return Promise.reject(new Error('插件运行时已停止'))
   const id = ++rpcSequence
@@ -339,13 +348,16 @@ const context: any = {
     get: (call?: any) => rpc('queue.get', { call }),
     append: (tracks: any[], call?: any) => rpc('queue.append', { tracks, call }),
     replace: (tracks: any[], call?: any) => rpc('queue.replace', { tracks, call }),
-    remove: (keys: string[], call?: any) => rpc('queue.remove', { keys, call }),
-    reorder: (keys: string[], call?: any) => rpc('queue.reorder', { keys, call })
+    remove: (refs: any[], call?: any) => rpc('queue.remove', { refs, call }),
+    reorder: (refs: any[], revision: string, call?: any) =>
+      rpc('queue.reorder', { refs, revision, call })
   },
+  // SDK 契约为 `ResourceRef[]`（桌面宿主同样按数组处理）；单个引用也照收，
+  // 免得旧写法在升级后静默失效。
   favorites: {
-    contains: (track: any, call?: any) => rpc('favorites.contains', { track, call }),
-    add: (track: any, call?: any) => rpc('favorites.add', { track, call }),
-    remove: (track: any, call?: any) => rpc('favorites.remove', { track, call })
+    contains: (refs: any, call?: any) => rpc('favorites.contains', { refs: asRefArray(refs), call }),
+    add: (refs: any, call?: any) => rpc('favorites.add', { refs: asRefArray(refs), call }),
+    remove: (refs: any, call?: any) => rpc('favorites.remove', { refs: asRefArray(refs), call })
   },
   history: {
     list: (cursor: string | undefined, call?: any) => rpc('history.list', { cursor, call })

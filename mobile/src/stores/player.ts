@@ -1171,6 +1171,9 @@ export const usePlayerStore = defineStore('player', () => {
       const provider = source ? pluginStore.selectedProvider(source) : undefined
       const track = rawEntityToTrack(entity, provider?.pluginKey)
       if (!next.some((item) => item.key === track.key)) next.push(track)
+      // 入队的歌也要进本地曲目表：插件随后 `favorites.add` 只带着引用过来，
+      // 不从库里查就找不到元数据、只能报「引用无效」。
+      library.upsertTrack(track)
     }
     queue.value = next
     ensureShuffleOrder()
@@ -1186,6 +1189,58 @@ export const usePlayerStore = defineStore('player', () => {
     currentIndex.value = 0
     ensureShuffleOrder()
     publishQueue()
+  }
+
+  /**
+   * 按歌曲引用从队列移除（插件 `queue.remove` 的 SDK 契约：`ResourceRef[]`）。
+   *
+   * 此前这里接的是 key 列表，而 SDK 与桌面宿主都按引用收发——插件按契约
+   * 传 `[{ providerId, id }]` 时，key 集合里一个都匹配不上，于是**什么都没删**，
+   * 返回 null 让插件以为成功了。现在按引用解析成 key，未知引用如实报错
+   * （与桌面 `services.queue.remove` 找不到时抛错同一口径）。
+   */
+  function removeHostTracksRefs(refs: unknown[]): void {
+    if (!refs.length || !queue.value.length) return
+    const keys = resolveQueueRefs(refs, queue.value)
+    removeHostTracks(keys)
+  }
+
+  /**
+   * 同上，用于 `queue.reorder`：引用顺序 → key 顺序。
+   *
+   * 与桌面 `services.queue.reorder` 同口径：顺序必须覆盖当前队列的全部歌曲，
+   * 否则抛错让插件重新读取后再排——`reorderHostTracks` 自身在长度不匹配时
+   * 只是保持原样（那是给拖动排序的静默兜底），插件调用不该拿到「成功」的假象。
+   */
+  function reorderHostTracksRefs(refs: unknown[]): void {
+    const keys = resolveQueueRefs(refs, queue.value)
+    if (keys.length !== queue.value.length) {
+      throw new Error('排序必须包含当前队列的全部歌曲')
+    }
+    if (new Set(keys).size !== keys.length) throw new Error('排序不能包含重复的歌曲')
+    reorderHostTracks(keys)
+  }
+
+  /**
+   * 把队列引用解析成 key。
+   *
+   * 按 `(providerId, id)` 匹配，与 `services/pluginRooms.findTrackByRef` 同一口径：
+   * 插件只拿得到公共身份，`pluginId` / `scope` 不参与比较。任一条引用解析不出
+   * 都抛错——静默少删或多排会让插件与用户看到的队列不一致。
+   */
+  function resolveQueueRefs(refs: readonly unknown[], tracks: readonly Track[]): string[] {
+    const keys: string[] = []
+    for (const ref of refs) {
+      const providerId = String((ref as any)?.providerId ?? '')
+      const id = String((ref as any)?.id ?? '')
+      const match = tracks.find(
+        (track) =>
+          String(track.ref?.providerId ?? '') === providerId && String(track.ref?.id ?? '') === id
+      )
+      if (!match) throw new Error(`歌曲不在播放队列中: ${providerId}/${id}`)
+      keys.push(match.key)
+    }
+    return keys
   }
 
   function removeHostTracks(keys: string[]): void {
@@ -1344,7 +1399,9 @@ export const usePlayerStore = defineStore('player', () => {
     appendHostTracks,
     replaceHostQueue,
     removeHostTracks,
+    removeHostTracksRefs,
     reorderHostTracks,
+    reorderHostTracksRefs,
     clearQueue
   }
 })

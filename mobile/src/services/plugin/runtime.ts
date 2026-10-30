@@ -141,6 +141,36 @@ export function assertFilePayloadBytes(bytes: number, subject = '文件'): void 
  */
 export const MAX_QUEUE_MUTATION_ITEMS = 2000
 
+/**
+ * 校验插件传来的引用数组（`favorites.*` / `queue.remove` / `queue.reorder`）。
+ *
+ * SDK 契约是 `ResourceRef[]`；非数组、空数组、或元素不是对象都直接报错，
+ * 而不是静默当成「没有要处理的东西」——那样插件会把失败当成成功。
+ */
+/**
+ * 校验插件传来的音量：必须是 0–1 之间的有限数（桌面 `services.player.setVolume` 同口径）。
+ *
+ * 此前写成 `Number(x) || 0`：`2` 会原样放行，而 `"abc"` 会被**静默当成 0**——
+ * 一次脏调用就把用户音量归零，且没有任何反馈。
+ */
+export function assertVolume(value: unknown): number {
+  const volume = Number(value)
+  if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
+    throw new Error('音量必须在 0 到 1 之间')
+  }
+  return volume
+}
+
+export function assertRefList(value: unknown, label: string): any[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${label}需要传入歌曲引用数组`)
+  }
+  if (value.some((ref) => !ref || typeof ref !== 'object' || Array.isArray(ref))) {
+    throw new Error(`${label}的引用格式无效`)
+  }
+  return value as any[]
+}
+
 export function assertQueueSize(value: unknown): void {
   if (value === null || value === undefined) return
   if (!Array.isArray(value)) throw new Error('队列操作参数无效')
@@ -1124,8 +1154,11 @@ export class PluginRuntime {
       }
       case 'player.setVolume': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
+        // 桌面 `services.player.setVolume` 拒绝 0–1 之外的音量。此前写成
+        // `Number(x) || 0`：`2` 会原样放行，而 `"abc"` 会被**静默当成 0**——
+        // 一次脏调用就把用户音量归零，且没有任何反馈。
         const { usePlayerStore } = await import('@/stores/player')
-        usePlayerStore().setVolume(Number(params?.volume) || 0)
+        usePlayerStore().setVolume(assertVolume(params?.volume))
         return null
       }
       case 'player.setMode': {
@@ -1163,38 +1196,52 @@ export class PluginRuntime {
         await usePlayerStore().replaceHostQueue(params?.tracks ?? [])
         return null
       }
+      // SDK 契约是 `ResourceRef[]`（桌面宿主同样按引用收发）。此前这里读的是
+      // `params.keys`——插件按契约传 `refs` 时拿到 undefined，于是**什么都没删**、
+      // 还返回成功。现在按引用解析，未知引用如实抛错。
       case 'queue.remove': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.keys)
+        assertQueueSize(params?.refs)
         const { usePlayerStore } = await import('@/stores/player')
-        usePlayerStore().removeHostTracks(params?.keys ?? [])
+        usePlayerStore().removeHostTracksRefs(params?.refs ?? [])
         return null
       }
       case 'queue.reorder': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.keys)
+        assertQueueSize(params?.refs)
         const { usePlayerStore } = await import('@/stores/player')
-        usePlayerStore().reorderHostTracks(params?.keys ?? [])
+        usePlayerStore().reorderHostTracksRefs(params?.refs ?? [])
         return null
       }
       // 收藏 / 历史 / 下载：与桌面 `PluginHost` 同一套授权与归属规则。
+      //
+      // SDK 契约是 `favorites.contains(refs: ResourceRef[]) => boolean[]`，
+      // `add/remove` 同样收数组。此前这里实现的是单曲签名：插件按契约传数组时
+      // `contains` 把数组当 ref 查、永远返回 false（插件以为没收藏、于是重复收藏），
+      // `add/remove` 直接报「引用无效」。现在按数组处理，并保持结果与入参等长。
       case 'favorites.contains': {
         await this.requirePermission(params?.call?.permissionKey, 'library.read')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().isFavorite(params?.track?.ref ?? params?.track)
+        const refs = assertRefList(params?.refs, '收藏查询')
+        const library = useLibraryStore()
+        return refs.map((ref) => library.isFavorite(ref))
       }
       case 'favorites.add': {
         await this.requirePermission(params?.call?.permissionKey, 'library.write')
-        assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
+        const refs = assertRefList(params?.refs, '收藏')
+        assertOwnedRefs(refs, 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
-        await useLibraryStore().addHostFavorite(params?.track)
+        const library = useLibraryStore()
+        for (const ref of refs) await library.addHostFavoriteRef(ref)
         return null
       }
       case 'favorites.remove': {
         await this.requirePermission(params?.call?.permissionKey, 'library.write')
-        assertOwnedRefs([params?.track?.ref], 'track', this.ownershipContext())
+        const refs = assertRefList(params?.refs, '取消收藏')
+        assertOwnedRefs(refs, 'track', this.ownershipContext())
         const { useLibraryStore } = await import('@/stores/library')
-        await useLibraryStore().removeHostFavorite(params?.track)
+        const library = useLibraryStore()
+        for (const ref of refs) await library.removeHostFavoriteRef(ref)
         return null
       }
       case 'history.list': {

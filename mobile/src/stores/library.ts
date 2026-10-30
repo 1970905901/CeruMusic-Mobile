@@ -15,6 +15,7 @@ import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPla
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { trackKeyFor } from '@/services/trackKey'
+import { findTrackByRef } from '@/services/pluginRooms'
 import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
 import {
@@ -1161,6 +1162,31 @@ export const useLibraryStore = defineStore('library', () => {
     await removeFavorite(resolved)
   }
 
+  /**
+   * 按 `ResourceRef` 收藏 / 取消收藏（SDK 的 `favorites.*` 契约是引用数组）。
+   *
+   * 桌面版 `services.favorites.add` 要求歌曲**已在播放队列里**（从队列拿完整
+   * 元数据），这里同一口径：队列里找不到就报错，而不是凭空造一个残缺条目。
+   * 已入库的歌曲（收藏过的、歌单里的）同样可以直接命中。
+   */
+  async function resolveHostRefTrack(ref: any): Promise<Track> {
+    // 入队的歌由播放器写进本地曲目表（`appendHostTracks` / `playTrack`），
+    // 所以这里先查表；本地导入的再单独查一次。
+    const known = findTrackByRef(ref, Object.values(tracks.value))
+    if (known) return known
+    const local = findTrackByRef(ref, localTracks.value)
+    if (local) return local
+    throw new Error('歌曲不在播放队列中，请先添加歌曲')
+  }
+
+  async function addHostFavoriteRef(ref: any): Promise<void> {
+    await addFavorite(await resolveHostRefTrack(ref))
+  }
+
+  async function removeHostFavoriteRef(ref: any): Promise<void> {
+    await removeFavorite(await resolveHostRefTrack(ref))
+  }
+
   async function importSharedPlaylist(
     name: string,
     description: string,
@@ -1447,6 +1473,8 @@ export const useLibraryStore = defineStore('library', () => {
     historyPage,
     addHostFavorite,
     removeHostFavorite,
+    addHostFavoriteRef,
+    removeHostFavoriteRef,
     importPlaylistFromPlugin,
     importSharedPlaylist,
     uploadPlaylistToCloud,
