@@ -83,6 +83,7 @@ import { Browser } from '@capacitor/browser'
 import CoverImage from '@/components/CoverImage.vue'
 import NoticeCard from '@/components/NoticeCard.vue'
 import { ossAvatar } from '@/services/ossImage'
+import { formatDateTime } from '@/services/dateTimeFormat'
 import { resolveNotificationTarget } from '@/services/notificationTarget'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -92,10 +93,12 @@ const auth = useAuthStore()
 const notifications = useNotificationsStore()
 const router = useIonRouter()
 
+/**
+ * 互动消息行的时间与官方通知卡共用同一份实现，
+ * 否则同一条列表里会出现 24 小时制与设备区域默认写法混排。
+ */
 function formatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString()
+  return formatDateTime(value)
 }
 
 async function reload() {

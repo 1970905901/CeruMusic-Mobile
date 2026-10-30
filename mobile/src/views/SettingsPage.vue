@@ -1195,6 +1195,7 @@ import {
   type TagWriteOptions
 } from '@/services/tagWriteOptions'
 import { displayMinutes } from '@/services/sleepTimer'
+import { formatDateTime } from '@/services/dateTimeFormat'
 import { isSpringFestivalWindow } from '@/services/festivalTheme'
 import { describeQualityCoverage, intersectQualities } from '@/services/qualityIntersection'
 import SettingsSearchBar from '@/components/SettingsSearchBar.vue'
@@ -1429,7 +1430,7 @@ const syncStatusText = computed(() => {
   if (status === 'downloading') return '正在应用云端设置…'
   if (status === 'error') return settingsSyncState.message || '同步失败'
   if (!settings.settings.cloudSyncEnabled) return '已关闭自动同步'
-  if (settingsSyncState.lastSync) return '上次同步：' + new Date(settingsSyncState.lastSync).toLocaleString()
+  if (settingsSyncState.lastSync) return '上次同步：' + formatDateTime(settingsSyncState.lastSync)
   return '登录后自动同步'
 })
 

@@ -72,6 +72,7 @@ import {
   parseNoticeBlocks,
   safeHref
 } from '@/services/noticeContent'
+import { formatDateTime } from '@/services/dateTimeFormat'
 import type { InboxMessage } from '@/services/notificationsApi'
 
 const props = defineProps<{ message: InboxMessage }>()
@@ -95,10 +96,12 @@ watch(
   }
 )
 
+/**
+ * 官方通知卡的时间，与互动消息行共用 `services/dateTimeFormat`，
+ * 避免同一列表里出现两种写法。解析失败返回空串，调用方隐藏整行。
+ */
 function formatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString('zh-CN', { hour12: false })
+  return formatDateTime(value)
 }
 
 defineExpose({ limit })
