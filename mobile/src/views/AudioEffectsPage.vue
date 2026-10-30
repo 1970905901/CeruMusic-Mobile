@@ -184,6 +184,18 @@
               @ionInput="onBalanceValue"
             />
           </ion-item>
+          <!-- 桌面版 AudioEffectSettings 的「居中校准」：滑杆拖偏后一键回到正中 -->
+          <ion-item lines="none">
+            <ion-button
+              fill="outline"
+              size="small"
+              expand="block"
+              :disabled="!state.balance.enabled || Math.abs(state.balance.value) < 0.01"
+              @click="centerBalance"
+            >
+              居中校准
+            </ion-button>
+          </ion-item>
           <ion-item>
             <ion-label>
               <h2>响度均衡</h2>
@@ -424,6 +436,12 @@ function onBalanceEnabled(event: CustomEvent): void {
 
 function onBalanceValue(event: CustomEvent): void {
   store.setBalance(state.balance.enabled, Number(event.detail.value))
+  commit()
+}
+
+/** 居中校准（桌面版同款按钮）：保留启用状态，只把偏移归零。 */
+function centerBalance(): void {
+  store.setBalance(state.balance.enabled, 0)
   commit()
 }
 
