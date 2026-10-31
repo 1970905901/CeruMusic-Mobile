@@ -1,6 +1,7 @@
 import { installLegacyPolyfills } from '@/utils/polyfills'
 import { socketEventName } from '@/services/pluginSockets'
 import { createPermissionApi } from '@/services/plugin/permissionApi'
+import { lockNetworkGlobals, networkDenied } from '@/services/plugin/networkLockdown'
 
 installLegacyPolyfills()
 
@@ -668,11 +669,6 @@ async function activate(message: any) {
     // 形同虚设。求值时把这几个名字钉成拒绝函数：插件作用域里的 `fetch` 不再
     // 是原生的那个，网络只能经由 `ctx.http` 走宿主（宿主侧现在也另有授权校验）。
     // 移动端的架构本来就是「插件不直接接触网络，必须经 Worker -> Host RPC」。
-    //
-    // 注意这只是作用域级的遮挡：`new Function` 的函数体仍是全局作用域，
-    // 插件可以用 `self.fetch` / `globalThis.fetch`（Worker 里二者就是同一个
-    // 对象）绕回来。真正的隔离需要把插件求值挪进独立的 realm 或沙箱，
-    // 那超出了这一项的范围。
     factory = new Function(
       'exports',
       'module',
@@ -686,9 +682,12 @@ async function activate(message: any) {
   } catch (error) {
     throw new Error(`插件语法错误：${(error as Error).message}`)
   }
-  const denyNetwork = (name: string) => () => {
-    throw new Error(`插件不能直接使用 ${name}，请通过 ctx.http 发起请求`)
-  }
+  const denyNetwork = networkDenied
+  // 参数名只是**第一层**遮挡；`new Function` 的函数体仍是全局作用域，
+  // 插件写 `self.fetch` / `globalThis.fetch` 就能取回真身。所以这里把这个
+  // Worker 自己的全局也一并锁死（实现与理由见 `services/plugin/networkLockdown`）：
+  // 本 Worker 每个插件独占，宿主 shim 全靠 RPC 联络宿主，内部不需要这些原语。
+  lockNetworkGlobals(scope as unknown as Record<string, unknown>)
   const result = factory(
     exportsObject,
     moduleObject,
