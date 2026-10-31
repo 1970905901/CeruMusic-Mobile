@@ -17,7 +17,7 @@ import {
   storageValueBytes
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
-import { assertNavigationRequest } from '@shiqianjiang/ceru-plugin-sdk'
+import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
 import {
   parseSocketPayload,
   socketEventName,
@@ -142,12 +142,6 @@ export function assertFilePayloadBytes(bytes: number, subject = '文件'): void 
 export const MAX_QUEUE_MUTATION_ITEMS = 2000
 
 /**
- * 校验插件传来的引用数组（`favorites.*` / `queue.remove` / `queue.reorder`）。
- *
- * SDK 契约是 `ResourceRef[]`；非数组、空数组、或元素不是对象都直接报错，
- * 而不是静默当成「没有要处理的东西」——那样插件会把失败当成成功。
- */
-/**
  * 校验插件传来的音量：必须是 0–1 之间的有限数（桌面 `services.player.setVolume` 同口径）。
  *
  * 此前写成 `Number(x) || 0`：`2` 会原样放行，而 `"abc"` 会被**静默当成 0**——
@@ -161,10 +155,32 @@ export function assertVolume(value: unknown): number {
   return volume
 }
 
+/**
+ * 校验插件传来的引用数组（`favorites.*` / `queue.reorder`）。
+ *
+ * SDK 契约是 `ResourceRef[]`；非数组、空数组、或元素不是对象都直接报错，
+ * 而不是静默当成「没有要处理的东西」——那样插件会把失败当成成功。
+ */
 export function assertRefList(value: unknown, label: string): any[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label}需要传入歌曲引用数组`)
   }
+  return assertRefShapes(value, label)
+}
+
+/**
+ * 队列操作的引用列表：与 `assertRefList` 同一套形状校验，但**允许空数组**。
+ * 桌面 `services.queue.remove` 对空列表按「没有要删的东西」放行并返回队列状态，
+ * 这里照搬，避免插件一次空操作就撞上错误。
+ */
+export function assertRefShapes(
+  value: unknown,
+  label: string,
+  /** 空数组是否合法：`queue.remove` 允许，`reorder` 不允许（空列表没有排序可言）。 */
+  allowEmpty = true
+): any[] {
+  if (!Array.isArray(value)) throw new Error(`${label}需要传入歌曲引用数组`)
+  if (!allowEmpty && value.length === 0) throw new Error(`${label}需要传入歌曲引用数组`)
   if (value.some((ref) => !ref || typeof ref !== 'object' || Array.isArray(ref))) {
     throw new Error(`${label}的引用格式无效`)
   }
@@ -177,6 +193,29 @@ export function assertQueueSize(value: unknown): void {
   if (value.length > MAX_QUEUE_MUTATION_ITEMS) {
     throw new Error(`一次最多操作 ${MAX_QUEUE_MUTATION_ITEMS} 首歌曲`)
   }
+}
+
+/**
+ * 校验 `queue.append / replace` 的条目：SDK 契约是 `ContentEntity[]`。
+ *
+ * 桌面宿主走 `assertContentPage({ items })`，移动端此前只校验了体积与归属，
+ * 于是缺 `ref` / 缺 `title` 的条目会被当作合法歌曲写进队列：`rawEntityToTrack`
+ * 拼出一个空引用，播放时找不到音源，队列里还多出一条没有名字的行。
+ */
+export function assertMediaEntities(value: unknown, label: string): any[] {
+  if (!Array.isArray(value)) throw new Error(`${label}需要传入歌曲数组`)
+  assertQueueSize(value)
+  if (!value.length) return value as any[]
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`${label}的歌曲格式无效`)
+    }
+    const title = typeof item.title === 'string' ? item.title.trim() : ''
+    if (!title) throw new Error(`${label}的歌曲缺少标题`)
+    assertResourceRef(item.ref)
+    if (item.ref.kind !== 'track') throw new Error(`${label}只接收歌曲`)
+  }
+  return value as any[]
 }
 
 /**
@@ -1122,6 +1161,7 @@ export class PluginRuntime {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
         // 桌面版同样只在传了 track 时校验（`data.args?.[0] != null`）。
         if (params?.track != null) {
+          assertResourceRef(params.track?.ref)
           assertOwnedRefs([params.track.ref], 'track', this.ownershipContext())
         }
         const { usePlayerStore } = await import('@/stores/player')
@@ -1174,7 +1214,7 @@ export class PluginRuntime {
       }
       case 'queue.append': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.tracks)
+        assertMediaEntities(params?.tracks, '播放队列')
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -1182,11 +1222,13 @@ export class PluginRuntime {
         )
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().appendHostTracks(params?.tracks ?? [])
-        return null
+        // SDK 契约是 `Promise<QueueState>`：插件据此刷新自己的队列视图。
+        // 此前返回 null，插件拿到的字段全是 undefined。
+        return usePlayerStore().hostQueue()
       }
       case 'queue.replace': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.tracks)
+        assertMediaEntities(params?.tracks, '播放队列')
         assertOwnedRefs(
           (params?.tracks ?? []).map((entity: any) => entity?.ref),
           'track',
@@ -1194,24 +1236,34 @@ export class PluginRuntime {
         )
         const { usePlayerStore } = await import('@/stores/player')
         await usePlayerStore().replaceHostQueue(params?.tracks ?? [])
-        return null
+        return usePlayerStore().hostQueue()
       }
       // SDK 契约是 `ResourceRef[]`（桌面宿主同样按引用收发）。此前这里读的是
       // `params.keys`——插件按契约传 `refs` 时拿到 undefined，于是**什么都没删**、
       // 还返回成功。现在按引用解析，未知引用如实抛错。
       case 'queue.remove': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.refs)
+        const refs = assertRefShapes(params?.refs, '队列移除')
+        assertQueueSize(refs)
+        assertOwnedRefs(refs, 'track', this.ownershipContext())
         const { usePlayerStore } = await import('@/stores/player')
-        usePlayerStore().removeHostTracksRefs(params?.refs ?? [])
-        return null
+        usePlayerStore().removeHostTracksRefs(refs)
+        return usePlayerStore().hostQueue()
       }
       case 'queue.reorder': {
         await this.requirePermission(params?.call?.permissionKey, 'player.control')
-        assertQueueSize(params?.refs)
+        const refs = assertRefList(params?.refs, '队列排序')
+        assertQueueSize(refs)
+        assertOwnedRefs(refs, 'track', this.ownershipContext())
         const { usePlayerStore } = await import('@/stores/player')
-        usePlayerStore().reorderHostTracksRefs(params?.refs ?? [])
-        return null
+        const player = usePlayerStore()
+        // revision 是插件排队时的队列快照标识：对不上说明队列在插件读取之后
+        // 变过，此时按旧引用重排会把用户刚做的改动悄悄抹掉。桌面版同样拒绝。
+        if (String(params?.revision ?? '') !== player.hostQueue().revision) {
+          throw new Error('播放队列已变化，请重新读取后再排序')
+        }
+        player.reorderHostTracksRefs(refs)
+        return player.hostQueue()
       }
       // 收藏 / 历史 / 下载：与桌面 `PluginHost` 同一套授权与归属规则。
       //

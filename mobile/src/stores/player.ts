@@ -247,7 +247,9 @@ export const usePlayerStore = defineStore('player', () => {
         track: track?.raw ?? null,
         positionMs: Math.round(positionMs.value),
         durationMs: Math.round(durationMs.value || track?.durationMs || 0),
-        volume: muted.value ? 0 : volume.value,
+        // 静音是独立字段：把 volume 报成 0 会让插件把用户设定的音量读成「没有」，
+        // 恢复音量时只能从 0 开始。桌面版 getState 同样总是回报真实音量。
+        volume: volume.value,
         muted: muted.value,
         playbackRate: playbackRate.value,
         repeat: repeat.value,
@@ -941,7 +943,9 @@ export const usePlayerStore = defineStore('player', () => {
     publishState()
   }
 
-  function setMode(mode: { repeat?: RepeatMode; shuffle?: boolean } | undefined): void {
+  function setMode(
+    mode: { repeat?: RepeatMode; shuffle?: boolean; muted?: boolean } | undefined
+  ): void {
     if (!mode || typeof mode !== 'object') return
     // 只接受三个合法取值：插件传别的字符串会把状态写坏，
     // 界面上的循环按钮与「播完自动下一首」的判定都会失效。
@@ -952,6 +956,12 @@ export const usePlayerStore = defineStore('player', () => {
       const changed = shuffle.value !== mode.shuffle
       shuffle.value = mode.shuffle
       ensureShuffleOrder(changed)
+    }
+    // SDK 的 `setMode` 还带 `muted`（桌面版会写到 audio.muted）。此前移动端
+    // 直接忽略这个字段：插件「静音播放」后界面仍显示有声，下一次播放还会出声。
+    if (typeof mode.muted === 'boolean') {
+      muted.value = mode.muted
+      audio.muted = mode.muted
     }
     publishState()
   }
@@ -1138,7 +1148,7 @@ export const usePlayerStore = defineStore('player', () => {
       track: currentTrack.value?.raw ?? null,
       positionMs: Math.round(positionMs.value),
       durationMs: Math.round(durationMs.value),
-      volume: muted.value ? 0 : volume.value,
+      volume: volume.value,
       muted: muted.value,
       playbackRate: playbackRate.value,
       repeat: repeat.value === 'one' ? 'one' : repeat.value === 'all' ? 'all' : 'off',
@@ -1156,8 +1166,27 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /**
+   * 插件 `player.play`。
+   *
+   * 不传歌曲时与桌面 `handlePlay` 同口径：接着当前这首续播；队列里有歌但
+   * 还没装载过，就从第一首开始；队列为空才报错。此前这里直接 `return`，
+   * 插件点「播放」等于什么都没发生。
+   */
   async function hostPlay(entity: any): Promise<void> {
-    if (!entity) return
+    if (!entity) {
+      const current = currentTrack.value
+      if (current) {
+        if (status.value === 'playing' || status.value === 'loading') return
+        await resume()
+        return
+      }
+      const first = queue.value[0]
+      if (!first) throw new Error('播放列表为空，请先添加歌曲')
+      currentIndex.value = 0
+      await playTrack(first)
+      return
+    }
     const source = entity.ref?.providerId
     const provider = source ? pluginStore.selectedProvider(source) : undefined
     const track = rawEntityToTrack(entity, provider?.pluginKey)
