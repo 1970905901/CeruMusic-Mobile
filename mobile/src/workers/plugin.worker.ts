@@ -662,17 +662,42 @@ async function activate(message: any) {
 
   let factory: Function
   try {
+    // 插件代码与本进程的宿主 shim 跑在**同一个 Worker realm**里，它拿得到
+    // 原生的 `fetch` / `XMLHttpRequest` / `WebSocket`。SDK 的 `ctx.http` 会先走
+    // 授权再 RPC，但绕过它直接联网只需要一行 `fetch(...)`——`network.request`
+    // 形同虚设。求值时把这几个名字钉成拒绝函数：插件作用域里的 `fetch` 不再
+    // 是原生的那个，网络只能经由 `ctx.http` 走宿主（宿主侧现在也另有授权校验）。
+    // 移动端的架构本来就是「插件不直接接触网络，必须经 Worker -> Host RPC」。
+    //
+    // 注意这只是作用域级的遮挡：`new Function` 的函数体仍是全局作用域，
+    // 插件可以用 `self.fetch` / `globalThis.fetch`（Worker 里二者就是同一个
+    // 对象）绕回来。真正的隔离需要把插件求值挪进独立的 realm 或沙箱，
+    // 那超出了这一项的范围。
     factory = new Function(
       'exports',
       'module',
       'require',
       'CeruPlugin',
+      'fetch',
+      'XMLHttpRequest',
+      'WebSocket',
       `${message.code}\n;return exports;`
     )
   } catch (error) {
     throw new Error(`插件语法错误：${(error as Error).message}`)
   }
-  const result = factory(exportsObject, moduleObject, hostModule, CeruPlugin)
+  const denyNetwork = (name: string) => () => {
+    throw new Error(`插件不能直接使用 ${name}，请通过 ctx.http 发起请求`)
+  }
+  const result = factory(
+    exportsObject,
+    moduleObject,
+    hostModule,
+    CeruPlugin,
+    denyNetwork('fetch'),
+    denyNetwork('XMLHttpRequest'),
+    denyNetwork('WebSocket')
+  )
   const exported = result ?? moduleObject.exports ?? exportsObject
   resources = exported.resources ?? registry?.resources ?? {}
   if (exported.modules && typeof exported.modules === 'object') {
