@@ -15,6 +15,7 @@ import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPla
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { trackKeyFor } from '@/services/trackKey'
+import { toHostEntity } from '@/services/hostEntity'
 import { findTrackByRef } from '@/services/pluginRooms'
 import { paginate } from '@/services/plugin/paging'
 import { blobToDataUrl } from '@/services/imageUtils'
@@ -919,7 +920,7 @@ export const useLibraryStore = defineStore('library', () => {
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return { items: [], totalEstimate: 0 }
     const page = paginate(
-      playlistTracks(playlist.id).map((track) => track.raw),
+      playlistTracks(playlist.id).map((track) => toHostEntity(track)),
       cursor,
       limit
     )
@@ -995,7 +996,7 @@ export const useLibraryStore = defineStore('library', () => {
   /** 分页返回本地音乐；游标非法时抛错，而不是静默从头再来（会让插件死循环）。 */
   function localMusicPage(cursor?: string, limit?: number) {
     const page = paginate(
-      localTracks.value.map((track) => track.raw),
+      localTracks.value.map((track) => toHostEntity(track)),
       cursor,
       limit
     )
@@ -1100,7 +1101,7 @@ export const useLibraryStore = defineStore('library', () => {
   }
   function historyPage(cursor?: string, limit?: number) {
     const page = paginate(
-      history.value.map((item) => item.track.raw),
+      history.value.map((item) => toHostEntity(item.track)),
       cursor,
       limit
     )

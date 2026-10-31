@@ -10,6 +10,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { cacheAudio, getCachedAudio, isTrackCacheable } from '@/services/mediaCache'
 import { trackKeyFor } from '@/services/trackKey'
+import { toHostEntity } from '@/services/hostEntity'
 import { isAudioContentType, notAudioMessage } from '@/services/downloadContentType'
 import {
   bindAudioPipelineElement,
@@ -244,7 +245,9 @@ export const usePlayerStore = defineStore('player', () => {
       const track = currentTrack.value
       pluginStore.publishPlayerState({
         status: status.value,
-        track: track?.raw ?? null,
+        // 交给插件的是标准实体，不是原始存档：本地曲目的 `raw` 里没有 `ref`
+        // 和 `metadata`，插件读 `entity.ref.kind` 会直接报错。
+        track: track ? toHostEntity(track) : null,
         positionMs: Math.round(positionMs.value),
         durationMs: Math.round(durationMs.value || track?.durationMs || 0),
         // 静音是独立字段：把 volume 报成 0 会让插件把用户设定的音量读成「没有」，
@@ -273,7 +276,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   function publishQueue() {
     pluginStore.publishQueue({
-      items: queue.value.map((track) => track.raw),
+      items: queue.value.map((track) => toHostEntity(track)),
       currentIndex: currentIndex.value,
       revision: bumpQueueRevision()
     })
@@ -1145,7 +1148,7 @@ export const usePlayerStore = defineStore('player', () => {
   function hostState() {
     return {
       status: status.value === 'ended' ? 'ended' : status.value,
-      track: currentTrack.value?.raw ?? null,
+      track: currentTrack.value ? toHostEntity(currentTrack.value) : null,
       positionMs: Math.round(positionMs.value),
       durationMs: Math.round(durationMs.value),
       volume: volume.value,
@@ -1158,7 +1161,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   function hostQueue() {
     return {
-      items: queue.value.map((track) => track.raw),
+      items: queue.value.map((track) => toHostEntity(track)),
       currentIndex: currentIndex.value,
       // 与推送共用同一个计数器：`queue.get` 与 `queue.changed` 的版本号必须一致，
       // 否则插件按「revision 变了才刷新」判断时会漏掉变化。

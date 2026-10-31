@@ -473,6 +473,7 @@ import { crossfadeState } from '@/services/crossfade'
 import { getQualityDisplayName } from '@/services/qualityNames'
 import { lyricFontStack } from '@/services/lyricFonts'
 import { createRequestGuard } from '@/services/requestGuard'
+import { pluginTrackContext } from '@/services/hostEntity'
 import type { LyricDocument } from '@/types/music'
 import type { Track } from '@/types/music'
 
@@ -1177,7 +1178,7 @@ async function openMore() {
             if (!track.value) return
             void pluginStore
               .invokeAction(menu.pluginKey, menu.action, {
-                track: track.value.raw,
+                track: pluginTrackContext(track.value),
                 trackKey: track.value.key
               })
               .catch((error) =>

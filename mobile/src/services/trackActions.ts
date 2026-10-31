@@ -10,6 +10,7 @@ import { useShareStore } from '@/stores/share'
 import { useListenTogetherStore } from '@/stores/listenTogether'
 import { resolveTrackQuality, trackQualityChoices } from '@/services/batchDownloadQuality'
 import { getQualityDisplayName } from '@/services/qualityNames'
+import { pluginTrackContext } from '@/services/hostEntity'
 
 async function toast(message: string, color = 'medium') {
   const element = await toastController.create({ message, duration: 2000, color })
@@ -87,7 +88,8 @@ export async function openTrackActions(track: Track, options?: TrackActionOption
           handler: () => {
             void plugins
               .invokeAction(menu.pluginKey, menu.action, {
-                track: track.raw,
+                // 本地曲目的 `raw` 没有 `ref`，原样交给插件等于给了一个假实体。
+                track: pluginTrackContext(track),
                 trackKey: track.key
               })
               .catch((error) =>

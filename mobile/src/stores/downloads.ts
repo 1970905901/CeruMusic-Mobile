@@ -33,6 +33,7 @@ import {
 import { createProgressThrottle } from '@/services/progressThrottle'
 import { downloadSpeedMeter } from '@/services/downloadSpeed'
 import { downloadEventTarget } from '@/services/downloadEventScope'
+import { toHostEntity } from '@/services/hostEntity'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
@@ -137,11 +138,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     pluginStore.publishDownloads(
       {
         id: task.id,
-        track: library.getTrack(task.trackKey)?.raw ?? {
-          ref: { providerId: 'download', kind: 'track', id: task.id },
-          title: task.title,
-          capabilities: []
-        },
+        track: hostTaskEntity(task),
         status: task.status === 'cancelled' ? 'cancelled' : task.status,
         receivedBytes: task.receivedBytes,
         totalBytes: task.totalBytes,
@@ -831,14 +828,29 @@ export const useDownloadStore = defineStore('downloads', () => {
     return { ...track, downloadedPath: task.filePath }
   }
 
+  /**
+   * 下载任务里的歌曲实体。
+   *
+   * 曲目不在本地表里时（旧任务、本地文件被移除）此前拼的是一个没有
+   * `metadata.artists`、`capabilities` 为空数组的外壳，插件按 SDK 契约读
+   * `entity.metadata.artists` 就是 undefined。这里补成完整的标准实体。
+   */
+  function hostTaskEntity(task: DownloadTask) {
+    const track = library.getTrack(task.trackKey)
+    if (track) return toHostEntity(track)
+    return {
+      ref: { providerId: 'download', kind: 'track', id: task.id, scope: 'provider' },
+      title: task.title,
+      playable: false,
+      capabilities: [],
+      metadata: { artists: [], album: { id: '', title: '' }, artworkUrl: '', qualities: [] }
+    }
+  }
+
   function asHostTasks() {
     return tasks.value.map((task) => ({
       id: task.id,
-      track: library.getTrack(task.trackKey)?.raw ?? {
-        ref: { providerId: 'download', kind: 'track', id: task.id },
-        title: task.title,
-        capabilities: []
-      },
+      track: hostTaskEntity(task),
       status: task.status,
       receivedBytes: task.receivedBytes,
       totalBytes: task.totalBytes,
@@ -874,7 +886,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     }
     return result.map((task) => ({
       id: task.id,
-      track: library.getTrack(task.trackKey)?.raw ?? { ref: { providerId: 'download', kind: 'track', id: task.id }, title: task.title, capabilities: [] },
+      track: hostTaskEntity(task),
       status: task.status,
       receivedBytes: task.receivedBytes,
       totalBytes: task.totalBytes

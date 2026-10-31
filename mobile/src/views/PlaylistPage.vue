@@ -342,6 +342,7 @@ import { useTrackBatchSelection } from '@/services/trackBatch'
 import { useRenderWindow } from '@/composables/useRenderWindow'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
+import { toHostEntity } from '@/services/hostEntity'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
 
@@ -1211,7 +1212,7 @@ async function openPlaylistMenu() {
                 description: localPlaylist.value.description || '',
                 trackKeys: [...localPlaylist.value.trackKeys]
               },
-              tracks: tracks.value.map((track) => track.raw)
+              tracks: tracks.value.map((track) => toHostEntity(track))
             })
             .catch((error) =>
               toast(error instanceof Error ? error.message : '插件操作失败', 'danger')

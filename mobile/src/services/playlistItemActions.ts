@@ -1,6 +1,7 @@
 import type { MenuContribution } from '@shiqianjiang/ceru-plugin-sdk/services'
 import type { PluginRecord } from '@/types/plugin'
 import type { Track } from '@/types/music'
+import { toHostEntity } from '@/services/hostEntity'
 
 export interface PlaylistItemCommandEntry {
   id: string
@@ -68,9 +69,14 @@ export function collectPlaylistItemCommands(
 /**
  * Host-local keys and filesystem paths stay outside the sandbox. Plugins get the
  * original provider entity they produced, plus stable public metadata.
+ *
+ * `raw` 里没有 `ref` 时（本地曲目、下载任务）按 `Track` 重建标准实体——
+ * 本地曲目的 `raw` 只是 `{ local, lrc, year, genre }`，直接把原样交出去，
+ * 插件拿到的是一个连歌曲引用都没有的对象。
  */
 export function playlistItemContext(track: Track): Record<string, any> {
-  const entity = JSON.parse(JSON.stringify(track.raw ?? {})) as Record<string, any>
+  const source = track.raw && track.raw.ref ? track.raw : toHostEntity(track)
+  const entity = JSON.parse(JSON.stringify(source)) as Record<string, any>
   for (const key of [
     'localUri',
     'localPath',
