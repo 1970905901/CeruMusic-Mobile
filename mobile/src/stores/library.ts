@@ -18,6 +18,7 @@ import { trackKeyFor } from '@/services/trackKey'
 import { toHostEntity } from '@/services/hostEntity'
 import { findTrackByRef } from '@/services/pluginRooms'
 import { paginate } from '@/services/plugin/paging'
+import { HISTORY_PAGE_SIZE, LOCAL_MUSIC_PAGE_SIZE, clampPageLimit } from '@/services/plugin/pageLimits'
 import { blobToDataUrl } from '@/services/imageUtils'
 import {
   decodeLyricText,
@@ -1156,7 +1157,8 @@ export const useLibraryStore = defineStore('library', () => {
     const page = paginate(
       localTracks.value.map((track) => toHostEntity(track)),
       cursor,
-      limit
+      // 桌面 `localMusic.list` 固定每页 100 条，移动端此前允许到 500。
+      clampPageLimit(limit, LOCAL_MUSIC_PAGE_SIZE, LOCAL_MUSIC_PAGE_SIZE)
     )
     if (!page) throw new Error('分页游标无效')
     return page
@@ -1261,7 +1263,9 @@ export const useLibraryStore = defineStore('library', () => {
     const page = paginate(
       history.value.map((item) => toHostEntity(item.track)),
       cursor,
-      limit
+      // 文档写明 `history.list` 每页最多 50 条（桌面固定切 50）。此前允许到 500，
+      // 插件一次能拿走全部历史，按 50 条写好的翻页逻辑反而以为后面还有。
+      clampPageLimit(limit, HISTORY_PAGE_SIZE, HISTORY_PAGE_SIZE)
     )
     if (!page) throw new Error('分页游标无效')
     return page
