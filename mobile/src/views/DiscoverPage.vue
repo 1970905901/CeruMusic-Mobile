@@ -256,6 +256,7 @@ import CoverImage from '@/components/CoverImage.vue'
 import PlaylistLoadError from '@/components/PlaylistLoadError.vue'
 import PluginSlot from '@/components/PluginSlot.vue'
 import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
+import { collectHomeSections } from '@/services/homeSections'
 import { usePluginStore } from '@/stores/plugins'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -297,21 +298,9 @@ const selectedSource = computed(() => {
   return pluginStore.sources.find((item) => item.id === source) ?? pluginStore.sources[0]
 })
 const selectedSourceName = computed(() => selectedSource.value?.name ?? '选择音源')
-const pluginSections = computed(() =>
-  pluginStore.plugins
-    .filter((plugin) => plugin.enabled)
-    .flatMap((plugin) =>
-      (plugin.manifest.contributes?.homeSections || [])
-        .filter((section) => !!section.view)
-        .map((section) => ({
-          pluginKey: plugin.key,
-          pluginName: plugin.manifest.name,
-          id: section.id,
-          title: section.title,
-          view: section.view!
-        }))
-    )
-)
+// 同一 `kind`（playlists / charts）只展示一个插件，与桌面 `homeSections` 同口径；
+// 此前把每个插件声明的栏目全列出来，首页会出现两份几乎一样的栏目。
+const pluginSections = computed(() => collectHomeSections(pluginStore.plugins))
 
 function openPluginSection(section: { pluginKey: string; view: string }) {
   router.push(
