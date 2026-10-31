@@ -107,6 +107,26 @@ export interface DeclaredPermission {
 }
 
 /**
+ * 按权限名取插件声明的 key。
+ *
+ * SDK 的 `OperationContext` 形状调用（`files.saveText`、`account.openLogin`）
+ * 只带 `operation`，**没有 `permissionKey`**——插件手里根本没有 key 可交。
+ * 这类方法的授权只能按 manifest 里声明的权限名去查 key；桌面端对子插件
+ * （`guests.*`）也是这么做的（`declarations().find(item => item.name === permission)`）。
+ *
+ * 返回 `null` 表示插件没为这个权限做过任何声明。
+ */
+export function declaredPermissionKey(
+  declarations: readonly DeclaredPermission[] | null | undefined,
+  name: string
+): string | null {
+  const list = Array.isArray(declarations) ? declarations : []
+  const match = list.find((item) => item && String(item.name ?? '') === name)
+  const key = String(match?.key ?? '').trim()
+  return key || null
+}
+
+/**
  * 校验「这个 key 对应插件声明过的这个权限名」。
  *
  * 返回 `null` 表示合法；否则返回给人看的错误原因。声明缺失、key 对不上、

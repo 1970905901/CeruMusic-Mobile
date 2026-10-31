@@ -14,7 +14,11 @@ import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDevices'
 import { assertOwnedRefs, type OwnershipContext } from '@/services/plugin/ownership'
-import { checkPermissionDeclaration, permissionLabel } from '@/services/plugin/permissions'
+import {
+  checkPermissionDeclaration,
+  declaredPermissionKey,
+  permissionLabel
+} from '@/services/plugin/permissions'
 import {
   MAX_STORAGE_VALUE_BYTES,
   checkStorageKey,
@@ -1162,7 +1166,10 @@ export class PluginRuntime {
           : { loggedIn: auth.authenticated, profile }
       }
       case 'account.openLogin': {
-        await this.requirePermission(params?.operation?.permissionKey, 'account.profile')
+        // SDK 的签名是 `openLogin(operation)`——`OperationContext` 里没有
+        // `permissionKey`，此前按 key 校验等于永远失败，插件点「去登录」只会
+        // 拿到一句「缺少权限标识」。按 manifest 声明的 `account.profile` 授权。
+        await this.requireDeclaredPermission('account.profile')
         const { useAuthStore } = await import('@/stores/auth')
         const auth = useAuthStore()
         if (!auth.authenticated) await auth.login()
@@ -1473,7 +1480,10 @@ export class PluginRuntime {
       }
       case 'files.saveText': {
         // 写文件同样要 files.write；此前只校验了 readText/readBase64/writeText。
-        await this.requirePermission(params?.operation?.permissionKey, 'files.write')
+        // 但 `saveText(request, operation)` 的第二个参数是 `OperationContext`，
+        // 没有 `permissionKey`——按 key 校验会让**每一次导出都以「缺少权限标识」
+        // 失败**（插件导出歌词、导出日志、保存文本全走这里）。
+        await this.requireDeclaredPermission('files.write')
         const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
         const name = safeExportName(params?.request?.suggestedName)
         const relativePath = `exports/${name}`
@@ -1759,6 +1769,24 @@ export class PluginRuntime {
         '此功能尚未获得授权，请在插件权限中允许“' + permissionLabel(name) + '”后重试'
       )
     }
+  }
+
+  /**
+   * 只带 `operation`（不带 `permissionKey`）的调用怎么授权。
+   *
+   * SDK 把 `files.saveText`、`account.openLogin` 这类方法的最后一个参数声明成
+   * `OperationContext`——里面没有 `permissionKey`，插件无从交出 key。读
+   * `operation.permissionKey` 只能拿到 undefined，`requirePermission` 于是
+   * **每次都以「缺少权限标识」失败**：插件导出歌词、导出日志、触发登录全部
+   * 走不通，而错误信息看起来像插件自己没声明权限。
+   *
+   * 这里改成按权限名在该插件的 manifest 声明里查 key，再走同一套
+   * 「已声明 + 已授权」校验。插件没声明这个权限时仍然如实报未声明。
+   */
+  private async requireDeclaredPermission(name: string): Promise<void> {
+    const key = declaredPermissionKey(this.manifest.permissions, name)
+    if (!key) throw new Error(`插件未声明权限：${permissionLabel(name)}`)
+    await this.requirePermission(key, name)
   }
 
   private capabilityList() {
