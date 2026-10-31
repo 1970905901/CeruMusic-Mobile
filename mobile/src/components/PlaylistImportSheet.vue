@@ -17,6 +17,26 @@
 
       <ion-content :fullscreen="true">
         <div class="body">
+          <template v-if="importMenus.length">
+            <div class="section-title">插件导入入口</div>
+            <div class="menu-list">
+              <button
+                v-for="entry in importMenus"
+                :key="entry.key"
+                type="button"
+                class="menu-row"
+                :disabled="importMenuBusy"
+                @click="openImportMenu(entry)"
+              >
+                <span class="menu-copy">
+                  <strong>{{ entry.title }}</strong>
+                  <small>{{ entry.description || entry.pluginName }}</small>
+                </span>
+                <ion-icon :icon="chevronForward" />
+              </button>
+            </div>
+          </template>
+
           <template v-if="importers.length">
             <div class="field">
               <ion-label position="stacked">导入来源</ion-label>
@@ -79,7 +99,7 @@
           </template>
 
           <EmptyState
-            v-else
+            v-if="!importers.length && !importMenus.length"
             title="没有可用导入器"
             description="安装并启用提供歌单导入功能的插件后，这里会出现导入入口。"
             :icon="cloudDownloadOutline"
@@ -98,6 +118,7 @@ import {
   IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonLabel,
   IonModal,
   IonSelect,
@@ -108,7 +129,7 @@ import {
   IonToolbar,
   toastController
 } from '@ionic/vue'
-import { cloudDownloadOutline } from 'ionicons/icons'
+import { chevronForward, cloudDownloadOutline } from 'ionicons/icons'
 import EmptyState from '@/components/EmptyState.vue'
 import {
   collectPlaylistImporters,
@@ -117,6 +138,8 @@ import {
 } from '@/services/playlistImporters'
 import { useLibraryStore } from '@/stores/library'
 import { usePluginStore } from '@/stores/plugins'
+import { useAuthStore } from '@/stores/auth'
+import { collectPlaylistImportMenus } from '@/services/playlistImportMenus'
 
 const props = defineProps<{
   open?: boolean
@@ -129,10 +152,38 @@ const emit = defineEmits<{
 const router = useRouter()
 const library = useLibraryStore()
 const pluginStore = usePluginStore()
+const auth = useAuthStore()
 const selectedKey = ref('')
 const value = ref('')
 const importing = ref(false)
 const error = ref('')
+
+/**
+ * `playlist.import` 菜单：插件在「选择导入方式」里加的入口。
+ *
+ * 这类菜单背后的 action 由插件自己执行（通常开它自己的面板），宿主只需要
+ * 把入口列出来并调用命令——桌面 `openPluginImport` 同口径。
+ */
+const importMenus = computed(() =>
+  collectPlaylistImportMenus(pluginStore.enabledPlugins, {
+    runtimeInfo: pluginStore.runtimeInfo,
+    authenticated: auth.authenticated
+  })
+)
+
+async function openImportMenu(entry: { pluginKey: string; action: string; title: string }) {
+  if (importMenuBusy.value) return
+  importMenuBusy.value = true
+  try {
+    await pluginStore.invokeAction(entry.pluginKey, entry.action, {})
+    emit('close')
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    importMenuBusy.value = false
+  }
+}
+const importMenuBusy = ref(false)
 
 const importers = computed(() =>
   collectPlaylistImporters(pluginStore.enabledPlugins, {
@@ -222,6 +273,50 @@ async function importPlaylist() {
 }
 .body {
   padding: 16px 14px calc(24px + env(safe-area-inset-bottom));
+}
+/* 插件的 playlist.import 入口：与下方的导入器表单并列，先列入口再填表单。 */
+.section-title {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ceru-text-secondary);
+}
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 14px;
+  background: var(--ceru-bg-elevated);
+  color: var(--ceru-text);
+  text-align: left;
+}
+.menu-row:disabled {
+  opacity: 0.6;
+}
+.menu-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.menu-copy strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.menu-copy small {
+  font-size: 11px;
+  color: var(--ceru-text-secondary);
 }
 .field {
   margin-bottom: 14px;

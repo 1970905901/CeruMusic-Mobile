@@ -488,6 +488,7 @@ import PlaylistImportSheet from '@/components/PlaylistImportSheet.vue'
 import SharedPlaylistImportSheet from '@/components/SharedPlaylistImportSheet.vue'
 import SharePlaylistSheet from '@/components/SharePlaylistSheet.vue'
 import { collectPlaylistImporters } from '@/services/playlistImporters'
+import { collectPlaylistImportMenus } from '@/services/playlistImportMenus'
 import { parsePlaylistFile, playlistFileTracks } from '@/services/playlistFiles'
 import { clipboardPlaylistName, parsePlaylistClipboard } from '@/services/playlistClipboard'
 import { buildQueuePlaylistDraft } from '@/services/queuePlaylistDraft'
@@ -939,10 +940,17 @@ const sharedImportOpen = ref(false)
 /** 整页标签编辑器：本地歌曲的封面、信息与歌词都在这里改。 */
 const tagEditorOpen = ref(false)
 const tagEditorTrack = ref<Track | null>(null)
-const showPlaylistImport = computed(() =>
-  collectPlaylistImporters(pluginStore.enabledPlugins, {
-    runtimeInfo: pluginStore.runtimeInfo
-  }).length > 0
+const showPlaylistImport = computed(
+  () =>
+    collectPlaylistImporters(pluginStore.enabledPlugins, {
+      runtimeInfo: pluginStore.runtimeInfo
+    }).length > 0 ||
+    // 只有 `playlist.import` 菜单、没有注册导入器的插件同样要能打开面板——
+    // 面板里会列出它的入口（桌面版把两者放在同一个「选择导入方式」里）。
+    collectPlaylistImportMenus(pluginStore.enabledPlugins, {
+      runtimeInfo: pluginStore.runtimeInfo,
+      authenticated: authStore.authenticated
+    }).length > 0
 )
 
 function playlistCover(id: string): string | undefined {
