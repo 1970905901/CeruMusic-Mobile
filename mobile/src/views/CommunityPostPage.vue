@@ -655,6 +655,9 @@ async function playAttachment() {
     }
   }
   try {
+    // `player.play` 的契约是「这首歌必须已在队列中」。帖子附件里的歌本来不在
+    // 队列，先单独放进去再播——桌面端点附件走的是 `addToPlaylistAndPlay`。
+    await player.replaceHostQueue([entity])
     await player.hostPlay(entity)
     router.push('/player')
   } catch (cause) {

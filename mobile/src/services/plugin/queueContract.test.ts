@@ -139,6 +139,22 @@ describe('queue state returned to plugins', () => {
     expect(state.muted).toBe(true)
   })
 
+  it('refuses to play a track that is not in the queue', async () => {
+    // 桌面 `services.player.play` 对队列外的歌直接抛错。此前移动端把它塞到
+    // 队首就播，插件点一首不在队列里的歌会顶掉用户当前的播放上下文。
+    const { usePlayerStore } = await import('@/stores/player')
+    const player = usePlayerStore()
+    player.appendToQueue(makeTrack('a'))
+    const entity = {
+      ref: { providerId: 'local', kind: 'track', id: 'zzz', scope: 'provider' },
+      title: 'Guest',
+      capabilities: [],
+      metadata: { artists: ['Artist'] }
+    }
+    await expect(player.hostPlay(entity)).rejects.toThrow('歌曲不在播放队列中')
+    expect(player.currentTrack?.key).toBe('a')
+  })
+
   it('applies the muted flag the SDK sends through setMode', async () => {
     // SDK 的 `setMode` 带 `muted`；此前移动端直接忽略，插件「静音播放」
     // 之后界面仍显示有声，下一次播放还会出声。

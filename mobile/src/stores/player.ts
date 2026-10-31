@@ -1193,6 +1193,12 @@ export const usePlayerStore = defineStore('player', () => {
     const source = entity.ref?.providerId
     const provider = source ? pluginStore.selectedProvider(source) : undefined
     const track = rawEntityToTrack(entity, provider?.pluginKey)
+    // 契约是「这首歌必须已在队列中」（桌面 `services.player.play` 找不到就
+    // 抛「歌曲不在播放队列中，请先添加歌曲」）。此前移动端会把任何歌塞到
+    // 队首并开始播放，插件点一首不在队列里的歌就把用户的播放上下文顶掉了。
+    if (!queue.value.some((item) => item.key === track.key)) {
+      throw new Error('歌曲不在播放队列中，请先添加歌曲')
+    }
     await playTrack(track)
   }
 
