@@ -10,7 +10,7 @@ export interface PluginScheduledTaskRequest {
   intervalMs?: unknown
 }
 
-const TASK_ID_PATTERN = /^[a-zA-Z0-9._-]{1,80}$/
+export const TASK_ID_PATTERN = /^[a-zA-Z0-9._-]{1,80}$/
 export const MIN_TASK_INTERVAL_MS = 60_000
 export const MAX_TASK_INTERVAL_MS = 86_400_000
 

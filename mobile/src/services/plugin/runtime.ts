@@ -5,7 +5,11 @@ import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import type { PluginLogEntry, PluginRecord, PluginRuntimeInfo } from '@/types/plugin'
 import { kvDelete, kvGet, kvSet, toPlain } from '@/services/db'
 import { useSettingsStore } from '@/stores/settings'
-import { validateScheduledTask, type PluginScheduledTask } from '@/services/pluginTasks'
+import {
+  TASK_ID_PATTERN,
+  validateScheduledTask,
+  type PluginScheduledTask
+} from '@/services/pluginTasks'
 import { generatePluginAI } from '@/services/pluginAI'
 import { findTrackByRef, pluginRoomState } from '@/services/pluginRooms'
 import { pluginAudioDevices, selectPluginAudioDevice } from '@/services/pluginDevices'
@@ -1590,8 +1594,15 @@ export class PluginRuntime {
         return { id: task.id }
       }
       case 'tasks.cancel': {
+        // 与桌面 `handleTaskService` 同口径：排程与取消都要 `background.run`。
+        // 此前 cancel **一项授权都不校验**——没申请后台权限的插件也能取消任务，
+        // 只是它自己的任务正好在表里而已，换个 id 就能停掉别人的。
+        await this.requirePermission(params?.call?.permissionKey, 'background.run')
         const id = String(params?.id ?? '')
+        if (!TASK_ID_PATTERN.test(id)) throw new Error('任务 ID 无效')
         const timer = this.scheduledTasks.get(id)
+        // 只取消**本插件自己**排的任务：`scheduledTasks` 属于当前运行时，
+        // 但 id 校验仍按同一条规则走，避免插件把别的插件写进日志的 id 拿来试。
         if (timer) clearTimeout(timer.timer)
         this.scheduledTasks.delete(id)
         return null
