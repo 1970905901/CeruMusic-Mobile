@@ -736,6 +736,12 @@ export class PluginRuntime {
   private async dispatchRpc(method: string, params: any): Promise<any> {
     switch (method) {
       case 'http.request': {
+        // 宿主侧同样要校验 `network.request`（桌面 `PluginHost` 的
+        // `if (method === 'http.request') await this.authorize(data.permissionKey,
+        // 'network.request')`）。此前这项检查只在 worker 的 `httpRequest` 里做过：
+        // 插件代码与宿主 shim 跑在同一个 Worker 里，直接 `postMessage` 一条
+        // `rpc / http.request` 就能绕过它，在没有网络授权的情况下任意联网。
+        await this.requirePermission(params?.permissionKey, 'network.request')
         // 局域网/本机地址要额外声明并获批 network.private（桌面 requestNetwork 同口径）。
         if (isPrivateUrl(String(params?.url ?? ''))) {
           await this.requirePrivateNetwork(params?.permissionKey)
