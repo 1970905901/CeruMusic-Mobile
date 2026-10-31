@@ -20,6 +20,7 @@ import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
+import { toastColorFor } from '@/services/plugin/toastLevel'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
@@ -858,7 +859,9 @@ export class PluginRuntime {
       case 'ui.toast': {
         // 插件传超长文案会把 toast 撑成一整块遮住播放页；限长后再显示。
         const text = String(params?.message ?? '').trim()
-        await showToast(text.slice(0, 200) || '插件通知')
+        // `level` 此前被整个丢掉：插件报错时用户看到的是和普通提示一模一样
+        // 的中性色，「出错了」被读成「搞定了」。桌面按同一份白名单着色。
+        await showToast(text.slice(0, 200) || '插件通知', toastColorFor(params?.level))
         return null
       }
       case 'ui.notify': {
