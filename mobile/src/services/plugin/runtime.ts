@@ -19,6 +19,7 @@ import {
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
+import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
 import {
   parseSocketPayload,
@@ -870,6 +871,16 @@ export class PluginRuntime {
         if (page === 'search') {
           await router.push({ path: '/tabs/search', query: { q: params.query ?? '' } })
           return null
+        }
+        // `sectionId` 指向插件自己声明的歌单栏目（桌面 `playlistSections`）。
+        // 此前移动端虽然校验了 sectionId 合法，打开时却丢掉了它——用户被带到
+        // 歌单列表的默认视图，而不是插件那个栏目。
+        if (page === 'playlist' && params.sectionId) {
+          const path = playlistSectionPath(this.record.key, this.manifest, params.sectionId)
+          if (path) {
+            await router.push(path)
+            return null
+          }
         }
         if (page === 'playlist') {
           const ref = params.ref
