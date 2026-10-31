@@ -21,6 +21,7 @@ import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
 import { toastColorFor } from '@/services/plugin/toastLevel'
+import { localTagsPayload } from '@/services/plugin/localTagsPayload'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
@@ -1546,7 +1547,11 @@ export class PluginRuntime {
         const { useLibraryStore } = await import('@/stores/library')
         // 契约是 `Promise<JsonObject>`：取不到时返回空对象，
         // 而不是 null（插件直接解构 null 会抛错）。桌面同口径。
-        return useLibraryStore().localTags(params?.track) ?? {}
+        //
+        // 交出去前走白名单：内部记录里带 `path` / `relativePath`（设备上的真实
+        // 路径），插件拿到就能绕过 `files.*` 句柄直接读写文件，而 SDK 对本地音乐
+        // 只承诺「读取标签」。
+        return localTagsPayload(useLibraryStore().localTags(params?.track))
       }
       case 'localMusic.writeTags': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.write')
