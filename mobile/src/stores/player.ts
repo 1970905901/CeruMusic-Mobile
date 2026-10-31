@@ -19,7 +19,10 @@ import {
   setAudioVisualizerEnabled
 } from '@/services/audioEffects'
 import { cancelVolumeTransition, transitionVolume } from '@/services/volumeTransition'
-import { isListenTogetherPlaybackActive } from '@/services/playbackContext'
+import {
+  isListenTogetherPlaybackActive,
+  isListenTogetherQueueEditable
+} from '@/services/playbackContext'
 import { SYSTEM_OUTPUT_ID, applyAudioOutput } from '@/services/audioOutput'
 import { backgroundSupportsBeat } from '@/services/backgroundRenderers'
 import { timeDomainRms } from '@/services/crossfadeCurve'
@@ -1202,7 +1205,20 @@ export const usePlayerStore = defineStore('player', () => {
     await playTrack(track)
   }
 
+  /**
+   * 一起听房间内的共享队列由服务端广播、房主/管理员改动。
+   *
+   * 桌面端在 `handlePluginPlayback` 的整段 `services.queue.*` 前面挡了一句
+   * 「请先退出一起听，再修改本地播放队列」——房间里改本地队列只会被下一次
+   * `queue:update` 覆盖回去，插件以为改成功了。移动端此前只在界面上禁了
+   * 拖拽与移除，插件走 RPC 仍能随意替换/重排/清空用户的共享队列。
+   */
+  function assertPluginQueueEditable(): void {
+    if (!isListenTogetherQueueEditable()) throw new Error('请先退出一起听，再修改本地播放队列')
+  }
+
   async function appendHostTracks(entities: any[]): Promise<void> {
+    assertPluginQueueEditable()
     const next = [...queue.value]
     for (const entity of entities) {
       const source = entity.ref?.providerId
@@ -1219,6 +1235,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function replaceHostQueue(entities: any[]): Promise<void> {
+    assertPluginQueueEditable()
     queue.value = entities.map((entity) => {
       const source = entity.ref?.providerId
       const provider = source ? pluginStore.selectedProvider(source) : undefined
@@ -1238,6 +1255,7 @@ export const usePlayerStore = defineStore('player', () => {
    * （与桌面 `services.queue.remove` 找不到时抛错同一口径）。
    */
   function removeHostTracksRefs(refs: unknown[]): void {
+    assertPluginQueueEditable()
     if (!refs.length || !queue.value.length) return
     const keys = resolveQueueRefs(refs, queue.value)
     removeHostTracks(keys)
@@ -1251,6 +1269,7 @@ export const usePlayerStore = defineStore('player', () => {
    * 只是保持原样（那是给拖动排序的静默兜底），插件调用不该拿到「成功」的假象。
    */
   function reorderHostTracksRefs(refs: unknown[]): void {
+    assertPluginQueueEditable()
     const keys = resolveQueueRefs(refs, queue.value)
     if (keys.length !== queue.value.length) {
       throw new Error('排序必须包含当前队列的全部歌曲')

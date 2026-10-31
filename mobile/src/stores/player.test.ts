@@ -17,6 +17,7 @@ vi.mock('@/services/db', () => ({
 }))
 
 import { usePlayerStore } from './player'
+import { setListenTogetherQueueEditable } from '@/services/playbackContext'
 import type { Track } from '@/types/music'
 
 /**
@@ -90,6 +91,28 @@ describe('player queue append', () => {
     expect(() =>
       player.reorderHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'b' }])
     ).toThrow('排序必须包含当前队列的全部歌曲')
+  })
+
+  it('refuses plugin queue edits inside a listen-together room', async () => {
+    // 桌面 `handlePluginPlayback` 对整段 `services.queue.*` 都要求先退出一起听：
+    // 房间里的队列由服务端广播，本地改动会被下一次 `queue:update` 覆盖回去。
+    // 移动端此前只在界面禁了拖拽，插件走 RPC 仍能替换/重排用户的共享队列。
+    setListenTogetherQueueEditable(false)
+    const player = usePlayerStore()
+    player.appendToQueue(makeLocalTrack('a'))
+    // `appendHostTracks` 是 async：RPC 宿主 await 它，所以以 reject 的形式报错。
+    await expect(
+      player.appendHostTracks([{ ref: { providerId: 'local', kind: 'track', id: 'b' }, title: 'b' }])
+    ).rejects.toThrow('请先退出一起听')
+    expect(() =>
+      player.removeHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'a' }])
+    ).toThrow('请先退出一起听')
+    expect(() =>
+      player.reorderHostTracksRefs([{ providerId: 'local', kind: 'track', id: 'a' }])
+    ).toThrow('请先退出一起听')
+    // 队列本身没被动过。
+    expect(player.queue.map((track) => track.key)).toEqual(['a'])
+    setListenTogetherQueueEditable(true)
   })
 
   it('points at the only track when the queue was empty', () => {

@@ -7,7 +7,10 @@ import { usePluginStore } from '@/stores/plugins'
 import { useSettingsStore } from '@/stores/settings'
 import { CERU_API_RESOURCE } from '@/services/authClient'
 import { getAccessToken } from '@/services/ceruApi'
-import { setListenTogetherPlaybackActive } from '@/services/playbackContext'
+import {
+  setListenTogetherPlaybackActive,
+  setListenTogetherQueueEditable
+} from '@/services/playbackContext'
 import {
   isMentionedSelf,
   notifyRoomChat,
@@ -94,6 +97,25 @@ export function reconnectExhaustedMessage(): string {
   return '与一起听服务器的连接已断开，请检查网络后重新进入房间'
 }
 
+/**
+ * 房间里谁可以改共享播放队列：私密房所有人都能，群组房只有房主/管理员。
+ *
+ * 抽成纯函数是因为 `SERVER.STATE` 是**一次快照**：先写 `room` 再写 `members`，
+ * 而 store 里的 `canControl` 计算属性读的是已经写好的 `members`，中途查它
+ * 拿到的是上一帧的结果。插件队列授权要用这一帧的值。
+ */
+export function roomQueueEditable(
+  room: RoomMeta | null,
+  members: readonly RoomMember[],
+  userId: string
+): boolean {
+  if (!room) return false
+  if (room.mode === 'intimate') return true
+  const self = members.find((item) => item.userId === userId)
+  const role = self?.role || (room.ownerId === userId ? 'owner' : 'member')
+  return role === 'owner' || role === 'admin'
+}
+
 export const useListenTogetherStore = defineStore('listenTogether', () => {
   const auth = useAuthStore()
   const player = usePlayerStore()
@@ -154,6 +176,7 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
 
   function resetRoomState() {
     setListenTogetherPlaybackActive(false)
+    setListenTogetherQueueEditable(true)
     resetListenTogetherNotifications()
     room.value = null
     members.value = []
@@ -302,6 +325,9 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
       everJoined = true
       room.value = state.meta
       setListenTogetherPlaybackActive(!!state.meta)
+      // 用**这一帧**的房间与成员算控制权：`canControl` 依赖 `members`，
+      // 而 `members` 还在下面几行才赋值，直接读计算属性拿到的是上一次的值。
+      setListenTogetherQueueEditable(roomQueueEditable(state.meta, state.members, userId.value))
       members.value = state.members || []
       current.value = state.current || emptySnapshot()
       queue.value = state.queue || []
