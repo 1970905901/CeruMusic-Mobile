@@ -18,6 +18,7 @@ import {
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
+import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
@@ -1843,8 +1844,11 @@ export class PluginRuntime {
     return new Promise((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
-      input.multiple = request?.multiple !== false
-      input.accept = (request?.extensions ?? []).map((ext: string) => `.${ext}`).join(',')
+      // 桌面 `files.pick` 只在 `request.multiple` 为真时允许多选（见
+      // `services/plugin/filePickOptions`）。
+      const options = filePickerOptions(request)
+      input.multiple = options.multiple
+      input.accept = options.accept
       input.style.display = 'none'
       document.body.appendChild(input)
       input.onchange = () => {
