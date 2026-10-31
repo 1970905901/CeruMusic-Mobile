@@ -606,13 +606,26 @@ export const useDownloadStore = defineStore('downloads', () => {
     pumpQueue()
   }
 
-  async function createDownload(track: Track, quality?: string): Promise<DownloadTask> {
-    const directoryMode = settings.settings.downloadDirectoryMode
+  /**
+   * 新建下载任务。
+   *
+   * `safTreeUri` 让插件的 `downloads.create({ directory })` 落到它自己选中的
+   * SAF 文件夹上（桌面 `internalDirectoryPath` 的移动端等价）；不传时沿用设置里的
+   * 下载位置。
+   */
+  async function createDownload(
+    track: Track,
+    quality?: string,
+    safTreeUri?: string
+  ): Promise<DownloadTask> {
+    const directoryMode = safTreeUri ? 'saf' : settings.settings.downloadDirectoryMode
     if (directoryMode === 'saf') {
       if (Capacitor.getPlatform() !== 'android' || !Capacitor.isNativePlatform()) {
         throw new Error('SAF 下载目录仅在 Android 原生环境可用')
       }
-      if (!settings.settings.safDownloadUri) throw new Error('请先选择 Android SAF 下载文件夹')
+      if (!safTreeUri && !settings.settings.safDownloadUri) {
+        throw new Error('请先选择 Android SAF 下载文件夹')
+      }
     }
     library.upsertTrack(track)
     const task: DownloadTask = {
@@ -624,7 +637,9 @@ export const useDownloadStore = defineStore('downloads', () => {
       quality: quality || settings.settings.downloadQuality || settings.settings.preferredQuality || undefined,
       status: 'queued',
       directory: directoryMode,
-      ...(directoryMode === 'saf' ? { safUri: settings.settings.safDownloadUri } : {}),
+      ...(directoryMode === 'saf'
+        ? { safUri: safTreeUri || settings.settings.safDownloadUri }
+        : {}),
       receivedBytes: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -864,7 +879,12 @@ export const useDownloadStore = defineStore('downloads', () => {
    * 与桌面一致：任何一首找不到都要报错——静默跳过会让插件以为整批都进了队列，
    * 用户却发现少了几首，而且没有任何原因可查。
    */
-  async function createHostDownloads(request: any, pluginKey?: string) {
+  async function createHostDownloads(
+    request: any,
+    pluginKey?: string,
+    /** 插件用 `files.pickDirectory` 选中的目录句柄解析出的 SAF 树 URI。 */
+    safTreeUri?: string
+  ) {
     const result: DownloadTask[] = []
     for (const reference of request?.tracks ?? []) {
       // 候选 key 由 `playlistKeyCandidates` 统一生成：公共资源 `providerId:id`，
@@ -876,7 +896,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       if (!track) {
         throw new Error(`无法解析下载歌曲：${String(reference?.id ?? '')}`)
       }
-      const task = await createDownload(track, request?.quality)
+      const task = await createDownload(track, request?.quality, safTreeUri)
       // 记下发起者：之后每次进度/状态变化只推给这个插件。
       if (pluginKey) {
         task.pluginKey = pluginKey

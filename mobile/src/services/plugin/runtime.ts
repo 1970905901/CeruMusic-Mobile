@@ -17,6 +17,8 @@ import {
   storageValueBytes
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
+import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
+import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
 import {
   parseSocketPayload,
@@ -782,27 +784,40 @@ export class PluginRuntime {
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
         // 返回值必须是 SDK 的 LibraryPlaylist：`ref: { id, location }` 与 `writable`。
-        // 此前只给 `{ id, name }`，插件按类型解构 `ref.id` 会拿到 undefined。
-        let picked: {
-          ref: { id: string; location: 'local' }
-          name: string
-          description?: string
-          trackCount?: number
-          writable: boolean
-        } | null = null
+        // 此前只给 `{ id, name }`，插件按类型解构 `ref.id` 会拿到 undefined；
+        // 请求里的 `location` 也被忽略，插件要选云歌单时只能看到本机的。
+        const location = params?.location === 'cloud' ? 'cloud' : 'local'
+        const local = library.playlists.map((playlist) => ({
+          ref: { id: playlist.id, location: 'local' as const },
+          name: playlist.name,
+          description: playlist.description,
+          trackCount: playlist.trackKeys.length,
+          writable: true
+        }))
+        const cloud =
+          location === 'cloud'
+            ? await library.asHostPlaylists(undefined, 500, 'cloud').then((page) => page.items)
+            : []
+        const candidates = candidatePlaylists({
+          location,
+          writable: params?.writable === true,
+          local,
+          cloud
+        })
+        let picked: (typeof candidates)[number] | null = null
+        let createNew = false
         const sheet = await actionSheetController.create({
           header: '选择歌单',
           buttons: [
-            ...library.playlists.map((playlist) => ({
-              text: playlist.name,
+            // 桌面 `choosePlaylist` 的第一项就是「新建本地歌单」，插件导入时
+            // 用户常常还没有目标歌单。
+            ...(location === 'local'
+              ? [{ text: '新建本地歌单', handler: () => { createNew = true } }]
+              : []),
+            ...candidates.map((item) => ({
+              text: item.name,
               handler: () => {
-                picked = {
-                  ref: { id: playlist.id, location: 'local' as const },
-                  name: playlist.name,
-                  description: playlist.description,
-                  trackCount: playlist.trackKeys.length,
-                  writable: true
-                }
+                picked = item
               }
             })),
             { text: '取消', role: 'cancel' as const }
@@ -810,7 +825,18 @@ export class PluginRuntime {
         })
         await sheet.present()
         await sheet.onDidDismiss()
-        return picked
+        if (createNew) {
+          const playlist = library.createPlaylist('新建歌单')
+          return resolvePickedPlaylist({
+            createNew: {
+              ref: { id: playlist.id, location: 'local' as const },
+              name: playlist.name,
+              trackCount: 0,
+              writable: true
+            }
+          })
+        }
+        return resolvePickedPlaylist({ selected: picked })
       }
       case 'ui.toast': {
         // 插件传超长文案会把 toast 撑成一整块遮住播放页；限长后再显示。
@@ -1326,9 +1352,14 @@ export class PluginRuntime {
           throw new Error('一次只能创建 1 到 100 个下载任务')
         }
         assertOwnedRefs(tracks, 'track', this.ownershipContext())
+        // `request.directory` 是插件用 `files.pickDirectory` 拿到的句柄（桌面端
+        // 的 `internalDirectoryPath`）。移动端此前**忽略**它：插件指定下载到
+        // 用户刚授权的那张 SD 卡文件夹，歌却落在应用私有目录里，用户在文件管理
+        // 器里哪儿也找不到。
+        const safTreeUri = resolveDownloadDirectory(request.directory, this.pickedDirectories)
         const { useDownloadStore } = await import('@/stores/downloads')
         // 任务记下发起它的插件：`downloads.changed` 只推给它自己。
-        return useDownloadStore().createHostDownloads(request, this.record.key)
+        return useDownloadStore().createHostDownloads(request, this.record.key, safTreeUri)
       }
       // 与桌面同口径：先确认每个 id 都真实存在，再执行操作。
       // 此前直接把插件给的 id 数组交给 store，不存在的 id 会被静默跳过，
