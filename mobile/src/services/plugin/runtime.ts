@@ -22,6 +22,7 @@ import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
 import { toastColorFor } from '@/services/plugin/toastLevel'
 import { localTagsPayload } from '@/services/plugin/localTagsPayload'
+import { assertLocalTagsWritten } from '@/services/plugin/localTagsWriteResult'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
@@ -1556,7 +1557,13 @@ export class PluginRuntime {
       case 'localMusic.writeTags': {
         await this.requirePermission(params?.call?.permissionKey, 'localMusic.write')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().writeLocalTags(params?.track, params?.tags)
+        // 契约是 `Promise<void>`：store 返回的是内部状态
+        // `{ success, fileTagWritten, fileTagWarning }`，原样交出去会让插件以为
+        // 返回值另有含义。写入失败时 store 不抛错而是回 `fileTagWarning`
+        //（音频文件标签写失败、应用内信息已保存），插件必须能感知到——
+        // 所以这里把警告转成异常，而不是静默吞掉。
+        assertLocalTagsWritten(await useLibraryStore().writeLocalTags(params?.track, params?.tags))
+        return null
       }
       case 'settings.get': {
         await this.requirePermission(params?.call?.permissionKey, 'settings.read')
