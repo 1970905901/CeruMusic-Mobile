@@ -343,6 +343,7 @@ import { useRenderWindow } from '@/composables/useRenderWindow'
 import { createRequestGuard } from '@/services/requestGuard'
 import { dedupeByKey } from '@/services/listMerge'
 import { toHostEntity } from '@/services/hostEntity'
+import { collectPlaylistSections } from '@/services/playlistSections'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
 
@@ -627,17 +628,8 @@ const playlistMenus = computed(() =>
   )
 )
 
-const playlistSections = computed(() =>
-  pluginStore.enabledPlugins.flatMap((plugin) =>
-    (plugin.manifest.contributes?.playlistSections || []).map((section) => ({
-      key: plugin.key + ':' + section.id,
-      pluginKey: plugin.key,
-      pluginName: plugin.manifest.name,
-      title: section.title,
-      view: section.view
-    }))
-  )
-)
+// 与桌面 `playlistSections` 同口径：只接受原生 Surface，并按 order 排序。
+const playlistSections = computed(() => collectPlaylistSections(pluginStore.plugins))
 
 function openPlaylistAction(track: Track) {
   playlistActionTrack.value = track
