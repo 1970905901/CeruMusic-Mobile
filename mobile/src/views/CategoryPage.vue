@@ -16,6 +16,36 @@
         <p class="head-sub">{{ sourceName }} · 公开歌单分类</p>
       </div>
 
+      <!-- 桌面 `getPlaylistTags` 的「热门」标签条 + 「更多分类」分组面板 -->
+      <div v-if="tagCatalog.hot.length || tagCatalog.groups.length" class="tag-bar">
+        <button
+          type="button"
+          class="tag-chip"
+          :class="{ active: !categoryId }"
+          @click="openTag({ id: '', name: '热门' })"
+        >
+          热门
+        </button>
+        <button
+          v-for="tag in tagCatalog.hot"
+          :key="tag.id"
+          type="button"
+          class="tag-chip"
+          :class="{ active: tag.id === categoryId }"
+          @click="openTag(tag)"
+        >
+          {{ tag.name }}
+        </button>
+        <button
+          v-if="tagCatalog.groups.length"
+          type="button"
+          class="tag-chip more"
+          @click="openMoreCategories"
+        >
+          更多分类
+        </button>
+      </div>
+
       <div v-if="loading && !items.length" class="loading-row">
         <ion-spinner name="crescent" />
         <span>正在加载歌单…</span>
@@ -79,7 +109,8 @@ import {
   IonPage,
   IonSpinner,
   IonTitle,
-  IonToolbar
+  IonToolbar,
+  actionSheetController
 } from '@ionic/vue'
 import { albumsOutline, chevronForward } from 'ionicons/icons'
 import { useRoute, useRouter } from 'vue-router'
@@ -91,6 +122,7 @@ import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import EmptyState from '@/components/EmptyState.vue'
 import { usePluginStore } from '@/stores/plugins'
 import { createRequestGuard } from '@/services/requestGuard'
+import { collectPlaylistTags, type PlaylistTag } from '@/services/playlistTags'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +146,55 @@ const listRequests = createRequestGuard()
 const sourceName = computed(
   () => pluginStore.sources.find((item) => item.id === source)?.name || '插件音源'
 )
+
+/**
+ * 分类标签（热门条 + 分组）。
+ *
+ * 桌面版在分类页顶部用 `playlists.categories` 的 `extensions.group` / `hot`
+ * 渲染「热门」标签条与「更多分类」面板；移动端此前只把最深一层标签当成卡片
+ * 打开，既没有热门入口也看不出分组。这里复用同一个 action。
+ */
+const tagCatalog = ref(collectPlaylistTags([]))
+
+async function loadTags(): Promise<void> {
+  try {
+    const page = await pluginStore.playlistCategories(source)
+    tagCatalog.value = collectPlaylistTags(page.items)
+  } catch {
+    // 标签只是导航辅助：拉不到时页面照常按路由参数展示内容。
+    tagCatalog.value = collectPlaylistTags([])
+  }
+}
+
+function openTag(tag: PlaylistTag): void {
+  void router.push({
+    path: `/category/remote-${encodeURIComponent(source)}-${encodeURIComponent(tag.id || 'hot')}`,
+    query: {
+      source,
+      providerId,
+      categoryId: tag.id,
+      title: tag.name || '热门歌单'
+    }
+  })
+}
+
+async function openMoreCategories(): Promise<void> {
+  const groups = tagCatalog.value.groups
+  if (!groups.length) return
+  const sheet = await actionSheetController.create({
+    header: '更多分类',
+    buttons: [
+      ...groups.flatMap((group) =>
+        group.list.map((tag) => ({
+          text: group.list.length > 1 ? `${group.name} · ${tag.name}` : tag.name,
+          handler: () => openTag(tag)
+        }))
+      ),
+      { text: '取消', role: 'cancel' as const }
+    ]
+  })
+  await sheet.present()
+}
 
 function keyOf(item: any): string {
   return item.ref?.providerId + ':' + item.ref?.id
@@ -192,7 +273,10 @@ function openPlaylist(item: any) {
   })
 }
 
-onMounted(() => void load(true))
+onMounted(() => {
+  void load(true)
+  void loadTags()
+})
 
 onBeforeUnmount(() => {
   listRequests.dispose()
@@ -264,5 +348,35 @@ onBeforeUnmount(() => {
 }
 .bottom-space {
   height: 140px;
+}
+/* 「热门」标签条：横向滚动，与桌面版 category-bar 的 tag-chip 同一套观感。 */
+.tag-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tag-bar::-webkit-scrollbar {
+  display: none;
+}
+.tag-chip {
+  flex: 0 0 auto;
+  padding: 8px 13px;
+  border: 1px solid var(--ceru-border);
+  border-radius: 999px;
+  background: var(--ceru-bg-elevated);
+  color: var(--ceru-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tag-chip.active {
+  border-color: var(--ceru-brand);
+  color: var(--ceru-brand);
+  background: color-mix(in srgb, var(--ceru-brand) 12%, transparent);
+}
+.tag-chip.more {
+  border-style: dashed;
+  color: var(--ceru-text-secondary);
 }
 </style>
