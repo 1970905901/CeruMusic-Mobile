@@ -205,6 +205,17 @@ export function assertQueueSize(value: unknown): void {
  * 于是缺 `ref` / 缺 `title` 的条目会被当作合法歌曲写进队列：`rawEntityToTrack`
  * 拼出一个空引用，播放时找不到音源，队列里还多出一条没有名字的行。
  */
+/**
+ * `ui.progress.create` 对插件暴露的结果。
+ *
+ * SDK 与桌面宿主都回 `{ id }`；移动端此前把内部字符串 id 原样返回，插件
+ * `const { id } = await create(...)` 拿到 undefined，之后的 update / close
+ * 全被当成「没有 id」跳过。
+ */
+export function progressCardHandle(id: string): { id: string } {
+  return { id: String(id) }
+}
+
 export function assertMediaEntities(value: unknown, label: string): any[] {
   if (!Array.isArray(value)) throw new Error(`${label}需要传入歌曲数组`)
   assertQueueSize(value)
@@ -922,7 +933,11 @@ export class PluginRuntime {
       }
       case 'ui.progress.create': {
         const { createPluginProgress } = await import('@/services/pluginProgress')
-        return createPluginProgress(params, this.record.key)
+        // 契约是 `Promise<{ id }>`（桌面 `ui.progress.create` 同样回对象）。
+        // 此前返回裸字符串：插件 `const { id } = await create(...)` 拿到 undefined，
+        // 随后的 update / close 全被宿主当作「没有 id」静默跳过——卡片永远挂在
+        // 界面上，插件也永远等不到它关闭。
+        return progressCardHandle(createPluginProgress(params, this.record.key))
       }
       case 'ui.progress.update': {
         const { updatePluginProgress } = await import('@/services/pluginProgress')
