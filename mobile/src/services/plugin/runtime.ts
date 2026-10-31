@@ -1109,8 +1109,12 @@ export class PluginRuntime {
       // 导入的条目必须是标准歌曲引用（否则会把插件私有结构塞进用户歌单）。
       case 'library.playlists.list': {
         await this.requirePermission(params?.call?.permissionKey, 'library.read')
+        // `location` 是 SDK 契约的一部分（本地 / 云端两份列表）。此前忽略它，
+        // 插件读云端歌单拿到的是本地列表，按 ID 打开还会撞上本机的同名歌单。
+        const location = String(params?.location ?? 'local')
+        if (location !== 'local' && location !== 'cloud') throw new Error('歌单位置无效')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().asHostPlaylists(params?.cursor, params?.limit)
+        return useLibraryStore().asHostPlaylists(params?.cursor, params?.limit, location)
       }
       case 'library.playlists.getTracks': {
         await this.requirePermission(params?.call?.permissionKey, 'library.read')
@@ -1131,19 +1135,26 @@ export class PluginRuntime {
         await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
-        // 歌单不存在时 store 会静默返回 `{removed: 0}`，插件拿到「成功」却发现
-        // 列表毫无变化。与下载任务 id 的校验同一判据：不存在的目标要如实报错。
-        if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
+        // 云端歌单不在本地表里，不能按「本地歌单不存在」判错——先把 ID 格式
+        // 校验掉，具体是否存在于服务端由请求本身回答（404 会如实抛错）。
+        const cloud = params?.reference?.location === 'cloud'
+        if (cloud) {
+          if (!String(params?.reference?.id ?? '').trim()) throw new Error('歌单 ID 不能为空')
+        } else if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
           throw new Error('歌单不存在')
         }
-        await library.removeHostTracks(params?.reference, params?.tracks)
-        return null
+        // SDK 契约是 `{ removed, notFound }`；此前返回 null，插件读 `removed`
+        // 恒为 undefined，双向同步永远对不上账。
+        return library.removeHostTracks(params?.reference, params?.tracks ?? params?.items ?? [])
       }
       case 'library.playlists.clearPlaylist': {
         await this.requirePermission(params?.call?.permissionKey, 'library.delete')
         const { useLibraryStore } = await import('@/stores/library')
         const library = useLibraryStore()
-        if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
+        const cloud = params?.reference?.location === 'cloud'
+        if (cloud) {
+          if (!String(params?.reference?.id ?? '').trim()) throw new Error('歌单 ID 不能为空')
+        } else if (!library.playlists.some((item: any) => item.id === params?.reference?.id)) {
           throw new Error('歌单不存在')
         }
         await library.clearHostPlaylist(params?.reference)

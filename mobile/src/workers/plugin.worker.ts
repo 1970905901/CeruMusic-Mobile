@@ -56,6 +56,20 @@ function asRefArray(value: any): any {
   return value == null ? [] : [value]
 }
 
+/**
+ * `library.playlists.*` 的请求对象与旧的位置参数怎么区分。
+ *
+ * 请求对象一定带 `operation`（SDK 的签名把它放在最后，但插件总是把它传进来）；
+ * 旧的第一个位置参数是歌单引用（`{ id, location }`）或 cursor 字符串。以
+ * `operation` 存在为准，同时排除「看起来像引用」的值，避免把 `{ id, location }`
+ * 误判成请求对象。
+ */
+function isRequestObject(value: any): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  if (value.operation && typeof value.operation === 'object') return true
+  return 'permissionKey' in value && !('id' in value)
+}
+
 function rpc<T = any>(method: string, params: any = null): Promise<T> {
   if (disposed) return Promise.reject(new Error('插件运行时已停止'))
   const id = ++rpcSequence
@@ -322,16 +336,55 @@ const context: any = {
     getProfile: (call?: any) => rpc('account.getProfile', { call }),
     openLogin: (operation?: any) => rpc('account.openLogin', { operation })
   },
+  // SDK 的 `ctx.library.playlists.*` 收的是**一个请求对象**：
+  // `list({ location, cursor, permissionKey, operation })`、
+  // `getTracks({ target, cursor, permissionKey, operation })`、
+  // `removeTracks({ target, items, permissionKey, operation })`。
+  // 此前这里按位置参数转发，插件按文档传对象时 `target` / `cursor` / `items`
+  // 全部落到 undefined：`getTracks` 拿到空歌单、`removeTracks` 什么也没删
+  // （还返回 `removed: 0`），`clearPlaylist` 直接不发请求。
+  // 位置的旧写法一并保留，免得升级后静默失效。
   library: {
     playlists: {
-      list: (call?: any) => rpc('library.playlists.list', { call }),
-      getTracks: (reference: any, cursor: string | undefined, call?: any) =>
-        rpc('library.playlists.getTracks', { reference, cursor, call }),
-      import: (request: any, call?: any) => rpc('library.playlists.import', { request, call }),
-      removeTracks: (reference: any, tracks: any[], call?: any) =>
-        rpc('library.playlists.removeTracks', { reference, tracks, call }),
-      clearPlaylist: (reference: any, call?: any) =>
-        rpc('library.playlists.clearPlaylist', { reference, call })
+      list: (request: any, call?: any) => {
+        const input = isRequestObject(request) ? request : { cursor: request, call }
+        return rpc('library.playlists.list', {
+          location: input.location,
+          cursor: input.cursor,
+          limit: input.limit,
+          call: input.call ?? call
+        })
+      },
+      getTracks: (request: any, cursor?: string, call?: any) => {
+        const input = isRequestObject(request)
+          ? request
+          : { target: request, cursor, call }
+        return rpc('library.playlists.getTracks', {
+          reference: input.target ?? input.reference,
+          cursor: input.cursor,
+          limit: input.limit,
+          call: input.call ?? call
+        })
+      },
+      import: (request: any, call?: any) =>
+        rpc('library.playlists.import', { request, call: call ?? request?.call }),
+      removeTracks: (request: any, tracks?: any[], call?: any) => {
+        const input = isRequestObject(request)
+          ? request
+          : { target: request, items: tracks, call }
+        return rpc('library.playlists.removeTracks', {
+          reference: input.target ?? input.reference,
+          tracks: input.items ?? input.tracks,
+          call: input.call ?? call
+        })
+      },
+      clearPlaylist: (request: any, call?: any) => {
+        const input = isRequestObject(request) ? request : { target: request, call }
+        return rpc('library.playlists.clearPlaylist', {
+          reference: input.target ?? input.reference,
+          call: input.call ?? call
+        })
+      }
     }
   },
   player: {

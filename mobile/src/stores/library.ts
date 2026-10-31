@@ -10,7 +10,7 @@ import { usePluginStore } from '@/stores/plugins'
 import { lyricValueToLrc } from '@/services/lyrics'
 import { base64ToArrayBuffer, isFlacFile, isMp3File, writeFlacTagsToBase64, writeMp3TagsToBase64 } from '@/services/audioTags'
 import { isM4aFile, writeM4aTagsToBase64 } from '@/services/mp4Tags'
-import { cloudSongListApi, playlistTracksToCloud } from '@/services/cloudSongList'
+import { cloudSongListApi, isShareableTrack, playlistTracksToCloud } from '@/services/cloudSongList'
 import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPlaylistOverwrite'
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
@@ -894,29 +894,79 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
-   * 分页返回本地歌单。
+   * 分页返回歌单。
+   *
+   * `location: 'cloud'` 是 SDK 契约里明确支持的目标（桌面 `library.playlists.list`
+   * 同样有云端分支）。移动端此前**完全忽略**这个参数，插件按契约读云端歌单时
+   * 拿到的是本地列表——请求了一张云歌单，打开却是本机的同一 ID。
    *
    * 与曲目列表同一套游标语义：此前同样忽略 cursor、每次返回全部，
    * 插件按 `nextCursor` 翻页时要么停在第一页、要么无限重复。
    */
-  function asHostPlaylists(cursor?: string, limit?: number) {
-    const page = paginate(
-      playlists.value.map((playlist) => ({
-        ref: { id: playlist.id, location: 'local' as const },
-        name: playlist.name,
-        description: playlist.description,
-        trackCount: playlist.trackKeys.length,
-        writable: true
-      })),
-      cursor,
-      limit
-    )
+  async function asHostPlaylists(cursor?: string, limit?: number, location?: string) {
+    interface HostPlaylistRow {
+      ref: { id: string; location: 'local' | 'cloud' }
+      name: string
+      description?: string
+      trackCount?: number
+      writable: boolean
+    }
+    const source: HostPlaylistRow[] =
+      location === 'cloud'
+        ? await hostCloudPlaylists()
+        : playlists.value.map((playlist) => ({
+            ref: { id: playlist.id, location: 'local' as const },
+            name: playlist.name,
+            description: playlist.description,
+            trackCount: playlist.trackKeys.length,
+            writable: true
+          }))
+    const page = paginate(source, cursor, limit)
     if (!page) throw new Error('分页游标无效')
     return page
   }
 
+  /** 云端歌单清单，形状与本地一致（`ref.location` 为 `cloud`）。 */
+  async function hostCloudPlaylists() {
+    const records = await cloudSongListApi.getUserSongLists()
+    return (Array.isArray(records) ? records : []).flatMap((record) => {
+      const id = String((record as any)?.id ?? '').trim()
+      if (!id) return []
+      const claimed = playlists.value.find((playlist) => playlist.cloudId === id)
+      return [
+        {
+          ref: { id, location: 'cloud' as const },
+          name: String((record as any)?.name ?? claimed?.name ?? '云端歌单'),
+          description:
+            String((record as any)?.describe ?? '') || claimed?.description || undefined,
+          trackCount: claimed?.trackKeys.length,
+          writable: true
+        }
+      ]
+    })
+  }
+
   /** 分页返回歌单曲目；游标非法时抛错，避免插件翻页死循环。 */
-  function asHostTracks(reference: any, cursor?: string, limit?: number) {
+  async function asHostTracks(reference: any, cursor?: string, limit?: number) {
+    if (reference?.location === 'cloud') {
+      // 云端歌单只存在于服务端：按它的 ID 拉全量再分页，而不是拿本地歌单
+      // 撞 ID 后返回空列表（插件会以为这张歌单是空的）。
+      const cloudId = String(reference?.id ?? '').trim()
+      if (!cloudId) throw new Error('歌单 ID 不能为空')
+      const detail = await cloudSongListApi.getSongListDetail(cloudId, 'asc')
+      const tracks = planCloudOverwrite(
+        Array.isArray(detail?.list) ? detail.list : [],
+        [],
+        pluginStore.providers
+      ).tracks
+      const page = paginate(
+        tracks.map((track) => toHostEntity(track)),
+        cursor,
+        limit
+      )
+      if (!page) throw new Error('分页游标无效')
+      return page
+    }
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return { items: [], totalEstimate: 0 }
     const page = paginate(
@@ -929,6 +979,12 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   async function importHostPlaylist(request: any) {
+    const target = request?.target
+    // 目标可以是云端歌单（SDK 的 `PlaylistImportRequest.target` 明确允许）。
+    // 此前一律新建本地歌单，插件往「这张云歌单」里导入，结果凭空多出一张本地的。
+    if (target?.location === 'cloud') {
+      return importHostTracksToCloud(String(target.id ?? ''), request)
+    }
     const playlist = createPlaylist(request?.suggestedName || '导入歌单')
     let added = 0
     for (const entity of request?.items ?? []) {
@@ -959,7 +1015,56 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
+  /**
+   * 往云端歌单追加歌曲（桌面 `library.playlists.import` 的 cloud 分支）。
+   *
+   * 与桌面同口径：先拉现有曲目，同 key 的跳过，只把新增的写回去；
+   * 本地文件与已下载副本云端解析不了，直接算作 `skipped` 而不是报错。
+   */
+  async function importHostTracksToCloud(cloudId: string, request: any) {
+    if (!cloudId) throw new Error('歌单 ID 不能为空')
+    const detail = await cloudSongListApi.getSongListDetail(cloudId, 'asc')
+    const existing = Array.isArray(detail?.list) ? detail.list : []
+    const ids = new Set(existing.map((song: any) => String(song?.songmid ?? '')))
+    const entities: any[] = Array.isArray(request?.items) ? request.items : []
+    const incoming: Track[] = []
+    let skipped = 0
+    for (const entity of entities) {
+      const track = hostEntityToTrack(entity)
+      if (!track || !isShareableTrack(track) || ids.has(String(track.ref?.id ?? ''))) {
+        skipped++
+        continue
+      }
+      upsertTrack(track)
+      incoming.push(track)
+    }
+    if (incoming.length) {
+      const merged = playlistTracksToCloud(incoming)
+      await cloudSongListApi.updateUserSongList({
+        listId: cloudId,
+        songlist: [...existing, ...merged]
+      })
+      const local = playlists.value.find((playlist) => playlist.cloudId === cloudId)
+      if (local) {
+        local.updatedAt = Date.now()
+        await getDb().then((db) => db.put('playlists', toPlain(local)))
+      }
+      pluginStore.publishLibrary({ id: cloudId, location: 'cloud' }, 'updated')
+    }
+    return {
+      cancelled: false,
+      target: { id: cloudId, location: 'cloud' as const },
+      added: incoming.length,
+      skipped
+    }
+  }
+
   async function removeHostTracks(reference: any, entities: any[]) {
+    if (reference?.location === 'cloud') {
+      // 云端歌单的「移除歌曲」同样要真的发到服务端：此前只按本地歌单 ID 找，
+      // 找不到就返回 `{ removed: 0 }`，插件以为歌曲本来就不在歌单里。
+      return removeHostTracksFromCloud(String(reference?.id ?? ''), entities)
+    }
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return { removed: 0, notFound: entities?.length ?? 0 }
     let removed = 0
@@ -982,7 +1087,60 @@ export const useLibraryStore = defineStore('library', () => {
     return { removed, notFound: (entities?.length ?? 0) - removed }
   }
 
+  /**
+   * 从云端歌单移除歌曲（桌面 `library.playlists.removeTracks` 的 cloud 分支）。
+   *
+   * 服务端按「歌曲键」定位行；这里复用与上传相同的映射，再把命中的那些写回去。
+   * 返回的 `removed + notFound` 恒等于传入条数，插件据此做双向同步（桌面同口径）。
+   */
+  async function removeHostTracksFromCloud(cloudId: string, entities: any[]) {
+    const items = Array.isArray(entities) ? entities : []
+    if (!cloudId) throw new Error('歌单 ID 不能为空')
+    const detail = await cloudSongListApi.getSongListDetail(cloudId, 'asc')
+    const existing = Array.isArray(detail?.list) ? detail.list : []
+    const targets = items.map((entity) => {
+      const track = hostEntityToTrack(entity)
+      return { entity, track }
+    })
+    // 用「来源 + 歌曲 ID」对账：同一首歌在两端 key 的形态可能不同，
+    // 直接比 key 会把本该删掉的歌当成 notFound。
+    const matchOf = (song: any) => {
+      const source = String(song?.source ?? song?.pluginResource?.providerId ?? '')
+      const id = String(song?.songmid ?? song?.pluginResource?.id ?? '')
+      return source + ':' + id
+    }
+    const wanted = new Set<string>()
+    let notFound = 0
+    for (const { entity, track } of targets) {
+      const ref = track?.ref ?? entity?.ref
+      if (!ref?.providerId || !ref?.id) {
+        notFound++
+        continue
+      }
+      wanted.add(String(ref.providerId) + ':' + String(ref.id))
+    }
+    const kept = existing.filter((song) => !wanted.has(matchOf(song)))
+    const removed = Math.min(existing.length - kept.length, items.length - notFound)
+    if (removed > 0) {
+      await cloudSongListApi.updateUserSongList({ listId: cloudId, songlist: kept })
+      pluginStore.publishLibrary({ id: cloudId, location: 'cloud' }, 'updated')
+    }
+    return { removed, notFound: items.length - removed }
+  }
+
   async function clearHostPlaylist(reference: any) {
+    if (reference?.location === 'cloud') {
+      // 「清空但保留歌单」在云端就是写回空列表；此前这里静默返回，
+      // 插件拿到一个成功的 Promise，歌单却一首没少。
+      const cloudId = String(reference?.id ?? '').trim()
+      if (!cloudId) throw new Error('歌单 ID 不能为空')
+      const detail = await cloudSongListApi.getSongListDetail(cloudId, 'asc')
+      const existing = Array.isArray(detail?.list) ? detail.list : []
+      if (!existing.length) return
+      await cloudSongListApi.updateUserSongList({ listId: cloudId, songlist: [] })
+      pluginStore.publishLibrary({ id: cloudId, location: 'cloud' }, 'updated')
+      return
+    }
     const playlist = playlists.value.find((item) => item.id === reference?.id)
     if (!playlist) return
     if (!playlist.trackKeys.length) return
