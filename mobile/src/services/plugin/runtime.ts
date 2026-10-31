@@ -19,6 +19,7 @@ import {
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
+import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
 import { candidatePlaylists, resolvePickedPlaylist } from '@/services/plugin/pluginPlaylistPicker'
 import { playlistSectionPath } from '@/services/plugin/navigationTarget'
 import { assertNavigationRequest, assertResourceRef } from '@shiqianjiang/ceru-plugin-sdk'
@@ -515,6 +516,8 @@ export class PluginRuntime {
   private info: PluginRuntimeInfo = { providers: [], actions: [], importers: [], converters: [] }
   private scheduledTasks = new Map<string, PluginScheduledTask & { timer: ReturnType<typeof setTimeout> }>()
   private sockets = new Map<string, PluginSocketRuntime>()
+  /** `library.playlists.import` 的 requestId 幂等缓存，随运行时销毁。 */
+  private importCache = new Map<string, ImportCacheEntry<any>>()
   private activationError: string | null = null
 
   constructor(options: PluginRuntimeOptions) {
@@ -618,6 +621,7 @@ export class PluginRuntime {
       pending.reject(new Error('插件运行时已停止'))
     }
     this.pending.clear()
+    this.importCache.clear()
     this.clearScheduledTasks()
     this.clearSockets()
     // 文件与目录句柄持有用户选中的 File / SAF 目录引用；运行时销毁后必须放掉，
@@ -1181,8 +1185,15 @@ export class PluginRuntime {
         if (items.some((item: any) => item?.ref?.kind !== 'track')) {
           throw new Error('歌单只接收标准歌曲')
         }
+        // `requestId` 是幂等键：同一批重试要拿到同一个结果，而不是把歌导两遍。
+        // SDK 的 `createHostLibraryBridge` 在插件侧就要求它是 1–256 字符，
+        // 桌面宿主同样拒绝缺失的 requestId。
+        const key = importCacheKey(request.requestId, request.target)
+        if (!key) throw new Error('导入请求缺少有效 requestId')
         const { useLibraryStore } = await import('@/stores/library')
-        return useLibraryStore().importHostPlaylist(request)
+        return importOnce(this.importCache, key, () =>
+          useLibraryStore().importHostPlaylist(request)
+        )
       }
       case 'library.playlists.removeTracks': {
         await this.requirePermission(params?.call?.permissionKey, 'library.delete')
