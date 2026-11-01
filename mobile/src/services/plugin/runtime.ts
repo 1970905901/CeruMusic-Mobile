@@ -598,7 +598,9 @@ export class PluginRuntime {
       code: this.record.code,
       config: toPlain(this.options.config),
       permissions: [...this.options.permissions],
-      deniedPermissions: this.options.deniedPermissions
+      deniedPermissions: this.options.deniedPermissions,
+      // 宿主资源（缺省封面等）作为静态文件交付，worker 拼 URL 时要知道基址。
+      assetBase: import.meta.env.BASE_URL
     })
     return new Promise<PluginRuntimeInfo>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('插件激活超时')), 30_000)

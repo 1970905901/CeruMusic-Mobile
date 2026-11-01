@@ -4,6 +4,7 @@ import { createPermissionApi } from '@/services/plugin/permissionApi'
 import { lockNetworkGlobals, networkDenied } from '@/services/plugin/networkLockdown'
 import { compatModule, legacyHttpModule } from '@/services/plugin/hostModules'
 import { createHostHttpRequest } from '@/services/plugin/hostHttp'
+import { createHostAssets, createHostIcons, setHostAssetBase } from '@/services/plugin/hostCatalog'
 
 installLegacyPolyfills()
 
@@ -194,17 +195,11 @@ const context: any = {
     require: (name: string) => hostModule(name)
   },
   utils: { lodash },
-  icons: {
-    list: () => [],
-    url: async (name: string) =>
-      `data:image/svg+xml,${encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6Z"/><text x="1" y="23" font-size="3">${name}</text></svg>`
-      )}`
-  },
-  assets: {
-    list: () => Object.keys(resources),
-    url: async (name: string) => dataUrlForResource(name)
-  },
+  // 宿主的真实图标与资源（数据来自插件 core 发行包的 catalog.json）。此前
+  // `list()` 恒回空数组、`url()` 拼一个带文字占位的假 SVG，插件画平台角标、
+  // 用缺省封面在手机上全是空白或假图。
+  icons: createHostIcons(),
+  assets: createHostAssets(() => resources, dataUrlForResource),
   config: {
     get: async () => ({ ...(manifest?.config ?? {}), ...runtimeConfig })
   },
@@ -620,6 +615,9 @@ async function activate(message: any) {
   generation = String(message.generation)
   manifest = message.manifest
   runtimeConfig = message.config ?? {}
+  // 宿主资源按静态文件交付：拼 URL 前先定好基址，否则浏览器会把
+  // `/host-assets/…` 当成站点根，子目录部署（BASE_URL 非 `/`）时取不到图。
+  setHostAssetBase(message.assetBase ?? '/')
   grantedPermissions = new Set(message.permissions ?? [])
   deniedPermissions = new Set(message.deniedPermissions ?? [])
   context.plugin = { id: manifest.id, version: manifest.version, manifest }
