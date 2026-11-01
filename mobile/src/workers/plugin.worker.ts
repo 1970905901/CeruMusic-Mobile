@@ -2,6 +2,8 @@ import { installLegacyPolyfills } from '@/utils/polyfills'
 import { socketEventName } from '@/services/pluginSockets'
 import { createPermissionApi } from '@/services/plugin/permissionApi'
 import { lockNetworkGlobals, networkDenied } from '@/services/plugin/networkLockdown'
+import { compatModule, legacyHttpModule } from '@/services/plugin/hostModules'
+import { createHostHttpRequest } from '@/services/plugin/hostHttp'
 
 installLegacyPolyfills()
 
@@ -9,10 +11,9 @@ import type { PluginManifest } from '@shiqianjiang/ceru-plugin-sdk/manifest'
 import {
   assertContentPage,
   assertLyricsDocument,
-  assertResolveResult
+  assertResolveResult,
+  createHttpClient
 } from '@shiqianjiang/ceru-plugin-sdk'
-import CryptoJS from 'crypto-js'
-import { gzipSync, gunzipSync, inflateSync, deflateSync } from 'fflate'
 import * as lodash from 'lodash-es'
 
 type Json = any
@@ -244,21 +245,11 @@ const context: any = {
   },
   http: {
     request: (request: any) => httpRequest(request),
-    create(defaults: any = {}) {
-      const send = (url: string, input: any = {}) =>
-        httpRequest({ ...defaults, ...input, url: new URL(url, defaults.baseURL).href })
-      return {
-        request: send,
-        get: async (url: string, input: any = {}) =>
-          (await send(url, { ...input, method: 'GET' })).data,
-        post: async (url: string, input: any = {}) =>
-          (await send(url, { ...input, method: 'POST' })).data,
-        authorize: async (key: string, origin: string, operation: any) => {
-          const result = await requestPermission(key, operation)
-          if (result !== 'granted') throw new Error('网络权限未授予')
-        }
-      }
-    }
+    // 便捷客户端直接用 SDK 的实现：`HttpError`、`query/json/form` 三选一、
+    // 授权去重、抛错时机都是契约的一部分，手写一份只会越走越偏（此前这里读
+    // 的是 `.data`，而 SDK 客户端读 `.body`，插件拿到的 payload 全是 undefined）。
+    create: (defaults: any = {}) =>
+      createHttpClient({ http: context.http, permissions: context.permissions }, defaults)
   },
   // 契约实现在 `services/plugin/permissionApi.ts`（可单测）；这里只接上本进程的授权缓存。
   // `manifest` 在激活前是 undefined，而权限 API 只会在激活后才会被插件调用。
@@ -536,37 +527,18 @@ function hostModule(name: string): any {
       return context.account
     case '@ceru/player':
       return context.player
-    case '@ceru/crypto':
-      return CryptoJS
-    case '@ceru/compression':
-      return { gzip: gzipSync, gunzip: gunzipSync, inflate: inflateSync, deflate: deflateSync }
-    case '@ceru/encoding':
-      return {
-        encode: (value: string) => new TextEncoder().encode(value),
-        decode: (value: Uint8Array) => new TextDecoder().decode(value),
-        base64: (value: string) => btoa(unescape(encodeURIComponent(value))),
-        unbase64: (value: string) => decodeURIComponent(escape(atob(value)))
-      }
     case 'lodash':
       return lodash
-    case '@ceru/legacy-http':
-      return {
-        createLegacyHttpBridge:
-          (permissionKey: string) =>
-          async (url: string, options: any = {}) => {
-            const response = await httpRequest({
-              url,
-              method: options.method || 'GET',
-              headers: options.headers,
-              json: options.data,
-              permissionKey,
-              operation: createOperation()
-            })
-            return response
-          }
-      }
-    default:
+    default: {
+      // 兼容模块直接用 SDK 自带给插件的实现，移动端不再手写一份：手写版本
+      // 此前已与 `BuiltinModules` 分叉（`@ceru/crypto` 只给了裸 CryptoJS，
+      // 没有 `createHash` / `randomBytes` / `randomUUID`），官方教程插件
+      // （Navidrome）第一行就 TypeError。
+      const compat = compatModule(name)
+      if (compat) return compat
+      if (name === '@ceru/legacy-http') return legacyHttpModule(context)
       throw new Error(`Host 未提供模块：${name}`)
+    }
   }
 }
 
@@ -579,32 +551,23 @@ async function requestPermission(key: string, intent?: any): Promise<'granted' |
   return result
 }
 
-async function httpRequest(input: any): Promise<any> {
-  if (!input?.url) throw new Error('HTTP 请求缺少 URL')
-  const permissionKey = input.permissionKey || 'network'
-  const status = await requestPermission(permissionKey, input.operation?.userIntent)
-  if (status !== 'granted') throw new Error('网络权限未授予')
-  const response = await rpc('http.request', {
-    url: input.url,
-    method: input.method || 'GET',
-    headers: input.headers,
-    query: input.query,
-    json: input.json,
-    form: input.form,
-    body: input.body,
-    timeoutMs: input.timeoutMs,
-    responseType: input.responseType,
-    // 宿主侧要据此判断内网访问是否另有授权；不传会让局域网请求一律被拒。
-    permissionKey
-  })
-  if (input.throwHttpErrors !== false && (response.status < 200 || response.status >= 300)) {
-    const error = new Error(`HTTP ${response.status}`) as Error & { status?: number; response?: any }
-    error.status = response.status
-    error.response = response
-    throw error
+/**
+ * 低层 `ctx.http.request`。
+ *
+ * 与桌面同口径：**原样返回**非 2xx 响应，由插件自己处理（文档：「低层请求
+ * 通常保留非 2xx 状态」）。抛 `HttpError` 是便捷客户端 `ctx.http.create()`
+ * 的事；此前这里也抛，插件写 `error instanceof HttpError` 的状态分支永远
+ * 走不到，读 429 响应体的重试逻辑也拿不到数据。
+ */
+const httpRequest = createHostHttpRequest({
+  rpc: (method, params) => rpc(method, params),
+  // `operation.userIntent` 要交给授权框：用户看到的是「这个插件因为某次操作要联网」，
+  // 不是一句没有上下文的权限名。
+  ensurePermission: async (key, input) => {
+    const status = await requestPermission(key, input?.operation?.userIntent)
+    if (status !== 'granted') throw new Error('网络权限未授予')
   }
-  return response
-}
+})
 
 function resolveProviderMethod(implementation: any, path: string): Function | undefined {
   const parts = path.split('.')

@@ -25,6 +25,7 @@ import {
   storageValueBytes
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
+import { httpResponseShape } from '@/services/plugin/hostModules'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
@@ -746,7 +747,9 @@ export class PluginRuntime {
         if (isPrivateUrl(String(params?.url ?? ''))) {
           await this.requirePrivateNetwork(params?.permissionKey)
         }
-        return performHttp(params)
+        // SDK 的 `http.request` 契约是 `{ status, headers, body }`；便捷客户端
+        // 与 legacy 适配层读的都是 `body`。宿主内部叫 `data`，出口改名。
+        return httpResponseShape(await performHttp(params))
       }
       // 键与值都要校验（桌面 `PluginStorage.invoke` 同口径）：脏键会永久留在
       // 数据库里，超大值会把整个 IndexedDB 撑到影响所有插件与本地数据。
