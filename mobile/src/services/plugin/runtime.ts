@@ -28,6 +28,11 @@ import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { httpResponseShape } from '@/services/plugin/hostModules'
 import { createOperationRequests } from '@/services/plugin/operationRequests'
 import {
+  SocketSendLimiter,
+  assertSocketEventName,
+  assertSocketSlots
+} from '@/services/plugin/socketLimits'
+import {
   HTTP_MAX_RESPONSE_BYTES,
   assertHttpLimits,
   responseExceedsLimit
@@ -544,6 +549,10 @@ export class PluginRuntime {
   private invokeSequence = 0
   /** 在途 HTTP 请求，按 `operation.id` 分组（`operations.cancel` 用）。 */
   private operationRequests = createOperationRequests()
+  /** 正在建立中的 socket 连接（连接数上限要把它们一起算）。 */
+  private socketConnecting = 0
+  /** 每条 socket 的每秒发送计数。 */
+  private socketSendLimiters = new Map<string, SocketSendLimiter>()
   private readyPromise: Promise<void>
   private resolveReady!: () => void
   private rejectReady!: (error: Error) => void
@@ -1739,14 +1748,21 @@ export class PluginRuntime {
         })
       }
       case 'sockets.connect': {
+        // 连接数上限与桌面 `SocketBroker` 同口径（正在连接的也计入）。
+        assertSocketSlots(this.sockets.size, this.socketConnecting)
         const options = validateSocketOptions(params?.options ?? {})
         await this.requirePermission(options.permissionKey, 'network.socket')
         // Socket 同 HTTP：连本机/内网还要 network.private。
         if (isPrivateUrl(String(options.url ?? ''))) {
           await this.requirePrivateNetwork(options.permissionKey)
         }
-        const socket = await this.connectSocket(options)
-        return { id: socket.id }
+        this.socketConnecting++
+        try {
+          const socket = await this.connectSocket(options)
+          return { id: socket.id }
+        } finally {
+          this.socketConnecting--
+        }
       }
       // 发送前限制负载大小：一条几十 MB 的 JSON 会把 worker 与主线程之间的
       // 结构化克隆卡住，界面跟着一起僵住。
@@ -1754,6 +1770,7 @@ export class PluginRuntime {
         const socket = this.sockets.get(String(params?.id ?? ''))
         if (!socket) throw new Error('Socket 不存在或已断开')
         assertSocketPayload(params?.data)
+        this.limitSocketSend(String(socket.id))
         await socket.send(params?.data)
         return null
       }
@@ -1761,6 +1778,9 @@ export class PluginRuntime {
         const socket = this.sockets.get(String(params?.id ?? ''))
         if (!socket) throw new Error('Socket 不存在或已断开')
         assertSocketPayload(params?.data)
+        // 事件名同样受限：保留事件会覆盖 socket.io 自己的生命周期回调。
+        assertSocketEventName(String(params?.event ?? ''))
+        this.limitSocketSend(String(socket.id))
         await socket.emit(String(params?.event ?? ''), params?.data)
         return null
       }
@@ -1921,6 +1941,16 @@ export class PluginRuntime {
     return runtime
   }
 
+  /** 每条 socket 各自的每秒发送计数；socket 关掉后随之丢弃。 */
+  private limitSocketSend(socketId: string): void {
+    let limiter = this.socketSendLimiters.get(socketId)
+    if (!limiter) {
+      limiter = new SocketSendLimiter()
+      this.socketSendLimiters.set(socketId, limiter)
+    }
+    limiter.count(Date.now())
+  }
+
   private clearSockets() {
     for (const socket of this.sockets.values()) {
       try {
@@ -1930,6 +1960,8 @@ export class PluginRuntime {
       }
     }
     this.sockets.clear()
+    this.socketSendLimiters.clear()
+    this.socketConnecting = 0
   }
 
   private clearScheduledTasks() {
