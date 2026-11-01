@@ -26,6 +26,7 @@ import {
 } from '@/services/plugin/pluginStorage'
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { httpResponseShape } from '@/services/plugin/hostModules'
+import { createOperationRequests } from '@/services/plugin/operationRequests'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
@@ -300,7 +301,7 @@ export function buildUrl(input: any): string {
   return url.toString()
 }
 
-async function performHttp(input: any): Promise<any> {
+async function performHttp(input: any, signal?: AbortSignal): Promise<any> {
   const url = buildUrl(input)
   const headers: Record<string, string> = { ...jsonHeaders(input.headers) }
   let data: any = input.body
@@ -322,6 +323,10 @@ async function performHttp(input: any): Promise<any> {
   if (!isNative) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    // 宿主中止（`operations.cancel`）与自身超时都走同一个 signal，fetch 能真的停下。
+    const onAbort = () => controller.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) controller.abort()
     try {
       const response = await fetch(url, {
         method: input.method || 'GET',
@@ -346,6 +351,7 @@ async function performHttp(input: any): Promise<any> {
       }
     } finally {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
     }
   }
 
@@ -358,6 +364,9 @@ async function performHttp(input: any): Promise<any> {
     readTimeout: timeoutMs,
     responseType: 'text'
   })
+  // `CapacitorHttp` 没有中止能力（原生侧同样如此）。请求一旦中止，结果就作废：
+  // 不往回传，避免插件在已经收到「操作已取消」之后又拿到一份数据。
+  if (signal?.aborted) throw new Error('操作已取消')
   let parsed: any = response.data
   const responseHeaders = jsonHeaders(response.headers as Record<string, string>)
   if (
@@ -520,6 +529,8 @@ export class PluginRuntime {
   private options: PluginRuntimeOptions
   private pending = new Map<number, PendingInvoke>()
   private invokeSequence = 0
+  /** 在途 HTTP 请求，按 `operation.id` 分组（`operations.cancel` 用）。 */
+  private operationRequests = createOperationRequests()
   private readyPromise: Promise<void>
   private resolveReady!: () => void
   private rejectReady!: (error: Error) => void
@@ -636,6 +647,9 @@ export class PluginRuntime {
     this.importCache.clear()
     this.clearScheduledTasks()
     this.clearSockets()
+    // 运行时销毁后没人会再调 `operations.cancel`：在途请求必须在这里停下，
+    // 否则插件已停用、网络请求还在后台跑完。
+    this.operationRequests.cancelAll()
     // 文件与目录句柄持有用户选中的 File / SAF 目录引用；运行时销毁后必须放掉，
     // 否则这些引用会跟着页面活到下次刷新（iOS 上还可能占着安全作用域访问）。
     this.pickedFiles.clear()
@@ -747,9 +761,25 @@ export class PluginRuntime {
         if (isPrivateUrl(String(params?.url ?? ''))) {
           await this.requirePrivateNetwork(params?.permissionKey)
         }
-        // SDK 的 `http.request` 契约是 `{ status, headers, body }`；便捷客户端
-        // 与 legacy 适配层读的都是 `body`。宿主内部叫 `data`，出口改名。
-        return httpResponseShape(await performHttp(params))
+        // 按 `operation.id` 登记在途请求：插件被中止或超时后，`operations.cancel`
+        // 能把它们真的停掉（桌面 `PluginHost` 的 `requests` 表同口径）。
+        const operationId = String(params?.operation?.id ?? '')
+        const controller = new AbortController()
+        const release = this.operationRequests.track(operationId, controller)
+        try {
+          // SDK 的 `http.request` 契约是 `{ status, headers, body }`；便捷客户端
+          // 与 legacy 适配层读的都是 `body`。宿主内部叫 `data`，出口改名。
+          return httpResponseShape(await performHttp(params, controller.signal))
+        } finally {
+          release()
+        }
+      }
+      // 桌面 `PluginHost` 同一条方法：把该 operation 名下的在途请求全部 abort。
+      // 迟到的取消（请求已经返回）返回 0，不报错——插件那边的 signal 可能刚好
+      // 在返回后触发，报错只会让它多一条莫名其妙的失败日志。
+      case 'operations.cancel': {
+        this.operationRequests.cancel(String(params?.id ?? ''))
+        return null
       }
       // 键与值都要校验（桌面 `PluginStorage.invoke` 同口径）：脏键会永久留在
       // 数据库里，超大值会把整个 IndexedDB 撑到影响所有插件与本地数据。

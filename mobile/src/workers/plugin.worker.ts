@@ -98,12 +98,22 @@ function createOperation(operationId?: string) {
   const controller = new AbortController()
   const id = operationId ?? `op-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const timeout = setTimeout(() => controller.abort(new Error('操作超时')), 120_000)
+  // 操作中止时通知宿主把该 operation 名下的在途请求停掉——与 SDK sandbox 的
+  // `signal.addEventListener('abort', () => rpc('operations.cancel', { id }))` 同一条
+  // 协议。不通知的话，插件已经收到「操作已取消」，网络请求还在手机后台跑。
+  const onAbort = () => {
+    void rpc('operations.cancel', { id }).catch(() => undefined)
+  }
+  controller.signal.addEventListener('abort', onAbort, { once: true })
   return {
     id,
     deadlineAt: Date.now() + 120_000,
     signal: controller.signal,
     userIntent: { kind: 'user-intent' as const, id },
-    __dispose: () => clearTimeout(timeout)
+    __dispose: () => {
+      clearTimeout(timeout)
+      controller.signal.removeEventListener('abort', onAbort)
+    }
   }
 }
 

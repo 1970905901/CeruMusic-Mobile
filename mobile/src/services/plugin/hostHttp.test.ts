@@ -14,7 +14,7 @@ import { createHostHttpRequest } from './hostHttp'
  *   又把 payload 叫 `data`，SDK 客户端读 `body` 只能拿到 undefined。
  */
 function setup(response: any, permission: 'granted' | 'denied' = 'granted') {
-  const rpc = vi.fn(async () => response)
+  const rpc = vi.fn(async (_method: string, _params: any) => response)
   const ensurePermission = async () => {
     if (permission !== 'granted') throw new Error('网络权限未授予')
   }
@@ -50,8 +50,27 @@ describe('low-level ctx.http.request', () => {
       body: undefined,
       timeoutMs: 5000,
       responseType: undefined,
-      permissionKey: 'api'
+      permissionKey: 'api',
+      operation: undefined
     })
+  })
+
+  it('forwards the operation id so the host can cancel that request', async () => {
+    // 宿主按 `operation.id` 登记在途请求。不转发的话 `operations.cancel` 找不到
+    // 任何东西，插件中止后网络请求照样跑到结束。
+    const { rpc, request } = setup({ status: 200, headers: {}, body: {} })
+    const controller = new AbortController()
+    await request({
+      url: 'https://example.com/a',
+      permissionKey: 'api',
+      operation: {
+        id: 'op-7',
+        deadlineAt: 1234,
+        signal: controller.signal,
+        userIntent: { kind: 'user-intent', id: 'op-7' }
+      }
+    })
+    expect(rpc.mock.calls[0][1].operation).toEqual({ id: 'op-7', deadlineAt: 1234 })
   })
 
   it('refuses before spending a request when the permission is denied', async () => {

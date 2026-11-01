@@ -33,7 +33,13 @@ export function createHostHttpRequest(deps: HostHttpDeps) {
       timeoutMs: input.timeoutMs,
       responseType: input.responseType,
       // 宿主侧据此判断内网访问是否另有授权；不传会让局域网请求一律被拒。
-      permissionKey
+      permissionKey,
+      // 宿主按 `operation.id` 登记在途请求，`operations.cancel` 据此中止。
+      // 只转 id 与截止时间：`signal` 属于 worker 的 realm，过不了 postMessage
+      // 的结构化克隆（桌面宿主也只读 `data.operation?.id`）。
+      operation: input.operation
+        ? { id: input.operation.id, deadlineAt: input.operation.deadlineAt }
+        : undefined
     })
   }
 }
