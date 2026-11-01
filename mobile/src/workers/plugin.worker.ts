@@ -269,6 +269,12 @@ const context: any = {
     isDenied: (key) => deniedPermissions.has(key),
     request: (key, intent) => requestPermission(key, intent)
   }),
+  // SDK 的 `PluginContext.credentials.get(connectionId)`。桌面 sandbox 同样回
+  // `null`（尚无凭据引用服务）；移动端此前**根本没有这个键**，插件按契约调用
+  // 直接 TypeError，而错误读起来像插件自己的问题。
+  credentials: {
+    get: async (_connectionId: string) => null
+  },
   playback: {
     failure: (error: any) => ({ ok: false, error })
   },
