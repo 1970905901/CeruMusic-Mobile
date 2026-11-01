@@ -27,6 +27,11 @@ import {
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { httpResponseShape } from '@/services/plugin/hostModules'
 import { createOperationRequests } from '@/services/plugin/operationRequests'
+import {
+  HTTP_MAX_RESPONSE_BYTES,
+  assertHttpLimits,
+  responseExceedsLimit
+} from '@/services/plugin/httpLimits'
 import { resolveDownloadDirectory } from '@/services/plugin/directoryHandles'
 import { filePickerOptions } from '@/services/plugin/filePickOptions'
 import { importCacheKey, importOnce, type ImportCacheEntry } from '@/services/plugin/importIdempotency'
@@ -302,6 +307,8 @@ export function buildUrl(input: any): string {
 }
 
 async function performHttp(input: any, signal?: AbortSignal): Promise<any> {
+  // 体积闸与桌面 `requestNetwork` 同口径：请求体 4 MiB、响应体 16 MiB。
+  assertHttpLimits(input)
   const url = buildUrl(input)
   const headers: Record<string, string> = { ...jsonHeaders(input.headers) }
   let data: any = input.body
@@ -344,6 +351,9 @@ async function performHttp(input: any, signal?: AbortSignal): Promise<any> {
           // Keep the raw body if the server declared invalid JSON.
         }
       }
+      if (responseExceedsLimit(parsed)) {
+        throw new Error(`响应体超过 ${HTTP_MAX_RESPONSE_BYTES / 1024 / 1024} MiB 限制`)
+      }
       return {
         status: response.status,
         headers: Object.fromEntries(response.headers.entries()),
@@ -379,6 +389,9 @@ async function performHttp(input: any, signal?: AbortSignal): Promise<any> {
     } catch {
       // Keep raw text.
     }
+  }
+  if (responseExceedsLimit(parsed)) {
+    throw new Error(`响应体超过 ${HTTP_MAX_RESPONSE_BYTES / 1024 / 1024} MiB 限制`)
   }
   return { status: response.status, headers: responseHeaders, data: parsed }
 }
