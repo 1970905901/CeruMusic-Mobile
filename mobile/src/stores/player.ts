@@ -33,6 +33,14 @@ import {
   previousShuffleKey
 } from '@/services/shuffleOrder'
 import { displayMinutes, planSleepTimer, resumeSleepTimer } from '@/services/sleepTimer'
+import {
+  autoSkipLimit,
+  canAutoSkip,
+  fallbackSources,
+  rankFallbackCandidates,
+  searchKeywordFor
+} from '@/services/sourceFallback'
+import { notifyPlayback } from '@/services/playbackNotice'
 import { planBulkAppend } from '@/services/bulkQueueAppend'
 import {
   type CrossfadeElement,
@@ -406,6 +414,15 @@ export const usePlayerStore = defineStore('player', () => {
     const message = audio.error?.message || '音频播放失败'
     error.value = message
     setStatus('error')
+    // 地址解析成功、但音频元素解码失败（鉴权失效的直链、坏文件）——桌面
+    // `playSong` 在 `waitForAudioReady` 抛错时同样进入候选换源。
+    // `loadTrack` 自己触发的那一次由它的 catch 处理，这里只兜住异步解码失败。
+    if (!resolving) {
+      const failed = currentTrack.value
+      if (failed && !failed.localUri && !failed.localPath && !failed.downloadedPath) {
+        void recoverFromPlaybackFailure(failed, message)
+      }
+    }
   })
 
   async function responseToBlob(data: any, mime: string): Promise<Blob> {
@@ -532,7 +549,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function loadTrack(
     track: Track,
     autoplay = true,
-    options?: { skipFadeIn?: boolean; startPositionMs?: number }
+    options?: { skipFadeIn?: boolean; startPositionMs?: number; noRecovery?: boolean }
   ): Promise<boolean> {
     if (resolving) return false
     resolving = true
@@ -573,6 +590,17 @@ export const usePlayerStore = defineStore('player', () => {
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause)
       setStatus('error')
+      // 主音源解析或播放失败：按桌面 `tryAutoNext` 的做法尝试换源/跳过。
+      // 本地文件没有别的音源可换；换源候选自身失败时也不再嵌套换源
+      // （桌面候选循环只是 continue），否则每个失败候选都会再起一轮搜索。
+      if (
+        !options?.noRecovery &&
+        !track.localUri &&
+        !track.localPath &&
+        !track.downloadedPath
+      ) {
+        void recoverFromPlaybackFailure(track, error.value)
+      }
       throw cause
     } finally {
       resolving = false
@@ -581,6 +609,8 @@ export const usePlayerStore = defineStore('player', () => {
 
   async function playTrack(track: Track, nextQueue?: Track[]): Promise<void> {
     cancelCrossfade()
+    // 用户主动点歌是一个新的开始：上一轮自动跳过/换源的计数不再适用。
+    resetAutoSkipBudget()
     library.upsertTrack(track)
     if (nextQueue?.length) {
       const index = nextQueue.findIndex((item) => item.key === track.key)
@@ -883,10 +913,154 @@ export const usePlayerStore = defineStore('player', () => {
   async function next(): Promise<void> {
     const index = nextIndex()
     if (index < 0) return
+    // 手动切歌同样重置预算：用户已经介入了，不该被上一轮的失败计数限制。
+    resetAutoSkipBudget()
     cancelCrossfade()
     currentIndex.value = index
     publishQueue()
     await loadTrack(queue.value[index], true)
+  }
+
+  /** 自动跳过预算：桌面 `getAutoNextLimit` 按队列长度算，切歌/重试后清零。 */
+  let autoSkipCount = 0
+  let recoveryToken = 0
+  let recoveryChain: Promise<void> = Promise.resolve()
+  /** 正在为哪一首做换源，以及这一轮是否还在跑（防同一次失败触发两轮）。 */
+  let recoveringKey: string | null = null
+  let recoveryInFlight = false
+
+  /** 用户手动切歌时清掉自动跳过计数，避免上一轮的失败把这一轮也算进去。 */
+  function resetAutoSkipBudget(): void {
+    autoSkipCount = 0
+  }
+
+  /**
+   * 解析失败后的自动换源，对齐桌面 `globaPlayList.playSong` 的候选循环：
+   * 用「歌名 + 歌手」去其它已启用音源搜索，按相似度挑同一首歌，逐个试播，
+   * 成功就替换队列里的这一首并提示「已自动切换到 X 源播放」。
+   *
+   * 换源全部失败时按桌面 `tryAutoNext` 自动跳到下一首；跳过次数受队列长度
+   * 限制（`autoSkipLimit`），防止整张歌单失效时把队列从头翻到尾。
+   *
+   * 一起听房间里不做换源：播放位置由服务端广播，本地换一首别的源的歌会与
+   * 房间里的成员不一致。
+   */
+  function recoverFromPlaybackFailure(failed: Track, reason: string): Promise<void> {
+    if (!settings.settings.autoFallbackSource) return Promise.resolve()
+    if (isListenTogetherPlaybackActive()) return Promise.resolve()
+    // 一个音源插件都没启用时（桌面 `tryAutoNext` 的 `pluginId === undefined`），
+    // 跳过没有意义：每一首都会以同样方式失败，只会在几秒内连报一串错误。
+    if (!pluginStore.sources.length) return Promise.resolve()
+    // 同一个 token 意味着「这一轮恢复已经在进行」：音频元素解码失败时
+    // `loadTrack` 的 catch 与 `error` 事件会各报一次，不该因此再起一轮搜索。
+    if (recoveringKey === failed.key && recoveryInFlight) return recoveryChain
+    const token = ++recoveryToken
+    recoveringKey = failed.key
+    recoveryInFlight = true
+    recoveryChain = recoveryChain
+      .then(async () => {
+        // 排队期间用户已经切到别的歌，这一轮换源就没有意义了。
+        if (token !== recoveryToken || currentTrack.value?.key !== failed.key) return
+        const sources = fallbackSources(
+          pluginStore.sources.map((item) => item.id),
+          failed.ref?.providerId
+        )
+        const candidates = await collectFallbackCandidates(failed, sources)
+        if (token !== recoveryToken || currentTrack.value?.key !== failed.key) return
+        for (const candidate of candidates) {
+          try {
+            await loadTrack(candidate, true, { skipFadeIn: true, noRecovery: true })
+            replaceCurrentTrack(candidate)
+            autoSkipCount = 0
+            void notifyPlayback(`已自动切换到 ${providerNameOf(candidate)} 源播放`, 'success')
+            return
+          } catch {
+            // 这个源也播不了：继续试下一个候选。
+          }
+        }
+        await autoSkipAfterFailure(failed, reason)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (token === recoveryToken) recoveryInFlight = false
+      })
+    return recoveryChain
+  }
+
+  /**
+   * 去其它音源搜索并挑出同一首歌。
+   *
+   * 各音源的搜索并行发出、互不阻塞（一个音源超时不该拖住其它音源），
+   * 单个音源失败只当它没有结果——与桌面 `searchPromises` 的 `catch(() => [])`
+   * 同口径。
+   */
+  async function collectFallbackCandidates(
+    failed: Track,
+    sources: readonly string[]
+  ): Promise<Track[]> {
+    if (!sources.length) return []
+    const keyword = searchKeywordFor(failed)
+    const pages = await Promise.all(
+      sources.map(async (source) => {
+        try {
+          const page = await pluginStore.searchTracks(source, keyword, undefined, 15)
+          return page.items
+        } catch {
+          return [] as Track[]
+        }
+      })
+    )
+    const seen = new Set<string>([failed.key])
+    const pool: Track[] = []
+    for (const item of pages.flat()) {
+      if (seen.has(item.key) || !item.playable) continue
+      seen.add(item.key)
+      pool.push(item)
+    }
+    return rankFallbackCandidates(failed, pool)
+  }
+
+  /** 音源的展示名（桌面提示里的「X 源」）；取不到时退回音源 id。 */
+  function providerNameOf(track: Track): string {
+    const id = String(track.ref?.providerId ?? '')
+    return pluginStore.sources.find((item) => item.id === id)?.name || id
+  }
+
+  /** 把队列里失败的那一首换成实际播放成功的候选，队列与歌单引用保持一致。 */
+  function replaceCurrentTrack(track: Track): void {
+    const index = currentIndex.value
+    if (index < 0 || index >= queue.value.length) return
+    queue.value[index] = track
+    library.upsertTrack(track)
+    publishQueue()
+    persistState()
+  }
+
+  /**
+   * 换源也救不回来时自动跳到下一首。
+   *
+   * 与桌面一致：先报一次「自动跳过当前歌曲」并说明原因，超过预算后只报一次
+   * 汇总，不再继续跳——否则整张歌单都失效时会在几秒内连跳几十首。
+   */
+  async function autoSkipAfterFailure(failed: Track, reason: string): Promise<void> {
+    const limit = autoSkipLimit(queue.value.length)
+    if (!canAutoSkip(autoSkipCount, limit)) {
+      void notifyPlayback(`自动下一首失败：已连续跳过 ${autoSkipCount} 首（${reason}）`, 'danger')
+      return
+    }
+    autoSkipCount += 1
+    void notifyPlayback(`自动跳过当前歌曲：${reason}`, 'warning')
+    const index = nextIndex()
+    if (index < 0 || queue.value[index]?.key === failed.key) return
+    cancelCrossfade()
+    currentIndex.value = index
+    publishQueue()
+    try {
+      await loadTrack(queue.value[index], true)
+    } catch {
+      // 下一首也失败时它会走自己的换源流程；那一轮同样受预算约束，
+      // 达到上限后只会提示一次，不会无限往下跳。
+    }
   }
 
   async function previous(): Promise<void> {

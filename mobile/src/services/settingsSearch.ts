@@ -38,6 +38,7 @@ const rawItems: RawItem[] = [
   { id: 'group-playback', category: '播放', title: '均衡器与音效', description: '10 段均衡器、低音增强、环绕与响度均衡', keywords: ['eq', '音效', '低音', '环绕', '响度', 'effects'] },
   { id: 'group-playback', category: '播放', title: '暂停过渡', description: '播放与暂停时音量渐入渐出', keywords: ['渐变', '淡入', '淡出', 'fade'] },
   { id: 'group-playback', category: '播放', title: '无感过渡', description: '尾段安静时刻提前淡化到下一首', keywords: ['交叉淡化', 'crossfade', '过渡', 'seamless'] },
+  { id: 'group-playback', category: '播放', title: '自动换源', description: '当前音源播不了时到其它音源找同一首歌', keywords: ['换源', 'fallback', '备用音源', '自动跳过'] },
   { id: 'group-playback', category: '播放', title: '音频可视化', description: '播放页显示实时频谱', keywords: ['频谱', '可视化', 'visualizer'] },
   { id: 'group-playback', category: '播放', title: '自动隐藏控制栏', keywords: ['隐藏', '控制栏', 'auto hide'] },
   { id: 'group-playback', category: '播放', title: '系统媒体控件高清封面', keywords: ['锁屏', '通知', '封面', 'smtc', 'hires'] },

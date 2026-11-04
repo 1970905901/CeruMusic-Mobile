@@ -254,6 +254,14 @@
           <ion-toggle :checked="settings.settings.seamlessTransition" @ionChange="settings.settings.seamlessTransition = $event.detail.checked" />
         </ion-item>
         <ion-item>
+          <ion-icon slot="start" :icon="swapHorizontalOutline" color="primary" />
+          <ion-label>
+            <h2>自动换源</h2>
+            <p>当前音源播不了时，用歌名与歌手到其它音源找同一首歌；一起听房间内不生效</p>
+          </ion-label>
+          <ion-toggle :checked="settings.settings.autoFallbackSource" @ionChange="settings.settings.autoFallbackSource = $event.detail.checked" />
+        </ion-item>
+        <ion-item>
           <ion-icon slot="start" :icon="pulseOutline" color="primary" />
           <ion-label>
             <h2>音频可视化</h2>

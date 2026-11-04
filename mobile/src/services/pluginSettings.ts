@@ -15,6 +15,7 @@ export const PLUGIN_PUBLIC_SETTINGS = [
   'lyricBlur',
   'audioVisualizer',
   'seamlessTransition',
+  'autoFallbackSource',
   'autoHideControls',
   'playerLayout',
   'smtcHiresCover',

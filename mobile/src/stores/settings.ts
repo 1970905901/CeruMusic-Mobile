@@ -61,6 +61,8 @@ export interface AppSettings {
   lyricBlur: boolean
   audioVisualizer: boolean
   seamlessTransition: boolean
+  /** 当前音源播不了时，用歌名与歌手去其它音源找同一首歌（桌面 getCandidateSongs） */
+  autoFallbackSource: boolean
   autoHideControls: boolean
   playerLayout: 'cd' | 'cover'
   smtcHiresCover: boolean
@@ -138,6 +140,7 @@ const defaults: AppSettings = {
   lyricBlur: false,
   audioVisualizer: true,
   seamlessTransition: false,
+  autoFallbackSource: true,
   autoHideControls: true,
   playerLayout: 'cd',
   smtcHiresCover: false,

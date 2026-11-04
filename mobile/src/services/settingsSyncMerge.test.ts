@@ -17,6 +17,7 @@ function localSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     maxConcurrentDownloads: 2,
     autoPlayOnOpen: false,
     showLyricsInPlayer: true,
+    autoFallbackSource: true,
     sleepTimerMinutes: null,
     pauseTransition: true,
     onboardingDone: true,
