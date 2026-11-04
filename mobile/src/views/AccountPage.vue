@@ -196,11 +196,17 @@ import { checkUploadImageSafe } from '@/services/nsfwCheck'
 import { useNotificationsStore } from '@/stores/notifications'
 import { usePluginStore } from '@/stores/plugins'
 import type { AccountSummary } from '@shiqianjiang/ceru-plugin-sdk'
+import {
+  applyAccountSummary,
+  createAccountRevisionTracker,
+  pruneAccountSummaries
+} from '@/services/pluginAccountSummaries'
 
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
 const pluginStore = usePluginStore()
 const pluginSummaries = ref<Record<string, AccountSummary>>({})
+const accountRevisions = createAccountRevisionTracker()
 const router = useIonRouter()
 const editing = ref(false)
 const saving = ref(false)
@@ -219,22 +225,40 @@ const pluginAccounts = computed(() =>
     )
 )
 
+/**
+ * 拉取各插件账号摘要，与桌面 `services/pluginAccounts.ts` 同口径：
+ *
+ * - **清掉已经没有入口的条目**：插件被停用或新版本删掉了账号菜单项后，
+ *   摘要还挂在页面上就成了一个点不开的昵称与会员标签；
+ * - **失败即当作未登录**：保留上一次的「已登录」会让用户在插件里退出后，
+ *   手机上仍显示已登录；
+ * - **丢弃过期响应**：切回前台、登录状态变化、手动刷新都会触发，晚到的旧结果
+ *   不能把新结果盖回去。
+ */
 async function refreshPluginAccounts() {
   if (!auth.authenticated) {
     pluginSummaries.value = {}
     return
   }
   const entries = pluginAccounts.value
+  const keys = entries.map((entry) => entry.key)
+  accountRevisions.forget(keys)
+  pluginSummaries.value = pruneAccountSummaries(pluginSummaries.value, keys)
   await Promise.all(
     entries.map(async (entry) => {
+      const revision = accountRevisions.begin(entry.key)
+      let summary: AccountSummary | null = null
       try {
-        const summary = await pluginStore.invokeAction(entry.plugin.key, entry.item.action, {})
-        if (summary && typeof summary === 'object') {
-          pluginSummaries.value = { ...pluginSummaries.value, [entry.key]: summary }
-        }
+        const result = await pluginStore.invokeAction(entry.plugin.key, entry.item.action, {})
+        if (result && typeof result === 'object') summary = result as AccountSummary
       } catch {
-        // A plugin that cannot summarize its account is shown as signed out.
+        // 插件报错等于「拿不到账号状态」，按未登录处理（桌面在 catch 里删除）。
       }
+      pluginSummaries.value = applyAccountSummary(
+        pluginSummaries.value,
+        { key: entry.key, summary, revision },
+        accountRevisions
+      )
     })
   )
 }
