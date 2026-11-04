@@ -148,9 +148,14 @@ export function lyricValueToLrc(value: any): string {
   if (!value) return ''
   if (typeof value === 'string') return value
   if (Array.isArray(value.lines)) {
+    // `offsetMs` 是整篇歌词的偏移（LRC 的 `[offset:±ms]`、插件给出的时间轴校正）。
+    // 解析时 `parseLrc` 会把它加到每一行，写出时同样要加——与桌面
+    // `pluginHostServices.lyricsToLrc` 一致。此前写出丢掉它：对齐好的歌词
+    // 写进本地标签、导出 LRC、生成分享海报之后整体错位。
+    const offset = Number(value.offsetMs) || 0
     return value.lines
       .map((line: any) => {
-        const ms = Number(line.startTimeMs ?? line.startMs ?? 0)
+        const ms = Math.max(0, Number(line.startTimeMs ?? line.startMs ?? 0) + offset)
         const minutes = Math.floor(ms / 60000)
         const seconds = ((ms % 60000) / 1000).toFixed(2).padStart(5, '0')
         return '[' + String(minutes).padStart(2, '0') + ':' + seconds + ']' + String(line.text || '')
