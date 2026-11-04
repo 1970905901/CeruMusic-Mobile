@@ -25,6 +25,13 @@ import {
 } from '@/services/comments'
 import { useSettingsStore } from '@/stores/settings'
 import { resolveHiresCover } from '@/services/smtcArtwork'
+import {
+  createThrottleRegistry,
+  describeThrottle,
+  throttleSignalOf,
+  type ThrottleSignal
+} from '@/services/pluginThrottle'
+import { notifyPlayback } from '@/services/playbackNotice'
 import { orderActionCandidates } from '@/services/capabilityRouting'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
@@ -524,7 +531,14 @@ export const usePluginStore = defineStore('plugins', () => {
       track.ref,
       quality || track.qualities[track.qualities.length - 1]
     ])
-    if (!result?.ok) throw new Error(result?.error?.message || '无法解析播放地址')
+    if (!result?.ok) {
+      // 插件说「现在别继续请求了」（风控/要登录/过会儿再来）时，与桌面
+      // `PluginHost.getMusicUrl` 一样把限流信号交给宿主：暂停下载、提示用户、
+      // 并让播放器停止换源，避免把风控时间越拖越长。
+      const signal = throttleSignalOf(provider.pluginKey, result?.error)
+      if (signal) reportThrottle(signal)
+      throw new Error(result?.error?.message || '无法解析播放地址')
+    }
     return { url: result.url, expiresAt: result.expiresAt, requestHeaders: result.requestHeaders }
   }
 
@@ -544,6 +558,36 @@ export const usePluginStore = defineStore('plugins', () => {
    * 某个音源声明的音质顺序（低→高），取不到时返回空数组。
    * 批量下载的「自动降级」要靠它判断哪一档更低。
    */
+  /**
+   * 限流登记表。下载暂停与提示由这里注入，`services/pluginThrottle.ts` 不反向
+   * 依赖 store；播放器通过 `isPluginThrottled` 读结论。
+   *
+   * 下载侧不需要读这个状态：桌面 `setThrottleHandler` 收到限流时直接
+   * `pauseAllTasks()`，之后用户手动点「开始」就继续，移动端同样是暂停一次。
+   */
+  const throttles = createThrottleRegistry({
+    pauseDownloads: () => {
+      void import('@/stores/downloads').then(({ useDownloadStore }) =>
+        useDownloadStore().pauseAll()
+      )
+    },
+    notify: (signal) => {
+      void notifyPlayback(describeThrottle(signal), 'warning')
+    }
+  })
+
+  function reportThrottle(signal: ThrottleSignal): void {
+    throttles.throttle(signal)
+  }
+
+  function isPluginThrottled(pluginKey: string | null | undefined): boolean {
+    return throttles.isThrottled(pluginKey)
+  }
+
+  function clearPluginThrottle(pluginKey: string): void {
+    throttles.clear(pluginKey)
+  }
+
   function qualityOrderFor(source: string): string[] {
     const provider = selectedProvider(source)
     return provider?.qualities ? [...provider.qualities] : []
@@ -772,6 +816,8 @@ export const usePluginStore = defineStore('plugins', () => {
     chartTracks,
     resolve,
     lyrics,
+    isPluginThrottled,
+    clearPluginThrottle,
     qualityOrderFor,
     suggest,
     hiresArtwork,

@@ -25,6 +25,7 @@ vi.mock('@/services/playbackNotice', () => ({
 }))
 
 const searchTracks = vi.fn()
+let throttled = false
 
 vi.mock('@/stores/plugins', () => ({
   usePluginStore: () => ({
@@ -37,7 +38,10 @@ vi.mock('@/stores/plugins', () => ({
     qualityOrderFor: () => [],
     upsertTrack: vi.fn(),
     publishPlayerState: vi.fn(),
-    publishQueue: vi.fn()
+    publishQueue: vi.fn(),
+    // 限流状态默认「未限流」；限流相关用例在 pluginThrottle.test.ts 覆盖。
+    isPluginThrottled: () => throttled,
+    clearPluginThrottle: vi.fn()
   })
 }))
 
@@ -84,6 +88,18 @@ describe('automatic source fallback', () => {
     searchTracks.mockReset()
     vi.mocked(notifyPlayback).mockClear()
     setListenTogetherPlaybackActive(false)
+    throttled = false
+  })
+
+  it('stops searching while the plugin is throttled', async () => {
+    // 桌面 `_isThrottled()`：插件被风控期间不进换源循环，继续请求只会把
+    // 平台的限流窗口越拖越长。
+    throttled = true
+    const player = usePlayerStore()
+    await expect(
+      player.playTrack(makeOnlineTrack('wy:4', 'wy'), [makeOnlineTrack('wy:4', 'wy')])
+    ).rejects.toThrow()
+    expect(searchTracks).not.toHaveBeenCalled()
   })
 
   it('does nothing when the user turned automatic fallback off', async () => {

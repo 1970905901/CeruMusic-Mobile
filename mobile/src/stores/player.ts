@@ -609,8 +609,10 @@ export const usePlayerStore = defineStore('player', () => {
 
   async function playTrack(track: Track, nextQueue?: Track[]): Promise<void> {
     cancelCrossfade()
-    // 用户主动点歌是一个新的开始：上一轮自动跳过/换源的计数不再适用。
+    // 用户主动点歌是一个新的开始：上一轮自动跳过/换源的计数不再适用，
+    // 被限流的插件也重新给一次机会（用户可能刚在插件里登录过）。
     resetAutoSkipBudget()
+    if (track.pluginKey) pluginStore.clearPluginThrottle(track.pluginKey)
     library.upsertTrack(track)
     if (nextQueue?.length) {
       const index = nextQueue.findIndex((item) => item.key === track.key)
@@ -914,9 +916,12 @@ export const usePlayerStore = defineStore('player', () => {
     const index = nextIndex()
     if (index < 0) return
     // 手动切歌同样重置预算：用户已经介入了，不该被上一轮的失败计数限制。
+    // 限流也一样——用户主动点了下一首，就重新给这个插件一次机会（桌面把
+    // 限流视为「暂停换源」，手动操作不算换源）。
     resetAutoSkipBudget()
     cancelCrossfade()
     currentIndex.value = index
+    pluginStore.clearPluginThrottle(queue.value[index]?.pluginKey ?? '')
     publishQueue()
     await loadTrack(queue.value[index], true)
   }
@@ -951,6 +956,11 @@ export const usePlayerStore = defineStore('player', () => {
     // 一个音源插件都没启用时（桌面 `tryAutoNext` 的 `pluginId === undefined`），
     // 跳过没有意义：每一首都会以同样方式失败，只会在几秒内连报一串错误。
     if (!pluginStore.sources.length) return Promise.resolve()
+    // 桌面 `_isThrottled()`：插件被风控期间不再进入换源循环，也不再自动跳过。
+    // 继续请求只会把平台的限流窗口越拖越长。
+    if (pluginStore.isPluginThrottled(failed.pluginKey ?? failed.ref?.providerId)) {
+      return Promise.resolve()
+    }
     // 同一个 token 意味着「这一轮恢复已经在进行」：音频元素解码失败时
     // `loadTrack` 的 catch 与 `error` 事件会各报一次，不该因此再起一轮搜索。
     if (recoveringKey === failed.key && recoveryInFlight) return recoveryChain
@@ -1043,6 +1053,8 @@ export const usePlayerStore = defineStore('player', () => {
    * 汇总，不再继续跳——否则整张歌单都失效时会在几秒内连跳几十首。
    */
   async function autoSkipAfterFailure(failed: Track, reason: string): Promise<void> {
+    // 跳过会去解析下一首，同样是一次插件请求：限流期间连这个也要停。
+    if (pluginStore.isPluginThrottled(failed.pluginKey ?? failed.ref?.providerId)) return
     const limit = autoSkipLimit(queue.value.length)
     if (!canAutoSkip(autoSkipCount, limit)) {
       void notifyPlayback(`自动下一首失败：已连续跳过 ${autoSkipCount} 首（${reason}）`, 'danger')
