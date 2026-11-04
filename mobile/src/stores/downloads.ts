@@ -36,6 +36,7 @@ import { downloadEventTarget } from '@/services/downloadEventScope'
 import { toHostEntity } from '@/services/hostEntity'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
 import { isTransientDownloadError, planDownloadFailure } from '@/services/downloadRetry'
+import { resolveHostDownloadQuality } from '@/services/hostDownloadQuality'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -918,7 +919,14 @@ export const useDownloadStore = defineStore('downloads', () => {
       if (!track) {
         throw new Error(`无法解析下载歌曲：${String(reference?.id ?? '')}`)
       }
-      const task = await createDownload(track, request?.quality, safTreeUri)
+      // 与桌面同口径：插件没指定音质时用这首歌自己声明的档位，而不是把
+      // 设置里的全局音质硬塞给它（只提供 320k 的歌会被要求下 flac）。
+      const quality = resolveHostDownloadQuality({
+        requested: request?.quality,
+        trackQualities: track.qualities,
+        order: track.ref?.providerId ? pluginStore.qualityOrderFor(track.ref.providerId) : []
+      })
+      const task = await createDownload(track, quality, safTreeUri)
       // 记下发起者：之后每次进度/状态变化只推给这个插件。
       if (pluginKey) {
         task.pluginKey = pluginKey
