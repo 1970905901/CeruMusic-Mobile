@@ -15,6 +15,7 @@ import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPla
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
 import { planLocalPrune } from '@/services/localPrune'
+import type { PlaylistOrigin } from '@/services/playlistOrigin'
 import {
   mergePlaylistImportMeta,
   playlistImportMeta,
@@ -270,13 +271,20 @@ export const useLibraryStore = defineStore('library', () => {
     if (isFavorite(track)) await toggleFavorite(track)
   }
 
-  function createPlaylist(name: string, description = ''): Playlist {
+  /**
+   * 新建本地歌单。
+   *
+   * `origin` 只在「把远程歌单保存到本地」时传入：记下来源（音源 + 平台歌单 id），
+   * 之后才能像桌面 `handleSyncPlaylist` 那样重新拉取平台歌单、把新歌追加进来。
+   * 不传就是纯本地歌单，没有可同步的对象。
+   */
+  function createPlaylist(name: string, description = '', origin?: PlaylistOrigin): Playlist {
     const playlist: Playlist = {
       id: uid('playlist'),
       name: name.trim() || '新建歌单',
       description,
       trackKeys: [],
-      source: 'local',
+      ...(origin ? { ...origin } : { source: 'local' as const }),
       createdAt: Date.now(),
       updatedAt: Date.now()
     }

@@ -346,6 +346,12 @@ import { toHostEntity } from '@/services/hostEntity'
 import { collectPlaylistSections } from '@/services/playlistSections'
 import { nextBarrenCount, pagingShouldContinue } from '@/services/pagingGuard'
 import { playlistLoadErrorMessage } from '@/services/playlistLoadError'
+import { canSyncPlaylist, remotePlaylistOrigin } from '@/services/playlistOrigin'
+import {
+  closePluginProgress,
+  createPluginProgress,
+  updatePluginProgress
+} from '@/services/pluginProgress'
 
 const route = useRoute()
 const router = useRouter()
@@ -371,6 +377,8 @@ const shareOpen = ref(false)
 const reorderMode = ref(false)
 /** 远程歌单「保存到本地」进行中：拉全部分页可能耗时，避免重复触发。 */
 const savingToLocal = ref(false)
+/** 「同步歌单」进行中：同样要拉全部分页，避免重复点出两条并发同步。 */
+const syncingSource = ref(false)
 
 const searchQuery = ref('')
 const searchActive = ref(false)
@@ -1160,6 +1168,21 @@ async function openPlaylistMenu() {
           void editPlaylistInfo()
         }
       },
+      // 桌面「同步歌单」：重新拉一遍平台歌单，把新歌追加进来（重复的跳过）。
+      // 只在保存过的远程歌单上出现——纯本地歌单没有可同步的来源。
+      ...(canSyncPlaylist(
+        localPlaylist.value,
+        pluginStore.enabledPlugins.map((plugin) => plugin.key)
+      )
+        ? [
+            {
+              text: '同步歌单',
+              handler: () => {
+                void syncFromOrigin()
+              }
+            }
+          ]
+        : []),
       {
         text: `排序方式（当前: ${currentSortLabel.value}）`,
         handler: () => {
@@ -1337,7 +1360,17 @@ async function saveToLocalPlaylist(): Promise<void> {
   try {
     let guard = 0
     while (nextCursor.value && guard++ < 50) await loadRemote(false)
-    const playlist = library.createPlaylist(name, description.value)
+    // 记下来源（桌面把 playlistId + source 写进歌单 meta），这样本地歌单
+    // 之后能「同步歌单」把平台新歌追加进来，而不是只能删掉重存。
+    const originPlugin = pluginStore.selectedProvider(providerId) ?? pluginStore.selectedProvider(source)
+    const origin = remotePlaylistOrigin({
+      pluginKey: originPlugin?.pluginKey,
+      source: providerId,
+      providerId,
+      remoteId: String(route.query.remoteId || ''),
+      kind: remoteKind
+    })
+    const playlist = library.createPlaylist(name, description.value, origin)
     const added = await library.addTracksToPlaylist(playlist.id, tracks.value)
     if (cover.value) await library.updatePlaylist(playlist.id, { cover: cover.value })
     await toast(`已保存 ${added} 首到本地歌单「${name}」`, 'success')
@@ -1346,6 +1379,62 @@ async function saveToLocalPlaylist(): Promise<void> {
     await toast(cause instanceof Error ? cause.message : '保存失败', 'danger')
   } finally {
     savingToLocal.value = false
+  }
+}
+
+/**
+ * 同步歌单，对齐桌面 `views/music/list.vue` 的 `handleSyncPlaylist`：
+ * 按记住的来源重新拉整张平台歌单，把**新歌追加**到本地歌单末尾，已有的跳过。
+ *
+ * 桌面在拉取时会先补拉完整个歌单（`while (pageGuard++ < MAX_PREFETCH_PAGES)`）；
+ * 分页没拉完就同步，只会把当前可见的一页当成整个平台歌单。这里沿用同一套
+ * 分页停止条件（`pagingGuard`），异常音源返回重复页时不会空转。
+ */
+async function syncFromOrigin(): Promise<void> {
+  const playlist = localPlaylist.value
+  if (!playlist || syncingSource.value) return
+  const pluginKey = playlist.pluginKey
+  const providerId = playlist.providerId
+  const remoteId = playlist.remoteId
+  if (!pluginKey || !providerId || !remoteId) return
+  syncingSource.value = true
+  const progressId = createPluginProgress({ title: '同步歌单', message: '正在获取…' })
+  try {
+    const existing = new Set(playlist.trackKeys)
+    const reference = { pluginId: pluginKey, providerId, kind: 'playlist', id: remoteId }
+    const incoming: Track[] = []
+    let cursor: string | undefined
+    let pages = 0
+    let barren = 0
+    do {
+      const page = await pluginStore.playlistTracks(providerId, reference, cursor)
+      const items = (page.items || [])
+        .filter((item: any) => item?.ref?.kind === 'track')
+        .map((item: any) => pluginStore.normalizeEntity(pluginKey, item))
+      let addedThisPage = 0
+      for (const track of items) {
+        if (existing.has(track.key)) continue
+        existing.add(track.key)
+        incoming.push(track)
+        addedThisPage += 1
+      }
+      pages += 1
+      barren = nextBarrenCount(addedThisPage, barren)
+      updatePluginProgress(progressId, { message: `新增 ${incoming.length} 首` })
+      cursor = pagingShouldContinue(!!page.nextCursor, barren) ? page.nextCursor : undefined
+    } while (cursor && pages < 50)
+
+    if (!incoming.length) {
+      await toast('没有新歌，歌单已是最新', 'medium')
+      return
+    }
+    const added = await library.addTracksToPlaylist(playlist.id, incoming)
+    await toast(`同步完成，新增 ${added} 首`, 'success')
+  } catch (cause) {
+    await toast(cause instanceof Error ? cause.message : '同步失败', 'danger')
+  } finally {
+    closePluginProgress(progressId)
+    syncingSource.value = false
   }
 }
 
