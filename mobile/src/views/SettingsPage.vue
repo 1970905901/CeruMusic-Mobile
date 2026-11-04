@@ -1689,9 +1689,12 @@ async function scanLocal() {
   try {
     const records = await library.scanLocalMusic()
     const filtered = (records.filteredSizeCount || 0) + (records.filteredDurationCount || 0)
+    const prunedTip = records.prunedCount ? `，移除 ${records.prunedCount} 首已不存在的记录` : ''
     if (records.length) {
       const filterTip = filtered ? ` (已过滤 ${filtered} 个短音频)` : ''
-      await toast(`已导入 ${records.length} 首本地歌曲${filterTip}`)
+      await toast(`已导入 ${records.length} 首本地歌曲${filterTip}${prunedTip}`)
+    } else if (prunedTip) {
+      await toast(`没有发现新的歌曲${prunedTip}`)
     } else if (filtered) {
       await toast(`没有发现新的歌曲 (已过滤 ${filtered} 个短音频)`)
     } else {

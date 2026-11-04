@@ -1295,9 +1295,13 @@ async function scanLocal() {
   try {
     const records = await library.scanLocalMusic()
     const filtered = (records.filteredSizeCount || 0) + (records.filteredDurationCount || 0)
+    // 清理掉的记录要说出来：用户删了歌再扫描，列表少了几首而不解释会让人以为出错。
+    const prunedTip = records.prunedCount ? `，移除 ${records.prunedCount} 首已不存在的记录` : ''
     if (records.length) {
       const filterTip = filtered ? ` (已自动过滤 ${filtered} 个短音频)` : ''
-      await showToast(`已导入 ${records.length} 首本地歌曲${filterTip}`, 'success')
+      await showToast(`已导入 ${records.length} 首本地歌曲${filterTip}${prunedTip}`, 'success')
+    } else if (prunedTip) {
+      await showToast(`没有发现新的音频${prunedTip}`, 'medium')
     } else if (filtered) {
       await showToast(`没有发现新的音频 (已自动过滤 ${filtered} 个短音频)`, 'medium')
     } else {

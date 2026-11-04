@@ -14,6 +14,7 @@ import { cloudSongListApi, isShareableTrack, playlistTracksToCloud } from '@/ser
 import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPlaylistOverwrite'
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
+import { planLocalPrune } from '@/services/localPrune'
 import {
   mergePlaylistImportMeta,
   playlistImportMeta,
@@ -111,6 +112,8 @@ export interface ScanLocalResult extends Array<LocalTrackRecord> {
   skippedCount: number
   filteredSizeCount: number
   filteredDurationCount: number
+  /** 因「扫描范围内已不存在」而从索引里移除的记录数（桌面 pruneByScan）。 */
+  prunedCount: number
 }
 
 export interface ImportLocalOptions {
@@ -772,6 +775,27 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
+  /**
+   * 按扫描结果清理索引（桌面 `LocalMusicIndexService.pruneByScan`）。
+   *
+   * 只删记录、不删文件：文件本来就不在了。判定见 `services/localPrune.ts`——
+   * 只清理被扫描目录下的记录，扫描结果为空时一条都不动。
+   */
+  async function pruneLocalRecords(files: readonly ScannedAudioFile[]): Promise<number> {
+    const scannedDirectories = [...new Set(files.map((file) => String(file.directory)))]
+    const scannedPaths = files.map((file) => `${file.directory}:${file.path}`)
+    const keys = planLocalPrune(localRecords.value, scannedDirectories, scannedPaths)
+    if (!keys.length) return 0
+    const db = await getDb()
+    const drop = new Set(keys)
+    for (const key of drop) await db.delete('localTracks', key)
+    localRecords.value = localRecords.value.filter((item) => !drop.has(item.key))
+    const next = { ...tracks.value }
+    for (const key of drop) delete next[key]
+    tracks.value = next
+    return keys.length
+  }
+
   async function scanLocalMusic(options?: ScanLocalOptions): Promise<ScanLocalResult> {
     importingLocal.value = true
     const imported: LocalTrackRecord[] = []
@@ -881,12 +905,16 @@ export const useLibraryStore = defineStore('library', () => {
           console.warn('扫描本地歌曲失败', file.path, error)
         }
       }
+      // 按扫描清理：被扫描目录下、这次没扫到的记录（用户在文件管理器里删掉的歌）
+      // 从索引里移除，与桌面 `pruneByScan` 同口径。只删索引记录，不动磁盘文件。
+      const pruned = await pruneLocalRecords(files)
       const skippedCount = filteredSizeCount + filteredDurationCount + skippedExistingCount
       const result = Object.assign(imported, {
         imported,
         skippedCount,
         filteredSizeCount,
-        filteredDurationCount
+        filteredDurationCount,
+        prunedCount: pruned
       })
       return result as ScanLocalResult
     } finally {
