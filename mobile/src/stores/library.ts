@@ -17,6 +17,11 @@ import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKe
 import { planLocalPrune } from '@/services/localPrune'
 import type { PlaylistOrigin } from '@/services/playlistOrigin'
 import {
+  namedImportTarget,
+  planImportTarget,
+  type ImportTargetChoice
+} from '@/services/playlistImportTarget'
+import {
   mergePlaylistImportMeta,
   playlistImportMeta,
   type PlaylistImportMeta
@@ -1030,12 +1035,73 @@ export const useLibraryStore = defineStore('library', () => {
     return page
   }
 
+  /**
+   * 插件导入歌单时的目标选择（桌面 `choosePlaylist` 的移动端等价）。
+   *
+   * 面板与 `ui.dialogs.pickPlaylist` 同一形态：第一项「新建本地歌单」，其余是本机歌单。
+   */
+  async function planPlaylistImportTarget(request: any) {
+    type Ref = { id: string; location: 'local' | 'cloud' }
+    // 插件给了可用目标就不弹面板（用户刚从插件的界面里选过）。
+    const named = namedImportTarget<Ref>(request)
+    if (named) return { target: named }
+    const { actionSheetController } = await import('@ionic/vue')
+    let choice: ImportTargetChoice<Ref> = { kind: 'cancelled' }
+    const sheet = await actionSheetController.create({
+      header: '导入到歌单',
+      buttons: [
+        {
+          text: '新建本地歌单',
+          handler: () => {
+            choice = { kind: 'new' }
+          }
+        },
+        ...playlists.value.map((playlist) => ({
+          text: playlist.name,
+          handler: () => {
+            choice = { kind: 'picked', target: { id: playlist.id, location: 'local' } }
+          }
+        })),
+        { text: '取消', role: 'cancel' as const }
+      ]
+    })
+    await sheet.present()
+    await sheet.onDidDismiss()
+    return planImportTarget<Ref>(request, {
+      choice,
+      createNew: () => {
+        const playlist = createPlaylist(request?.suggestedName || '导入歌单')
+        return { id: playlist.id, location: 'local' as const }
+      }
+    })
+  }
+
   async function importHostPlaylist(request: any) {
-    const target = request?.target
+    // 插件没指定目标时先问用户（桌面 `choosePlaylist`），用户取消就什么都不导。
+    // 此前不问就新建一张「导入歌单」——插件顺手导一次，用户列表里就多出
+    // 一张自己没要过的歌单。
+    const plan = await planPlaylistImportTarget(request)
+    if ('cancelled' in plan) return { cancelled: true, added: 0, skipped: 0 }
+    const target = plan.target
     // 目标可以是云端歌单（SDK 的 `PlaylistImportRequest.target` 明确允许）。
     // 此前一律新建本地歌单，插件往「这张云歌单」里导入，结果凭空多出一张本地的。
-    if (target?.location === 'cloud') {
+    if (target.location === 'cloud') {
       return importHostTracksToCloud(String(target.id ?? ''), request)
+    }
+    // 插件指定了已有本地歌单时**追加**进去，而不是另建一张同名的——
+    // 用户选了「放进这张歌单」，不是「再复制一张」。
+    const existing = playlists.value.find((item) => item.id === target.id)
+    if (existing) {
+      const tracks = (request?.items ?? [])
+        .map((entity: any) => hostEntityToTrack(entity))
+        .filter((track: Track | null): track is Track => !!track)
+      const addedToExisting = await addTracksToPlaylist(existing.id, tracks)
+      return {
+        cancelled: false,
+        target: { id: existing.id, location: 'local' },
+        added: addedToExisting,
+        skipped: (request?.items?.length ?? 0) - addedToExisting
+      }
     }
     const playlist = createPlaylist(request?.suggestedName || '导入歌单')
     let added = 0
