@@ -26,6 +26,13 @@ export interface DownloadTask {
   /** Persisted SAF tree URI when the task was written to an authorized folder. */
   safUri?: string
   error?: string
+  /**
+   * 已经自动重试过几次（桌面 `task.retries`，上限 3）。
+   *
+   * 只有在真正失败并决定重试时递增；用户手动「重试」会清零，
+   * 否则一个反复失败的任务永远走不到「已失败」。
+   */
+  retries?: number
   createdAt: number
   updatedAt: number
 }

@@ -35,6 +35,7 @@ import { downloadSpeedMeter } from '@/services/downloadSpeed'
 import { downloadEventTarget } from '@/services/downloadEventScope'
 import { toHostEntity } from '@/services/hostEntity'
 import { playlistKeyCandidates } from '@/services/playlistKeys'
+import { isTransientDownloadError, planDownloadFailure } from '@/services/downloadRetry'
 
 export function isQueuedOrRunning(task: { status: string }): boolean {
   return task.status === 'running' || task.status === 'queued'
@@ -702,7 +703,9 @@ export const useDownloadStore = defineStore('downloads', () => {
       return
     }
     inFlight.add(id)
-    updateTask(id, { status: 'running', receivedBytes: 0, error: undefined })
+    // 自动重试时不清空进度：`receivedBytes` 归零会让下载页的数字跳回 0、
+    // 速率采样也跟着断一段；真正的「重试」按钮走 `retryPatch()` 那一套。
+    updateTask(id, { status: 'running', error: undefined })
     try {
       const resolved = await pluginStore.resolve(track, task.quality)
       task.totalBytes = undefined
@@ -714,12 +717,28 @@ export const useDownloadStore = defineStore('downloads', () => {
       const next = tasks.value.find((item) => item.status === 'queued')
       if (next) void runTask(next.id)
     } catch (error) {
+      // 任务可能在传输期间被暂停/取消（CapacitorHttp 不能中止，请求照样返回错误），
+      // 状态已经不是 running 就不该覆盖用户的决定。
       const currentStatus = task.status as DownloadStatus
       if (currentStatus === 'cancelled' || currentStatus === 'paused') return
-      updateTask(id, {
-        status: 'failed',
-        error: error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      // 与桌面 `handleTaskError` 同口径：临时性失败自动重试 3 次再报错。
+      // 移动端此前第一次失败就把任务标成「失败」——网络一抖，整批下载一起变红。
+      const plan = planDownloadFailure({
+        retries: Number(task.retries) || 0,
+        cancelled: false,
+        transient: isTransientDownloadError(error),
+        message
       })
+      if (plan.action === 'retry') {
+        // 保持 running 再补一次：传输已经结束，状态跃迁会把并发位让出来，
+        // 补一次位就能立刻被同一颗任务占回去。用户的暂停/取消会把它改成
+        // paused/cancelled，这个判断就不会再拉起它。
+        updateTask(id, { retries: plan.retries })
+        pumpQueue()
+        return
+      }
+      updateTask(id, { status: 'failed', error: plan.error, retries: 0 })
       const next = tasks.value.find((item) => item.status === 'queued')
       if (next) void runTask(next.id)
     } finally {
@@ -763,7 +782,9 @@ export const useDownloadStore = defineStore('downloads', () => {
     for (const id of ids) {
       const task = tasks.value.find((item) => item.id === id)
       if (!task || task.status === 'completed') continue
-      updateTask(id, retryPatch())
+      // 手动重试是用户的明确意图：清零自动重试计数，否则一个反复失败的
+      // 任务下一次失败会直接判死，看起来像「重试按钮没用」。
+      updateTask(id, { ...retryPatch(), retries: 0 })
       void runTask(id)
     }
   }
@@ -794,6 +815,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     }
     updateTask(id, {
       ...retryPatch(),
+      retries: 0,
       filePath: undefined,
       relativePath: undefined,
       totalBytes: undefined
