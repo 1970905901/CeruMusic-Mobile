@@ -14,6 +14,11 @@ import { cloudSongListApi, isShareableTrack, playlistTracksToCloud } from '@/ser
 import { planCloudOverwrite, type CloudOverwritePlan } from '@/services/cloudPlaylistOverwrite'
 import { mergeCloudPlaylists, type CloudPlaylistView } from '@/services/cloudPlaylists'
 import { playlistKeyCandidates, playlistKeyMatches } from '@/services/playlistKeys'
+import {
+  mergePlaylistImportMeta,
+  playlistImportMeta,
+  type PlaylistImportMeta
+} from '@/services/playlistImportMeta'
 import { trackKeyFor } from '@/services/trackKey'
 import { toHostEntity } from '@/services/hostEntity'
 import { findTrackByRef } from '@/services/pluginRooms'
@@ -1396,6 +1401,9 @@ export const useLibraryStore = defineStore('library', () => {
 
     let cursor: string | undefined
     let playlist: Playlist | null = null
+    // 导入器把歌单名、简介与封面放在 `page.playlist` 里（桌面同口径）。
+    // 此前只读 `page.name` 与 `page.items`，封面对移动端等于没给。
+    let meta: PlaylistImportMeta = {}
     /**
      * 导入器分页的停止条件。
      *
@@ -1414,8 +1422,10 @@ export const useLibraryStore = defineStore('library', () => {
         limit: 100
       })
       if (!page) throw new Error('导入器没有返回歌单')
-      if (!playlist) playlist = createPlaylist(page.name || '导入歌单')
-      if (page?.name && page.name !== playlist.name) playlist.name = page.name
+      // 逐页合并：后一页的非空值覆盖前一页，空白不会把已有内容抹掉。
+      meta = mergePlaylistImportMeta(meta, playlistImportMeta(page))
+      if (!playlist) playlist = createPlaylist(meta.name || '导入歌单', meta.description || '')
+      if (meta.name && meta.name !== playlist.name) playlist.name = meta.name
 
       let added = 0
       for (const entity of page?.items ?? []) {
@@ -1437,6 +1447,9 @@ export const useLibraryStore = defineStore('library', () => {
     } while (cursor)
 
     if (!playlist) throw new Error('导入器没有返回歌单')
+    // 封面通常在第一页就给了；写入放在最后，避免中途失败留下一张只改了封面的歌单。
+    if (meta.cover) playlist.cover = meta.cover
+    if (meta.description && !playlist.description) playlist.description = meta.description
     playlist.updatedAt = Date.now()
     const db = await getDb()
     await db.put('playlists', toPlain(playlist))
