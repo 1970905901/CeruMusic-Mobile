@@ -86,6 +86,25 @@ export function decodeLyricText(value: string): string {
   }
 }
 
+/**
+ * 从音频标签里取内嵌歌词，对齐桌面 `main/services/localLyrics.ts` 的
+ * `parse(embedded, 'auto')` 第一步——桌面**先**解析内嵌歌词，读不到才找同目录文件。
+ *
+ * `music-metadata` 的 `common.lyrics` 是字符串数组（一个文件可能有多条 USLT），
+ * 不同容器也可能只给一个字符串。这里统一取第一条**真正有内容**的：只写了一个
+ * 空标签的音频不该挡住同名的 `.lrc`，结构化条目也不能被 `String()` 变成
+ * `[object Object]` 存进歌单。
+ */
+export function pickEmbeddedLyric(value: unknown): string | undefined {
+  const entries = Array.isArray(value) ? value : [value]
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue
+    const text = entry.trim()
+    if (text) return entry
+  }
+  return undefined
+}
+
 /** 内嵌歌词优先，缺失时才用侧车文件（桌面版同一顺序）。 */
 export function preferLyrics(embedded: string | undefined, sidecar: string | null | undefined): string | undefined {
   const inline = typeof embedded === 'string' ? embedded.trim() : ''

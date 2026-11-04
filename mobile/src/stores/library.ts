@@ -22,6 +22,7 @@ import { HISTORY_PAGE_SIZE, LOCAL_MUSIC_PAGE_SIZE, clampPageLimit } from '@/serv
 import { blobToDataUrl } from '@/services/imageUtils'
 import {
   decodeLyricText,
+  pickEmbeddedLyric,
   pickSidecarLyric,
   preferLyrics,
   sidecarLyricExtension,
@@ -561,6 +562,8 @@ export const useLibraryStore = defineStore('library', () => {
     let genre: string | undefined = options.preParsed?.genre
     let durationMs: number | undefined = options.preParsed?.durationMs
     let cover: string | undefined = options.preParsed?.cover
+    /** 标签里内嵌的歌词（ID3 USLT、Vorbis `LYRICS`、MP4 `©lyr`）。 */
+    let embeddedLyrics: string | undefined = options.preParsed?.lyrics
 
     if (!options.preParsed) {
       try {
@@ -572,6 +575,8 @@ export const useLibraryStore = defineStore('library', () => {
         year = metadata.common.year || undefined
         genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
         durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
+        // 内嵌歌词与桌面同口径：优先于同目录的 `.lrc` / `.ttml`。
+        embeddedLyrics = pickEmbeddedLyric(metadata.common.lyrics)
         const picture = metadata.common.picture?.[0]
         if (picture) {
           const blob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
@@ -619,7 +624,7 @@ export const useLibraryStore = defineStore('library', () => {
       mime: file.type || mimeForAudio(file.name),
       cover,
       // 内嵌标签里的歌词优先，没有才用同目录的 .lrc / .ttml。
-      lyrics: preferLyrics(options.preParsed?.lyrics, options.sidecarLyrics),
+      lyrics: preferLyrics(embeddedLyrics, options.sidecarLyrics),
       size: file.size,
       createdAt: Date.now()
     }
@@ -816,6 +821,7 @@ export const useLibraryStore = defineStore('library', () => {
           let genre: string | undefined
           let durationMs: number | undefined
           let cover: string | undefined
+          let embeddedLyrics: string | undefined
 
           try {
             const { parseBlob } = await import('music-metadata-browser')
@@ -826,6 +832,9 @@ export const useLibraryStore = defineStore('library', () => {
             year = metadata.common.year || undefined
             genre = (metadata.common.genre ?? []).filter(Boolean).join(' / ') || undefined
             durationMs = metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined
+            // 内嵌歌词优先于同目录文件（桌面 `resolveLocalLyrics` 同一顺序）。
+            // 扫描路径此前整个漏读：带内嵌歌词、没有 `.lrc` 的音轨导进来就没有歌词。
+            embeddedLyrics = pickEmbeddedLyric(metadata.common.lyrics)
             const picture = metadata.common.picture?.[0]
             if (picture) {
               const picBlob = new Blob([new Uint8Array(picture.data) as unknown as BlobPart], {
@@ -854,7 +863,8 @@ export const useLibraryStore = defineStore('library', () => {
               year,
               genre,
               durationMs,
-              cover
+              cover,
+              lyrics: embeddedLyrics
             }
           })
           if (record) {
