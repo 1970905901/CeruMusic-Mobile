@@ -32,6 +32,7 @@ import {
   type ThrottleSignal
 } from '@/services/pluginThrottle'
 import { notifyPlayback } from '@/services/playbackNotice'
+import { describeRuntimeFailure } from '@/services/pluginRuntimeFailure'
 import { orderActionCandidates } from '@/services/capabilityRouting'
 
 function makeTrackKey(pluginKey: string, entity: any): string {
@@ -97,6 +98,26 @@ export const usePluginStore = defineStore('plugins', () => {
 
   pluginRuntimeManager.setLogSink((entry) => {
     logs.value = [entry, ...logs.value].slice(0, 300)
+  })
+
+  /**
+   * 运行时自己停了下来（worker 崩溃、被系统回收）时停用插件，对齐桌面
+   * `PluginHost.event('closed')` → `setPluginEnabled(false)` → 界面提示。
+   *
+   * 移动端此前只写日志、把插件标成「运行失败」却保持启用，下次启动又会
+   * 激活同一个会崩溃的插件，用户怎么点都是同一个错误。
+   */
+  pluginRuntimeManager.setStopListener((pluginKey, reason) => {
+    const plugin = plugins.value.find((item) => item.key === pluginKey)
+    // 已经停用的不重复广播（例如用户刚在详情页关掉它）。
+    if (!plugin || !plugin.enabled) return
+    plugin.lastError = reason
+    plugin.enabled = false
+    plugin.updatedAt = Date.now()
+    void getDb()
+      .then((db) => db.put('plugins', toPlain(plugin)))
+      .catch((error) => console.warn('保存插件停用状态失败', error))
+    void notifyPlayback(describeRuntimeFailure(reason), 'danger')
   })
 
   /** 清空某个插件的日志；不传 key 时清空全部（插件卸载路径用）。 */

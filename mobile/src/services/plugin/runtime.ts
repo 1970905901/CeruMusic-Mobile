@@ -27,6 +27,7 @@ import {
 import { isPrivateUrl } from '@/services/plugin/networkScope'
 import { httpResponseShape } from '@/services/plugin/hostModules'
 import { createOperationRequests } from '@/services/plugin/operationRequests'
+import { RUNTIME_STOPPED_REASON } from '@/services/pluginRuntimeFailure'
 import {
   SocketSendLimiter,
   assertSocketEventName,
@@ -72,6 +73,8 @@ export interface PluginRuntimeOptions {
   onState?: (state: any) => void
   onClosed?: (reason?: string) => void
   onFailed?: (error: string) => void
+  /** 激活之后运行时自己停了下来（worker 崩溃、被系统回收）。 */
+  onStopped?: (reason: string) => void
 }
 
 interface PendingInvoke {
@@ -576,9 +579,21 @@ export class PluginRuntime {
     })
     this.worker.onmessage = (event) => this.handleMessage(event.data)
     this.worker.onerror = (event) => {
-      const message = event.message || '插件 Worker 崩溃'
+      const message = event.message || RUNTIME_STOPPED_REASON
       this.activationError = message
-      this.options.onFailed?.(message)
+      // 激活期间失败由激活流程自己报错；激活之后的崩溃对齐桌面
+      // `PluginHost.event('closed')`，交给 `onStopped` 决定是否停用插件。
+      // 主动 dispose 期间的 terminate 也会走到这里，不能当成崩溃。
+      if (this.disposed) {
+        this.rejectReady(new Error(message))
+        return
+      }
+      if (this.activated) {
+        this.activated = false
+        this.options.onStopped?.(message)
+      } else {
+        this.options.onFailed?.(message)
+      }
       this.rejectReady(new Error(message))
     }
   }
@@ -2042,6 +2057,7 @@ export class PluginRuntime {
 export class PluginRuntimeManager {
   private runtimes = new Map<string, PluginRuntime>()
   private logSink: ((entry: PluginLogEntry) => void) | null = null
+  private stopListener: ((pluginKey: string, reason: string) => void) | null = null
   private surfaceStates = new Map<string, any>()
   private surfaceListeners = new Set<
     (event: { pluginKey: string; surfaceId: string; state: any }) => void
@@ -2049,6 +2065,11 @@ export class PluginRuntimeManager {
 
   setLogSink(sink: (entry: PluginLogEntry) => void) {
     this.logSink = sink
+  }
+
+  /** 运行时自行停止时的回调，由插件 store 接上「停用 + 提示」。 */
+  setStopListener(listener: (pluginKey: string, reason: string) => void) {
+    this.stopListener = listener
   }
 
   async activate(
@@ -2088,6 +2109,18 @@ export class PluginRuntimeManager {
           message: error,
           at: Date.now()
         })
+      },
+      // 激活之后运行时自己停了下来：桌面 `PluginHost.event('closed')` 会停用
+      // 插件并通知界面，移动端此前只写日志、插件保持启用，重启后又会崩溃。
+      onStopped: (reason) => {
+        this.logSink?.({
+          pluginKey: record.key,
+          level: 'error',
+          message: reason,
+          at: Date.now()
+        })
+        this.runtimes.delete(record.key)
+        this.stopListener?.(record.key, reason)
       }
     })
     this.runtimes.set(record.key, runtime)
