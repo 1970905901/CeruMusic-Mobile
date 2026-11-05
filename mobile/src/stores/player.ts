@@ -33,6 +33,7 @@ import {
   previousShuffleKey
 } from '@/services/shuffleOrder'
 import { displayMinutes, planSleepTimer, resumeSleepTimer } from '@/services/sleepTimer'
+import { planQueueReplace } from '@/services/hostQueueReplace'
 import {
   autoSkipLimit,
   canAutoSkip,
@@ -1420,14 +1421,38 @@ export const usePlayerStore = defineStore('player', () => {
     publishQueue()
   }
 
+  /**
+   * 插件 `queue.replace`。
+   *
+   * 桌面只替换列表本身，正在播放的那首不受影响；移动端此前无条件把
+   * `currentIndex` 写成 0，于是换完队列后界面与 `player.getState` 认的是新列表
+   * 的第一首，而仍在出声的是旧歌——点暂停停的是旧歌、点下一首跳到第二首、
+   * 播放历史也记成第一首。队列被清空时下标还会停在 0（指向不存在的歌）。
+   * 判定见 `services/hostQueueReplace`。
+   */
   async function replaceHostQueue(entities: any[]): Promise<void> {
     assertPluginQueueEditable()
-    queue.value = entities.map((entity) => {
+    const next = entities.map((entity) => {
       const source = entity.ref?.providerId
       const provider = source ? pluginStore.selectedProvider(source) : undefined
-      return rawEntityToTrack(entity, provider?.pluginKey)
+      const track = rawEntityToTrack(entity, provider?.pluginKey)
+      // 与 `appendHostTracks` 同口径：入队的歌要进本地曲目表，否则插件紧接着
+      // `favorites.add` 同一首歌时按引用查不到、只能报「引用无效」。
+      library.upsertTrack(track)
+      return track
     })
-    currentIndex.value = 0
+    const currentKey = currentTrack.value?.key
+    // `audio.src` 为空表示「有这个下标、但从未装载」——冷启动恢复队列就是这种状态，
+    // 此时没有旧音频要停。
+    const loaded = !!audio.src
+    const plan = planQueueReplace(
+      next.map((track) => track.key),
+      currentKey,
+      loaded
+    )
+    queue.value = next
+    currentIndex.value = plan.index
+    if (plan.stopAudio) resetAudio()
     ensureShuffleOrder()
     publishQueue()
   }
